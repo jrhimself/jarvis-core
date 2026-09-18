@@ -10,11 +10,12 @@ It was built for one house and is written to be built for another. The parts tha
 the persona, the seeds, the credentials, the tools that talk to systems only one person has — live
 outside this repository by design.
 
-![The JARVIS HUD answering a question](docs/images/hud.png)
+![The JARVIS HUD in standby](docs/images/hud.png)
 
-The screen after a turn: the transcript and the four stages of the pipeline on the left, the state of
-the house and the machine on the right, and in the middle the space where windows open when the
-assistant has something to show — a camera still, a chart, a note.
+The screen at rest: the transcript and the four stages of the pipeline on the left, the context
+panel on the right holding the latest readings of the agenda, the mail and the weather above the
+state of the machine, and in the middle the space where windows open when the assistant has
+something to show — a camera still, a chart, a note.
 
 ## Overview
 
@@ -57,7 +58,8 @@ repositories a deployment wants,
 in `config/packs.json`, and in each of those repositories a `pack.json` and an entry point
 exporting `configured()` — has this machine what the pack needs — and `create()`, which returns the
 MCP servers, the tools to pre-approve, and the paragraph of system prompt that describes them.
-`brain/src/packs/loader.ts` is the whole of the contract, comments included, and
+`shared/src/pack.ts` is the whole of the contract, comments included, `brain/src/packs/loader.ts`
+is what reads it, and
 [examples/pack](examples/pack) is that contract as a directory you can copy: one setting, one tool,
 one paragraph of prompt, and a README beside it for turning it into a repository of its own. It is
 built and tested with everything else here, so it is the smallest thing known to still load.
@@ -74,9 +76,9 @@ does not carry a paragraph about reading the mail, and does not offer a tool for
 
 Home Assistant is the only implementation shipped and stays the recommended one — it already speaks
 to a thousand integrations. But nothing above `HomeProvider` in `shared/src/home.ts` knows that.
-Six methods are required: what is here, what it reads, how to change it, and how to be told when it
-moves. Four more are optional and advertised through a `capabilities` record: history, long-term
-statistics, cameras, calendars.
+Seven methods are required: connect and close, what is here, what it reads, how to change it, how to
+be told when it moves, and the latest reading. Four capabilities are optional and advertised through
+a `capabilities` record: history, long-term statistics, cameras, calendars.
 
 What a house without them costs is measured rather than guessed. A provider with none of the four
 resolves the same watchlist, subscribes to the same live feed, fills the same buckets and builds the
@@ -87,8 +89,8 @@ assistant. There is a test that says so in those terms.
 ## What it can do
 
 **The house.** Answer from live state, with the attribute that actually carries the answer (a climate
-entity's `current_temperature` rather than `cool`), from history, or from the house map it already
-carries. Act on lights, blinds, climate, media and scenes immediately; locks, alarm, door openers,
+entity's `current_temperature` rather than `cool`), from history, or from the house map its house
+pack gives it. Act on lights, blinds, climate, media and scenes immediately; locks, alarm, door openers,
 scripts, buttons, the water heater and garage or gate covers only after a spoken yes in a later
 turn. A Jinja template tool is the escape hatch for everything the other tools do not cover.
 
@@ -153,14 +155,20 @@ in the page, not a conversation: no model is asked anything, so it works identic
 no house, no microphone and no API key, which is the machine most likely to need it. What it cannot
 show it leaves out rather than describes.
 
+![The first of the tour's seven steps](docs/images/hud-tour.png)
+
+The first step of the tour, over a HUD that is listening: the orb changes colour with what it is
+doing, and the card says what the space bar, Enter and the button at the bottom right are for.
+
 ## What it remembers, and how it learns
 
 Continuity is a memory layer, not a long context window. A conversation lasts twenty minutes or
 thirty turns and is then dropped; everything meant to survive that is written down. The store is one
 SQLite file with full-text search and a vector column.
 
-**In the prompt, every turn.** The persona, a small core of facts, a map of the house naming what a
-spoken question reaches for against a character budget, and up to eight *recipes*. Everything else is
+**In the prompt, every turn.** The persona, a small core of facts, a map of the house — when a house
+pack supplies one — naming what a spoken question reaches for against a character budget, and up to
+eight *recipes*. Everything else is
 looked up.
 
 **Volunteered, before a tool is called.** The question is embedded locally and the facts it already
@@ -252,7 +260,7 @@ than recomputed, and the diff that actually happened is checked against the same
 request exists. A change that touched a protected path is deleted rather than reviewed.
 
 Protected paths are not the risky-looking ones; they are the ones that move the boundaries: the
-house's confirmation guard, this machinery and its tests, `packs/` wholesale, `scripts/`,
+house's confirmation guard (it lives in a pack, so `packs/` covers it), this machinery and its tests, `scripts/`,
 `deploy/`, `.github/` and the dependency manifests. Removing the alarm's spoken confirmation is a
 one-line diff and is exactly the change that may never be small.
 
@@ -334,7 +342,8 @@ This is a TypeScript monorepo:
 - `hud/` — Browser front-end rendering the display, microphone capture, audio playback, and the
   canvas where the orb sits. Today that is one self-contained file, `hud/public/index.html`, with
   its styles and script inline: the page loads off the static server with nothing built. `hud/src/`
-  is the workspace that file gets taken apart into when it has earned it, and is empty until then.
+  is the workspace that file gets taken apart into when it has earned it, and holds one empty entry
+  point until then.
 - `shared/` — Types shared between brain and HUD: the websocket protocol, the house seam, the pack
   contract, the delegate seam.
 - `packs/*` — Where packs are installed, each one a checkout of its own and none of them tracked
@@ -398,7 +407,6 @@ capability is simply not offered.
 | `JARVIS_GITHUB_REPO`, `GITHUB_TOKEN_JARVIS` | Repository and fine-grained token used to open and merge pull requests. Contents and pull-requests write on that one repository, nothing else. Without the token everything up to the push still works. |
 | `JARVIS_COMMIT_EMAIL` | The address a self-written commit is authored with. Unset, git's own configuration decides. |
 | `JARVIS_RUNNER_TOKEN` | The bearer token a machine running delegated jobs reports quiet panes with, at `POST /runner/report`. Empty, the route does not exist at all: a delegated slot then stays open until somebody closes it by hand, which is the behaviour of a deployment that delegates nowhere. |
-| `JARVIS_HOUSE_NOISE`, `JARVIS_HOUSE_NOT_A_ROOM`, `JARVIS_HOUSE_VEHICLE` | Which switch labels the house map leaves out, which thermometers are not measuring a room, and which entities are a vehicle rather than the building. Case-insensitive regular expressions; the first two have generic defaults worth replacing, the third is empty. |
 | `JARVIS_WATCH_IGNORE_PLATFORMS` | Integrations the watcher ignores outright, as the entity registry spells them, comma-separated. A vehicle integration and outdoor cameras are the usual entries: a sleeping car reports every door unavailable, and rain on a lens is motion. Empty watches everything. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Subscription OAuth token from `claude setup-token`. Never set `ANTHROPIC_API_KEY` in the same environment; the SDK prefers it and billing switches to per-token. |
 
@@ -468,7 +476,7 @@ its origin has never seen, are each reported and left exactly as they were.
 
 ## Install and run
 
-Node 22.18 or later, npm 10 or later. Not merely "Node 22", and the exact number matters
+Node 22.18 or later. Not merely "Node 22", and the exact number matters
 twice: `node:sqlite` needs a flag before 22.13 and the service will not start without it,
 and the test suite runs its TypeScript directly, which needs the type stripping that is only
 on by default from 22.18. An older 22 installs and builds, then fails every test file with
@@ -557,8 +565,10 @@ what the assistant may change about itself, configuration parsing, the static fi
 handling, the rollup, baselines, rules and reconciliation of the proactive side, and the memory
 store. Anything that needs the network or a model is deliberately not covered.
 
-The same suite runs on GitHub for every push to `main` (`.github/workflows/fat.yml`), alongside a
-check that no household fact reached the tree (`.github/workflows/no-house-facts.yml`). That second
+The same suite runs on GitHub for every push to `main` and every pull request
+(`.github/workflows/fat.yml`), alongside a check that no household fact reached the tree
+(`.github/workflows/no-house-facts.yml`) and, on `main`, the release job described under
+[Deploying](#deploying) (`.github/workflows/release.yml`). That second
 one is the owner's gate and runs only in the origin repository: it needs a `DENYLIST_EXTRA` secret
 holding one household's own words, refuses to run without it, and a fork has neither the secret nor
 anything to keep out. Anyone who wants the same gate can run `scripts/check-no-house-facts.sh`
@@ -576,6 +586,12 @@ A `post-receive` hook runs `scripts/deploy.sh`, which installs dependencies if t
 builds, runs the acceptance suite, type-checks the tests, restarts `jarvis-brain` and only then
 forwards the commit onward. If any step fails the checkout is rolled back and the service is left
 alone, so what is running is always something that passed.
+
+What the forge does do is release. Every version that lands on `main` with a green suite becomes a
+tag `v<version>` and a GitHub release whose notes are that version's section of `CHANGELOG.md`
+(`.github/workflows/release.yml`); a push that leaves the version alone releases nothing. A host can
+follow a tag rather than the tip of `main` — `jarvis-deploy v1.1.0` — and the tag before it is the
+rollback.
 
 Setting this up on a fresh host takes two things: `git config receive.denyCurrentBranch updateInstead`
 so a push can update the checked-out branch, and a `.git/hooks/post-receive` that copies
@@ -596,6 +612,8 @@ purpose. A changed persona has to reach the host some other way.
   commit, and what is enforced in code rather than in prose.
 - [examples/pack](examples/pack) — the smallest pack that loads, and what to change to make it
   yours.
+- [deploy/README.md](deploy/README.md) — the systemd units, what each one owns and how they are
+  installed.
 - The decision log and the roadmap for the watching side are not published: both were written
   against one household's own house, down to its devices, its rooms and its counts.
 - [CHANGELOG.md](CHANGELOG.md) — what changed, release by release.

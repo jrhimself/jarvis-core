@@ -22,7 +22,7 @@
  * take a fortnight to become useful, rather than never arriving.
  */
 
-/** What an implementation can do beyond the required six methods. */
+/** What an implementation can do beyond the required seven methods. */
 export interface HomeCapabilities {
   /** Past states per entity. Buys a running start on behavioural baselines. */
   history: boolean;
