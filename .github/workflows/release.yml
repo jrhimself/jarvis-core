@@ -1,0 +1,84 @@
+name: release
+
+# Every version that lands on main becomes a tag and a GitHub release, once the
+# acceptance suite has passed on it. The version is whatever package.json says;
+# the release notes are that version's section of CHANGELOG.md, and nothing
+# else. Both are tracked files, so both have already been through the
+# publication gate -- no text is written here that was not reviewed there.
+#
+# A push that leaves the version alone (documentation, a test) creates
+# nothing: the tag already exists and the job stops. A version without a
+# changelog section is a mistake, and the job fails rather than publish an
+# empty release for it.
+on:
+  workflow_run:
+    workflows: [FAT]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Only after a green suite, and only in the repository that publishes: a
+    # fork's main is its own affair and gets no releases from here.
+    if: >-
+      github.repository == 'jrhimself/jarvis-core' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      # The commit the suite ran on, not whatever main has moved to since.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: read the version
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "v$version is already released; nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The section between this version's heading and the next one, with the
+      # blank lines at either end trimmed. Empty means the changelog was not
+      # written, and a release with no notes is not one worth having.
+      - name: take the notes from the changelog
+        if: steps.version.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            /^## \[/ { if (found) exit }
+            found { print }
+          ' CHANGELOG.md | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "CHANGELOG.md has no section for $VERSION." >&2
+            exit 1
+          fi
+
+      - name: tag and release
+        if: steps.version.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          gh release create "v$VERSION" \
+            --target "$SHA" \
+            --title "v$VERSION" \
+            --notes-file release-notes.md \
+            --latest

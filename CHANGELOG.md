@@ -15,6 +15,18 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [1.1.0] - 2026-09-18
+
+### Added
+
+- Every version that lands on main is released. A workflow runs after a green acceptance suite,
+  reads the version from `package.json`, and when no tag carries it yet creates the tag and a
+  GitHub release whose notes are that version's section of this file, word for word. A push that
+  leaves the version alone releases nothing; a version without a section here fails the job
+  rather than publish an empty release. The host keeps deciding what it runs, as before, but it
+  can now follow a tag rather than the tip of main: `jarvis-deploy v1.1.0` is a deploy, and the
+  previous tag is the rollback.
+
 ## [1.0.0] - 2026-09-18
 
 The first public release. The repository this is published from begins with a single commit:
