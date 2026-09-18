@@ -1,0 +1,21 @@
+{
+  "name": "jarvis",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "brain",
+    "hud",
+    "shared"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "test": "npm run build && npm run build:packs && node --test \"brain/test/*.test.ts\" \"packs/*/test/*.test.ts\" \"examples/pack/test/*.test.ts\"",
+    "prompt-size": "npm run build && npm run prompt-size --workspace brain",
+    "test:types": "tsc -p brain/test/tsconfig.json && tsc -p examples/pack/test/tsconfig.json && for t in packs/*/test/tsconfig.json; do [ -e \"$t\" ] || continue; tsc -p \"$t\"; done",
+    "build:packs": "node scripts/build-packs.mjs",
+    "packs-sync": "node scripts/packs-sync.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

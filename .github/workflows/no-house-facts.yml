@@ -1,0 +1,78 @@
+name: no-house-facts
+
+# The gate in front of publication. Every push is grepped for the things that
+# belong to one household rather than to the project: private addresses, tailnet
+# names, home directories, mailboxes, credential shapes, and the words in the
+# DENYLIST_EXTRA secret. It is expected to be red while the split is being made
+# and must be green before anything is published.
+#
+# The secret holds one extended regular expression per line. Without it only the
+# structural rules run -- those catch an address, never a name -- so the job
+# fails rather than reporting a clean tree it did not really check. It is skipped
+# outside this repository, because a fork has neither the secret nor anything of
+# this household to keep out.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: no-house-facts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    # This gate is the owner's: it falls back on a secret only this repository
+    # has, and refuses to run half-blind without it. A fork has no household to
+    # protect here and should not inherit a permanently red run -- it still gets
+    # the acceptance suite, and `scripts/check-no-house-facts.sh` runs locally
+    # with a `.denylist.local` for anyone who wants the same gate.
+    #
+    # On a pull request the repository to test is the one the branch came from,
+    # not the one it is aimed at. `github.repository` is the base on both, so
+    # testing that alone starts this job on every fork's pull request -- where
+    # the secret is withheld by design, and the first step then fails it. That
+    # would make an outside contributor's first run red for a reason that is
+    # none of their business. The head repository is empty outside a pull
+    # request, which leaves the push case reading as before.
+    if: (github.event.pull_request.head.repo.full_name || github.repository) == 'jrhimself/jarvis-core'
+    runs-on: ubuntu-latest
+    steps:
+      # Commit messages are scanned too, and a shallow clone has none of them.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: refuse to run half-blind
+        env:
+          DENYLIST_EXTRA: ${{ secrets.DENYLIST_EXTRA }}
+        run: |
+          if [ -z "$DENYLIST_EXTRA" ]; then
+            echo "DENYLIST_EXTRA is not set; the name rules would be skipped." >&2
+            exit 1
+          fi
+
+      # What the commit-message scan is measured against: the commits this event
+      # adds, and nothing older. On a pull request that is the base it is aimed
+      # at; on a push it is what the branch was before. A branch that did not
+      # exist before a push has a before of all zeros and no range to speak of,
+      # and the head commit alone is what it brought.
+      - name: work out the range of new commits
+        id: range
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "since=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.before }}" ] &&
+               [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "since=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "since=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Never verbose: a match must not be echoed into a public log. That holds
+      # for a commit message as much as for a line of code, so a message hit
+      # prints its sha and no more.
+      - name: scan tracked files, symlinks and new commit messages
+        env:
+          DENYLIST_EXTRA: ${{ secrets.DENYLIST_EXTRA }}
+        run: ./scripts/check-no-house-facts.sh --since "${{ steps.range.outputs.since }}"

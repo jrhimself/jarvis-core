@@ -1,0 +1,32 @@
+[
+  {
+    "kind": "persoon",
+    "subject": "Alex",
+    "body": "Alex is degene die je aanspreekt. Nederlandstalig, wil korte en directe antwoorden.",
+    "core": true
+  },
+  {
+    "kind": "persoon",
+    "subject": "Sam",
+    "body": "Sam woont mee in huis.",
+    "core": true
+  },
+  {
+    "kind": "feit",
+    "subject": "huishouden",
+    "body": "Het huishouden is Nederlandstalig; namen van apparaten en ruimtes staan in het Nederlands.",
+    "core": true
+  },
+  {
+    "kind": "voorkeur",
+    "subject": "antwoordlengte",
+    "body": "Zo beknopt mogelijk: geen slotsamenvatting, geen herhaling van wat al gedaan is, geen filler.",
+    "core": true
+  },
+  {
+    "kind": "voorkeur",
+    "subject": "tijdzone",
+    "body": "Tijdstippen altijd in lokale tijd noemen, nooit rauwe UTC.",
+    "core": false
+  }
+]

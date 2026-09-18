@@ -1,0 +1,17 @@
+[Unit]
+Description=Deploy a merged JARVIS commit and restart the brain
+Documentation=https://github.com/jrhimself/jarvis-core
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Root, but with one job: the script refuses anything that is not already on
+# origin/main, runs the suite, and rolls the checkout back if it goes red.
+# Which account owns the checkout, and where it is. The script does everything
+# git and npm touch as that account; only the restart is done as root.
+Environment=JARVIS_USER=__JARVIS_USER__
+Environment=JARVIS_ROOT=__JARVIS_ROOT__
+ExecStart=__JARVIS_ROOT__/scripts/self-deploy.sh
+TimeoutStartSec=1200
+StandardOutput=journal
+StandardError=journal

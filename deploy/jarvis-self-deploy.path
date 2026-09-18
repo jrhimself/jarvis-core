@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch for a JARVIS self-deploy request
+Documentation=https://github.com/jrhimself/jarvis-core
+
+[Path]
+# The brain writes a commit hash here and stops. It cannot restart itself:
+# its unit runs with NoNewPrivileges, and widening that would hand a
+# self-modifying process a general-purpose path to root.
+PathExists=__JARVIS_ROOT__/data/deploy-request
+Unit=jarvis-self-deploy.service
+
+[Install]
+WantedBy=multi-user.target

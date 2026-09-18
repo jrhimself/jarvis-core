@@ -1,0 +1,14 @@
+[Unit]
+Description=Renew the JARVIS TLS certificate
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/etc/jarvis/certs
+# tailscale cert is a no-op while the certificate is still fresh, so running
+# this weekly is cheap and leaves plenty of margin on a 90 day lifetime.
+ExecStart=/usr/bin/tailscale cert --cert-file jarvis.crt --key-file jarvis.key %i
+ExecStartPost=/usr/bin/chown __JARVIS_USER__:__JARVIS_USER__ /etc/jarvis/certs/jarvis.crt /etc/jarvis/certs/jarvis.key
+ExecStartPost=/usr/bin/chmod 640 /etc/jarvis/certs/jarvis.key
+ExecStartPost=/usr/bin/systemctl restart jarvis-brain.service

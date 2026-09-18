@@ -1,0 +1,30 @@
+[Unit]
+Description=JARVIS nightly memory backup
+Documentation=https://github.com/jrhimself/jarvis-core
+
+[Service]
+Type=oneshot
+User=__JARVIS_USER__
+Group=__JARVIS_USER__
+WorkingDirectory=__JARVIS_ROOT__/brain
+ExecStart=/usr/bin/node dist/memory/backup-cli.js
+
+Environment=NODE_ENV=production
+Environment=HOME=__JARVIS_HOME__
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Only for JARVIS_MEMORY_PATH and JARVIS_BACKUP_*; this pass talks to no API.
+EnvironmentFile=-/etc/jarvis/jarvis.env
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# The database and the directory the copies land in; nothing else.
+ReadWritePaths=__JARVIS_ROOT__/data
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+PrivateNetwork=yes
+
+StandardOutput=journal
+StandardError=journal

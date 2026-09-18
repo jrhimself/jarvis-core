@@ -1,0 +1,32 @@
+# No trailing slash on either, for the reason spelled out at the bottom of
+# this file: a working copy that borrows one of these from another checkout
+# borrows it as a symlink, and `node_modules/` does not match one.
+node_modules
+dist
+.env
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.tsbuildinfo
+# Runtime state and the owner's own notes. Nothing under here belongs in the
+# repository, and a wide `git add` is exactly how it would get in.
+data/
+
+# The household words the publication check greps for; never in the repository.
+.denylist.local
+
+# What a deployment brings and this repository does not carry. Every pack is a
+# checkout of somebody's repository -- core's own included -- and `config/` is
+# what makes a deployment somebody's: the persona, the seeds, the env file. The
+# litmus test for the boundary is that a commit here which only makes sense for
+# one person belongs on the other side of it.
+#
+# Neither name carries a trailing slash. A deployment that keeps its packs and
+# its identity in a private repository symlinks these at it, and `packs/` would
+# not match a symlink -- which is how a symlink named `packs`, pointing at one
+# person's home directory, came to be committed twice. Both are anchored to the
+# root: unanchored, `packs` also swallowed `brain/src/packs/`, the loader that
+# reads them, which then only travelled by `git add -f`.
+/packs
+/config

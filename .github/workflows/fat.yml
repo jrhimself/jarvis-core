@@ -1,0 +1,35 @@
+name: FAT
+
+# Every commit that lands on main gets the full acceptance run. Nothing here
+# touches the house: the suite is deterministic and needs no Home Assistant, no
+# tokens and no network.
+on:
+  push:
+    branches: [main]
+  # Also on every pull request: a branch that cannot be merged without review
+  # is a branch whose suite has to have run before the review, not after it.
+  pull_request:
+  workflow_dispatch:
+
+# A push on top of a running job makes that job irrelevant, not worth finishing.
+concurrency:
+  group: fat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: npm
+
+      - run: npm ci
+
+      # Builds first, then runs the suite: the tests import from dist.
+      - run: npm test
+
+      - run: npm run test:types

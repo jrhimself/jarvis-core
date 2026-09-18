@@ -1,0 +1,20 @@
+[
+  {
+    "kind": "feit",
+    "subject": "verwarming",
+    "body": "De woonkamer heeft vloerverwarming; die reageert traag, dus een graad erbij duurt een uur.",
+    "core": false
+  },
+  {
+    "kind": "gewoonte",
+    "subject": "avondlicht",
+    "body": "Na tienen gaat de verlichting beneden op 20 procent; fel licht is 's avonds niet gewenst.",
+    "core": false
+  },
+  {
+    "kind": "lopend",
+    "subject": "wasdroger",
+    "body": "De droger stopt soms halverwege. Sinds begin deze maand, oorzaak nog onbekend.",
+    "core": false
+  }
+]

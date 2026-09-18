@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./shared"
+    },
+    {
+      "path": "./brain"
+    },
+    {
+      "path": "./hud"
+    },
+    {
+      "path": "./examples/pack"
+    }
+  ]
+}

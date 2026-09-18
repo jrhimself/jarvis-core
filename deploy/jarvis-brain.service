@@ -1,0 +1,44 @@
+[Unit]
+Description=JARVIS brain
+Documentation=https://github.com/jrhimself/jarvis-core
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__JARVIS_USER__
+Group=__JARVIS_USER__
+WorkingDirectory=__JARVIS_ROOT__/brain
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+
+# Binding port 443 as a non-root user needs this capability, nothing more.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+Environment=NODE_ENV=production
+Environment=HOME=__JARVIS_HOME__
+# Tools installed into the service user's home come first; the tool servers
+# themselves run in-process and need nothing here.
+Environment=PATH=__JARVIS_HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Holds CLAUDE_CODE_OAUTH_TOKEN. Readable by root only; systemd reads it for us.
+EnvironmentFile=-/etc/jarvis/jarvis.env
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+# The agent SDK keeps its session state under ~/.claude, so that path must be
+# writable, and its caches live under ~/.cache and ~/.local.
+# jarvis-dev holds the throwaway worktrees a small fix is written in; the live
+# checkout is never edited in place.
+ReadWritePaths=__JARVIS_ROOT__ __JARVIS_WORKTREES__ __JARVIS_HOME__/.claude __JARVIS_HOME__/.cache __JARVIS_HOME__/.local
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

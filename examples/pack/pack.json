@@ -1,0 +1,5 @@
+{
+  "name": "example",
+  "entry": "dist/index.js",
+  "description": "The smallest pack that loads: one tool, one setting, no dependency."
+}

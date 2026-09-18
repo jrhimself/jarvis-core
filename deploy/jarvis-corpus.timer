@@ -1,0 +1,15 @@
+[Unit]
+Description=Nightly schedule for the JARVIS notes ingest
+
+[Timer]
+Unit=jarvis-corpus.service
+# After the backup at half past two, and after Sunday's consolidation window
+# (three o'clock plus three quarters of an hour of jitter), so a pass that
+# writes facts never overlaps the pass that merges and deletes them. That order
+# only holds while all four timers name the same zone.
+OnCalendar=*-*-* 04:00 __JARVIS_TIMEZONE__
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Nightly schedule for the JARVIS memory backup
+
+[Timer]
+Unit=jarvis-backup.service
+# Nightly, and well before Sunday's consolidation pass, so there is always a
+# copy from before the run that deletes facts. The zone is named because a
+# container's clock is usually UTC while the house is not, and because the four
+# timers only keep their intended order if they all agree on one.
+OnCalendar=*-*-* 02:30 __JARVIS_TIMEZONE__
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

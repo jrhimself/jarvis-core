@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly schedule for JARVIS memory consolidation
+
+[Timer]
+Unit=jarvis-consolidate.service
+OnCalendar=Sun 03:00 __JARVIS_TIMEZONE__
+Persistent=true
+RandomizedDelaySec=45m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly renewal check for the JARVIS TLS certificate
+
+[Timer]
+Unit=jarvis-cert-renew@__JARVIS_HOSTNAME__.service
+OnCalendar=Sun 04:30 __JARVIS_TIMEZONE__
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target
