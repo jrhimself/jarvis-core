@@ -49,6 +49,32 @@ structural half and says how many private patterns it loaded.
 There is a `no-house-facts: allow` marker for lines that must contain what they contain. It is for
 structural rules only. If you reach for it to wave through a name, the answer is to remove the name.
 
+## Landing a change
+
+This repository is public. Everything below follows from that.
+
+- **A branch and a pull request, always.** `main` is protected: nothing lands without the acceptance
+  suite (`fat`) and the publication gate (`scan`) green on the pull request, history is linear, and
+  there is no force-push. Merge by squash, so a pull request is one commit on `main` and its title is
+  the commit's subject.
+- **The version is the release.** Every version that reaches `main` becomes a tag `v<version>` and a
+  GitHub release, automatically (`.github/workflows/release.yml`): the version is read from
+  `package.json`, the notes are that version's section of `CHANGELOG.md`, word for word. So a change
+  that should be released bumps the version in `package.json` *and* `package-lock.json` (lines 3 and
+  9; `npm install --package-lock-only` does it) and adds a `## [<version>] - <date>` section at the
+  top of `CHANGELOG.md`. A version without its section fails the release job rather than publishing
+  an empty release.
+- **No bump, no release.** Documentation, screenshots, a comment: leave the version alone and the
+  release job finds the tag already there and stops. The next version's changelog section can
+  mention it.
+- **Self-written fixes land unreleased.** `package.json` is a protected path for the self-development
+  worker, so its pull requests never bump; they ride along in the next version somebody cuts.
+- **A commit message is published too.** The gate scans messages as well as files, and a squash
+  commit carries the pull request body. Nothing about the house in either.
+- **Deploy by tag.** The host follows `jarvis-deploy v<version>`; the tag before it is the rollback.
+  The history from before publication lives in the archived `jarvis-core-history` and is not a base
+  for anything new.
+
 ## Writing a pack
 
 [docs/packs.md](docs/packs.md) before you start, and its checklist before you open the pull
