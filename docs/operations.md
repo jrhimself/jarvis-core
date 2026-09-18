@@ -14,6 +14,11 @@ deployment's, and yours will differ.
 Three ways code reaches the running service. **The host is the source of truth in all of them** — a
 push to a forge never deploys.
 
+What the forge does do is release: every version that lands on main with a green suite becomes a
+tag `v<version>` and a GitHub release whose notes are that version's section of `CHANGELOG.md`
+(`.github/workflows/release.yml`). A deploy can follow a tag rather than the tip of main —
+`jarvis-deploy v1.1.0` — and the previous tag is the rollback.
+
 ### 1.1 Push to deploy
 
 ```mermaid
