@@ -12,10 +12,14 @@ outside this repository by design.
 
 ![The JARVIS HUD in standby](docs/images/hud.png)
 
-The screen at rest: the transcript and the four stages of the pipeline on the left, the context
-panel on the right holding the latest readings of the agenda, the mail and the weather above the
-state of the machine, and in the middle the space where windows open when the assistant has
-something to show — a camera still, a chart, a note.
+![The first of the tour's seven steps](docs/images/hud-tour.png)
+
+The screen at rest, and the same screen a minute later with the tour running. The transcript and the
+four stages of the pipeline sit on the left, the context panel on the right holds the latest readings
+of the agenda, the mail and the weather above the state of the machine, and in the middle is the
+space where windows open when the assistant has something to show — a camera still, a chart, a note.
+The orb changes colour with what it is doing; in the second picture it is listening, and the first
+card of the tour says what the space bar, Enter and the button at the bottom right are for.
 
 ## Overview
 
@@ -154,11 +158,6 @@ same health probes the pills use — what this particular install can actually r
 in the page, not a conversation: no model is asked anything, so it works identically with no packs,
 no house, no microphone and no API key, which is the machine most likely to need it. What it cannot
 show it leaves out rather than describes.
-
-![The first of the tour's seven steps](docs/images/hud-tour.png)
-
-The first step of the tour, over a HUD that is listening: the orb changes colour with what it is
-doing, and the card says what the space bar, Enter and the button at the bottom right are for.
 
 ## What it remembers, and how it learns
 
