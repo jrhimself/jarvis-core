@@ -245,7 +245,11 @@ export function serveMemoryApi(
       sendError(res, 405, "Method not allowed");
       return true;
     }
-    sendJson(res, 200, { memoryPanel: config.memoryPanel, voiceTimbre: config.voiceTimbre });
+    sendJson(res, 200, {
+      memoryPanel: config.memoryPanel,
+      voiceTimbre: config.voiceTimbre,
+      speechLang: config.speechLang,
+    });
     return true;
   }
 

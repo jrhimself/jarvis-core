@@ -43,7 +43,7 @@ const recorded = new RecordedLines(config, join(dirname(config.memoryPath), "voi
 
 /** Records the deployment's lines that are not on disk yet. Called at startup. */
 export function warmRecordedLines(): Promise<number> {
-  return recorded.warm(config.thinkingLines, "nl");
+  return recorded.warm(config.thinkingLines, config.speechLang);
 }
 
 /** Re-check the credit balance at most this often. */
@@ -80,16 +80,17 @@ function endsInQuestion(text: string): boolean {
 }
 
 /**
- * Which colouring a language gets.
+ * Which colouring a spoken line gets.
  *
- * English is the language of the system lines here — the wake-up greeting, the
- * acknowledgements — and those are the ones that should sound like a machine
- * speaking in a room. Dutch is JARVIS answering a question, and stays dry: an
- * echo on every reply wears out within an evening.
+ * The echo belongs to the system lines — the wake-up greeting, the tour —
+ * because those are the ones that should sound like a machine speaking in a
+ * room. An answer stays dry: an echo on every reply wears out within an
+ * evening. This used to be decided by language, English being the language
+ * those lines happened to be written in; a deployment that speaks English
+ * would then have echoed every word it said.
  */
-function fxFor(lang: SpeechLang): SpeechFx {
-  return lang === "en" ? "echo" : "none";
-}
+const SYSTEM_FX: SpeechFx = "echo";
+const ANSWER_FX: SpeechFx = "none";
 
 /** Longest we wait for speech to finish before calling the turn done anyway. */
 const SPEECH_TIMEOUT_MS = 30_000;
@@ -281,7 +282,7 @@ export class Conversation {
         show(said, true);
         // Recorded earlier, so it is heard now and the voice's socket stays
         // free for the first sentence of the answer.
-        const clip = speaking === null ? null : recorded.get(line, "nl");
+        const clip = speaking === null ? null : recorded.get(line, config.speechLang);
         if (clip !== null && speaking !== null) speaking.play(clip);
         else voice?.speak(said);
       }, opening.afterMs);
@@ -390,7 +391,7 @@ export class Conversation {
    * audio the way it does for an answer, but nothing is thought about and no
    * tokens are spent: the text goes straight to the voice.
    */
-  async say(turnId: string, text: string, lang: SpeechLang = "nl"): Promise<void> {
+  async say(turnId: string, text: string, lang: SpeechLang = config.speechLang): Promise<void> {
     if (this.#closed) return;
 
     if (this.#current !== null) this.#current.abort.abort();
@@ -400,7 +401,7 @@ export class Conversation {
     this.#clearIdleTimer();
 
     const startedAt = performance.now();
-    const speaking = await this.#openVoice(turnId, abort, lang);
+    const speaking = await this.#openVoice(turnId, abort, lang, SYSTEM_FX);
 
     try {
       // The same rule as a turn: the page hears whether the brain speaks
@@ -437,7 +438,8 @@ export class Conversation {
   async #openVoice(
     turnId: string,
     abort: AbortController,
-    lang: SpeechLang = "nl",
+    lang: SpeechLang = config.speechLang,
+    fx: SpeechFx = ANSWER_FX,
   ): Promise<{
     voice: SpeakingVoice;
     spoken: Promise<void>;
@@ -486,7 +488,7 @@ export class Conversation {
       heard = true;
       if (!announced) {
         announced = true;
-        this.callbacks.onVoice(turnId, true, undefined, lang, fxFor(lang));
+        this.callbacks.onVoice(turnId, true, undefined, lang, fx);
         decide();
       }
       this.callbacks.onAudio(turnId, seq++, data, alignment);
@@ -498,7 +500,7 @@ export class Conversation {
         onOpen: () => {
           if (abort.signal.aborted || announced) return;
           announced = true;
-          this.callbacks.onVoice(turnId, true, undefined, lang, fxFor(lang));
+          this.callbacks.onVoice(turnId, true, undefined, lang, fx);
           decide();
         },
         onAudio: play,

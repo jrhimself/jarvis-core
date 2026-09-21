@@ -1836,10 +1836,17 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
 const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
 let rec=null, recActive=false;
 
+/* Which language this deployment is spoken to in. The brain owns the setting
+   and the page asks for it below; until the answer lands, Dutch, which is what
+   the brain falls back on too. Both halves of speech read this: what the
+   browser transcribes, and the voice it reads an answer with when the brain
+   cannot speak. */
+let speechTag='nl-NL';
+
 function initSR(){
   if(!SR) return null;
   const r=new SR();
-  r.lang='nl-NL'; r.interimResults=true; r.continuous=true; r.maxAlternatives=1;
+  r.lang=speechTag; r.interimResults=true; r.continuous=true; r.maxAlternatives=1;
   r.onresult=e=>{
     let interim='', final='';
     for(let i=e.resultIndex;i<e.results.length;i++){
@@ -2599,7 +2606,8 @@ function voicesReady(){
 
 function pickVoice(){
   const vs=speechSynthesis.getVoices();
-  return vs.find(v=>v.lang==='nl-NL'&&v.localService) || vs.find(v=>v.lang.startsWith('nl')) || null;
+  const tag=speechTag, short=tag.split('-')[0];
+  return vs.find(v=>v.lang===tag&&v.localService) || vs.find(v=>v.lang.startsWith(short)) || null;
 }
 
 /* Chrome silently stops an utterance after ~15s, so speak in shorter chunks */
@@ -2655,7 +2663,7 @@ async function speak(text,onProgress){
       if(i>=chunks.length){ ttsPulse=false; report(text.length); return resolve(); }
       const ci=i++, chunk=chunks[ci], base=offs[ci];
       const u=new SpeechSynthesisUtterance(chunk);
-      u.lang='nl-NL'; u.rate=1.03; u.pitch=0.92;
+      u.lang=speechTag; u.rate=1.03; u.pitch=0.92;
       if(voice) u.voice=voice;
       u.onstart=()=>{
         const t=performance.now();
@@ -2984,6 +2992,12 @@ function setVoiceTimbre(amount){
    than assumes. It arrives long before the first answer; if it somehow does
    not, the chain is already there at zero and the next update simply moves it. */
 fetch('/api/config').then(r=>r.json()).then(cfg=>{
+  if(cfg && cfg.speechLang==='en'){
+    speechTag='en-GB';
+    /* A recogniser that already exists keeps the language it was built with,
+       so it is told rather than left listening for the wrong one. */
+    if(rec) try{ rec.lang=speechTag; }catch(e){}
+  }
   const amount=Number(cfg && cfg.voiceTimbre);
   if(!Number.isFinite(amount)) return;
   voice.timbreAmount=amount;
