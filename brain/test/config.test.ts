@@ -128,6 +128,16 @@ test("english speaks its own voice only when one is set", () => {
   assert.equal(voiceIdFor(two, "en"), "english");
 });
 
+test("the deployment speaks one language, and Dutch unless told otherwise", () => {
+  assert.equal(withEnv({ ...BLANK }, loadConfig).speechLang, "nl");
+  assert.equal(withEnv({ ...BLANK, JARVIS_SPEECH_LANG: "en" }, loadConfig).speechLang, "en");
+
+  // A language nobody speaks is a typo, and answering in a language that was
+  // never chosen is worse than answering in the default one.
+  const typo = quietly(() => withEnv({ ...BLANK, JARVIS_SPEECH_LANG: "de" }, loadConfig));
+  assert.equal(typo.speechLang, "nl");
+});
+
 test("an empty string counts as unset", () => {
   const config = withEnv({ ...BLANK, HA_URL: "", JARVIS_PORT: "" }, loadConfig);
 

@@ -5,6 +5,8 @@
  * be started without an env file while it is still being built out.
  */
 
+import type { SpeechLang } from "@jarvis/shared";
+
 import { resolve } from "node:path";
 
 import { VOICE_PROVIDERS, type VoiceProvider } from "./voice/types.js";
@@ -13,6 +15,9 @@ import { VOICE_PROVIDERS, type VoiceProvider } from "./voice/types.js";
 export type MemoryPanelMode = "off" | "read" | "edit";
 
 const MEMORY_PANEL_MODES: readonly MemoryPanelMode[] = ["off", "read", "edit"];
+
+/** The languages a deployment can be run in. */
+const SPEECH_LANGS: readonly SpeechLang[] = ["nl", "en"];
 
 /**
  * How far JARVIS is allowed to go on his own.
@@ -206,6 +211,16 @@ export interface Config {
   maxSteps: number;
   /** What one question may cost before the turn is stopped, in dollars. 0 does not stop it. */
   maxTurnUsd: number;
+  /**
+   * The language this deployment speaks and listens in.
+   *
+   * One setting for the whole house: which voice reads an answer, which
+   * language the microphone is transcribed as, and what a fixed line is
+   * spoken in when the caller names no language of its own. It does not
+   * translate anything -- the persona decides what the assistant writes,
+   * and this says how what it writes is heard, so the two belong together.
+   */
+  speechLang: SpeechLang;
   /**
    * What is said when a turn was stopped by one of those brakes.
    *
@@ -458,6 +473,7 @@ export function loadConfig(): Config {
     voiceSpeed: envDecimal("JARVIS_VOICE_SPEED", 1.0, 0.7, 1.2),
     voiceTimbre: envNumber("JARVIS_VOICE_TIMBRE", 0, 0, 100),
     memoryPanel: envEnum("JARVIS_MEMORY_PANEL", MEMORY_PANEL_MODES, "read"),
+    speechLang: envEnum("JARVIS_SPEECH_LANG", SPEECH_LANGS, "nl"),
     model: envString("JARVIS_MODEL", "sonnet"),
     escalateModel: envString("JARVIS_ESCALATE_MODEL", ""),
     fallbackModel: envString("JARVIS_FALLBACK_MODEL", ""),

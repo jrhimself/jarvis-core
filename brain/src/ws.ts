@@ -166,7 +166,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       }
 
       if (message.kind === "say") {
-        void conversation.say(message.turnId, message.text, message.lang ?? "nl");
+        void conversation.say(message.turnId, message.text, message.lang ?? config.speechLang);
         return;
       }
 

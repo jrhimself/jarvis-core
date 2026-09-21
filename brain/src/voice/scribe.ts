@@ -48,7 +48,7 @@ export class Listener {
   #connect(): void {
     const url =
       "wss://api.elevenlabs.io/v1/speech-to-text/realtime" +
-      `?model_id=${MODEL_ID}&language_code=nl&audio_format=${AUDIO_FORMAT}` +
+      `?model_id=${MODEL_ID}&language_code=${this.config.speechLang}&audio_format=${AUDIO_FORMAT}` +
       "&commit_strategy=manual&filter_background_audio=true";
 
     const socket = new WebSocket(url, {

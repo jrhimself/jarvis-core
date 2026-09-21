@@ -15,6 +15,25 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [1.2.0] - 2026-09-21
+
+### Added
+
+- `JARVIS_SPEECH_LANG` says which language the deployment speaks and listens in, `nl`
+  (the default, and what every one of these places used to be fixed at) or `en`. It picks
+  the voice an answer is read with, the language the microphone is transcribed as, the
+  language the acknowledgement lines are recorded in, and what a line put through `say`
+  is spoken in when the caller names none. A single line can still ask for the other
+  language, which is what the wake-up greeting does. The HUD reads the setting from
+  `/api/config`, so the browser's own recogniser and its fallback voice follow it too.
+
+### Changed
+
+- The echo on the voice belongs to the system lines rather than to English. It was
+  chosen because the greeting and the tour are written in English and an answer was
+  always Dutch, which stopped being true the moment the language became a setting: a
+  deployment that speaks English would have echoed every word it said.
+
 ## [1.1.0] - 2026-09-18
 
 ### Added
