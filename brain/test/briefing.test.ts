@@ -17,8 +17,12 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   BRIEFING_CACHE_KEY,
   BriefingCache,
+  againHook,
+  asksForBriefing,
   createBriefingServer,
   freshInstruction,
+  gateHook,
+  looksGated,
   marksBriefing,
   repeatInstruction,
 } from "../dist/briefing.js";
@@ -135,4 +139,68 @@ test("asked again with nothing recent, the tool shows nothing and asks for a fre
   const { text, shown } = await callAgain(cache, 2 * HOUR);
   assert.match(text, /Give a full, fresh briefing now/);
   assert.equal(shown.length, 0);
+});
+
+test("asking for the briefing is recognised in either language, and a letter is not", () => {
+  for (const ask of [
+    "brief me",
+    "Brief me volledig opnieuw",
+    "brief me helemaal opnieuw",
+    "kan ik de briefing krijgen",
+    "briefing please",
+    "brief me again",
+    "nog een keer de briefing",
+  ]) {
+    assert.equal(asksForBriefing(ask), true, ask);
+  }
+  for (const other of ["stuur een brief naar de gemeente", "what is in the mail", "hoe is het weer"]) {
+    assert.equal(asksForBriefing(other), false, other);
+  }
+});
+
+test("the gate's answer is recognised as the gate, in a text or in a tool result", () => {
+  assert.equal(looksGated("Vandaag al gebriefd om 08:50. Alleen groeten."), true);
+  assert.equal(looksGated("Good morning. Already briefed today, so that's it for now."), true);
+  assert.equal(looksGated({ content: [{ type: "text", text: "Vandaag al gebriefd om 08:50." }] }), true);
+  assert.equal(looksGated("Good morning. Twelve pull requests open, none for you."), false);
+});
+
+test("a turn answered by the gate is not kept as the briefing, and one kept earlier is not repeated", () => {
+  const store = memory();
+  const cache = new BriefingCache(store, 2 * HOUR);
+  cache.remember({ lang: "en", text: "Good morning. Already briefed today, so that's it for now.", windows: [] });
+  assert.equal(cache.last(), null, "never written");
+  store.setSetting(
+    BRIEFING_CACHE_KEY,
+    JSON.stringify({ at: new Date().toISOString(), lang: "en", text: "Already briefed today.", windows: [] }),
+  );
+  assert.equal(cache.fresh(), null, "a poisoned entry from before is not a briefing either");
+});
+
+const hookEnv = { signal: new AbortController().signal };
+const base = { session_id: "s", transcript_path: "", cwd: "" };
+
+test("on a turn that asked, a briefing call goes out with again=true whether the model said so or not", async () => {
+  let asked = true;
+  const [hook] = againHook(() => asked).hooks;
+  assert.ok(hook !== undefined);
+  const call = (tool_input: Record<string, unknown>) =>
+    hook({ ...base, hook_event_name: "PreToolUse", tool_name: "get_ado_pr_status", tool_input, tool_use_id: "t1" } as never, "t1", hookEnv);
+  const forced = (await call({ briefing: true })) as { hookSpecificOutput?: { updatedInput?: Record<string, unknown> } };
+  assert.deepEqual(forced.hookSpecificOutput?.updatedInput, { briefing: true, again: true });
+  assert.deepEqual(await call({ deep: true }), {}, "a call that is not the briefing is left alone");
+  asked = false;
+  assert.deepEqual(await call({ briefing: true }), {}, "a greeting keeps its gate");
+});
+
+test("a briefing call answered by the gate marks the turn", async () => {
+  let gated = 0;
+  const [hook] = gateHook(() => gated++).hooks;
+  assert.ok(hook !== undefined);
+  const call = (tool_input: Record<string, unknown>, tool_response: unknown) =>
+    hook({ ...base, hook_event_name: "PostToolUse", tool_name: "x", tool_input, tool_response, tool_use_id: "t1" } as never, "t1", hookEnv);
+  await call({ briefing: true }, { content: [{ type: "text", text: "Vandaag al gebriefd om 08:50." }] });
+  await call({ briefing: true }, { content: [{ type: "text", text: "12 open pull requests." }] });
+  await call({}, { content: [{ type: "text", text: "Vandaag al gebriefd om 08:50." }] });
+  assert.equal(gated, 1);
 });

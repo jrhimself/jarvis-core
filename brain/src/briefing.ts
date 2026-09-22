@@ -24,6 +24,7 @@
  */
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallbackMatcher, HookInput } from "@anthropic-ai/claude-agent-sdk";
 import { formatLocal } from "@jarvis/shared";
 import type { DisplayDismiss, DisplayPayload, PackDisplay, SpeechLang } from "@jarvis/shared";
 import { z } from "zod";
@@ -66,6 +67,96 @@ export function marksBriefing(input: unknown): boolean {
   );
 }
 
+/**
+ * Whether the question asks for the briefing in so many words.
+ *
+ * "Brief me", "de briefing", "brief me opnieuw", "briefing please". Not the
+ * Dutch letter ("stuur een brief"): a bare "brief" counts only with somebody to
+ * brief or a word for again beside it. Decided here rather than by the model,
+ * because the model twice read a gate's answer as its own and said "already
+ * briefed" to the one question that word can never answer.
+ */
+export function asksForBriefing(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    /\bbriefing\b/.test(t) ||
+    /\bbrief\s+(me|mij|ons|us)\b/.test(t) ||
+    /\bbrief\b[^.!?]*\b(opnieuw|again|nogmaals|once more|nog een keer)\b/.test(t)
+  );
+}
+
+/**
+ * Whether a text is the once-a-day gate speaking rather than a briefing.
+ *
+ * The pull request pack answers a second morning call with "vandaag al
+ * gebriefd"; a turn built on that answer is not a briefing, whatever it was
+ * marked as, and must not be kept as one -- kept, it was said again word for
+ * word to "brief me opnieuw", windows and all.
+ */
+export function looksGated(value: unknown): boolean {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  return /\b(al gebriefd|already briefed|briefed today|briefed you today)\b/i.test(text);
+}
+
+/**
+ * The paragraph put against an explicit request for the briefing.
+ *
+ * Against the question, in the same message, so it is the last thing read
+ * before answering: the persona says the same further up and was outvoted.
+ */
+export function askedInstruction(): string {
+  return (
+    "[Joey asked for the briefing in so many words. Give it, in full, now. Call " +
+    "briefing_again first: say its text if it hands one over, otherwise fetch everything " +
+    "the way a morning briefing goes, with again=true beside briefing=true. Any tool that " +
+    "says the briefing was already given today is not about this request; \"already " +
+    "briefed\" is never the answer to it.]"
+  );
+}
+
+/**
+ * The hook that makes the request stick: on a turn that asked for the
+ * briefing, every tool called with `briefing: true` is called with
+ * `again: true` as well, whether the model remembered to or not. A pack
+ * without that argument ignores it.
+ */
+export function againHook(asked: () => boolean): HookCallbackMatcher {
+  return {
+    hooks: [
+      async (input: HookInput) => {
+        if (input.hook_event_name !== "PreToolUse" || !asked()) return {};
+        const args = input.tool_input;
+        if (!marksBriefing(args) || (args as Record<string, unknown>)["again"] === true) return {};
+        return {
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "allow",
+            updatedInput: { ...(args as Record<string, unknown>), again: true },
+          },
+        };
+      },
+    ],
+  };
+}
+
+/** The hook that notices a briefing call being answered by the gate. */
+export function gateHook(onGate: () => void): HookCallbackMatcher {
+  return {
+    hooks: [
+      async (input: HookInput) => {
+        if (
+          input.hook_event_name === "PostToolUse" &&
+          marksBriefing(input.tool_input) &&
+          looksGated(input.tool_response)
+        ) {
+          onGate();
+        }
+        return {};
+      },
+    ],
+  };
+}
+
 /** The last briefing, kept in the store, and whether it is still worth repeating. */
 export class BriefingCache {
   constructor(
@@ -77,6 +168,7 @@ export class BriefingCache {
   /** Writes the briefing down, replacing the previous one. */
   remember(entry: Omit<CachedBriefing, "at">, now = Date.now()): void {
     if (this.maxAgeMs <= 0) return;
+    if (looksGated(entry.text)) return;          // the gate speaking is not a briefing
     const cached: CachedBriefing = { at: new Date(now).toISOString(), ...entry };
     this.store.setSetting(BRIEFING_CACHE_KEY, JSON.stringify(cached));
   }
@@ -108,6 +200,7 @@ export class BriefingCache {
     if (last === null) return null;
     const at = Date.parse(last.at);
     if (Number.isNaN(at) || at > now || now - at > this.maxAgeMs) return null;
+    if (looksGated(last.text)) return null;      // kept before this check existed
     return last;
   }
 }

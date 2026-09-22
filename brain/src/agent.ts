@@ -22,7 +22,12 @@ import {
   BRIEFING_SERVER_NAME,
   BRIEFING_TOOLS,
   BriefingCache,
+  againHook,
+  askedInstruction,
+  asksForBriefing,
   createBriefingServer,
+  gateHook,
+  looksGated,
   marksBriefing,
   type ShownWindow,
 } from "./briefing.js";
@@ -186,6 +191,10 @@ interface ActiveTurn {
   tools: Array<{ name: string; input: string }>;
   /** Whether a tool was called with `briefing: true`: this turn is the briefing. */
   briefing: boolean;
+  /** Whether the question asked for the briefing in so many words. */
+  asked: boolean;
+  /** Whether a briefing call was answered by the once-a-day gate: then it was no briefing. */
+  gated: boolean;
   /** Every window that went up during the turn, in order, for saying it again. */
   windows: ShownWindow[];
 }
@@ -398,7 +407,17 @@ export class AgentSession {
         // The language, said again after every round of tool answers: a turn
         // that reads seven Dutch tool answers after an English note answers in
         // Dutch otherwise.
-        hooks: { PostToolBatch: [languageHook(this.lang)] },
+        hooks: {
+          PostToolBatch: [languageHook(this.lang)],
+          // An explicit "brief me" gets through every once-a-day gate, and a
+          // gate that does answer marks the turn as not having been a briefing.
+          PreToolUse: [againHook(() => this.#active?.asked === true)],
+          PostToolUse: [
+            gateHook(() => {
+              if (this.#active !== null) this.#active.gated = true;
+            }),
+          ],
+        },
         includePartialMessages: true,
       },
     });
@@ -584,6 +603,8 @@ export class AgentSession {
       toolCalls: 0,
       tools: [],
       briefing: false,
+      asked: asksForBriefing(text),
+      gated: false,
       windows: [],
     };
     this.#active = active;
@@ -598,6 +619,10 @@ export class AgentSession {
     // read right before a question decides the language of its answer.
     let asked = `${languageNote(this.lang)}
 ${text}`;
+    // The request for a briefing, restated against the question: the one
+    // sentence the once-a-day gate must never be allowed to answer.
+    if (active.asked) asked = `${asked}
+${askedInstruction()}`;
     try {
       const block = primingBlock(await primeFacts(store, text));
       if (block !== "") asked = `${block}
@@ -646,7 +671,7 @@ ${asked}`;
       store.recordToolCalls(turnId, active.tools);
       // The briefing is kept whole -- the words and the windows -- so that the
       // next request for it is a lookup rather than seven tool calls.
-      if (active.briefing) {
+      if (active.briefing && !active.gated && !looksGated(active.text)) {
         briefingCache.remember({ lang: this.lang, text: active.text, windows: active.windows });
       }
     }

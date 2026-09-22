@@ -77,6 +77,18 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Fixed
 
+- "Brief me" is briefed, every time. The model twice read the pull request tool's once-a-day
+  gate -- "vandaag al gebriefd" -- as its own answer and said "already briefed today" to the one
+  question that can never be the answer to; and because a tool had been called with
+  `briefing: true`, that turn was kept as the briefing and said again, word for word and windows
+  and all, to the next "brief me opnieuw". Three things changed. A question that asks for the
+  briefing in so many words is recognised in the brain, and the request is restated against it.
+  On such a turn a `PreToolUse` hook adds `again: true` to every tool called with
+  `briefing: true`, whether the model remembered to or not, so no gate is in the way. And a
+  turn in which a briefing call was answered by the gate is not a briefing: a `PostToolUse`
+  hook marks it, and it is not kept; a kept text that is the gate speaking is not repeated
+  either, so an entry from before this fix is harmless.
+
 - A briefing answered in Dutch on an English deployment. The note in front of the question held
   for a question answered in one breath; a briefing reads seven tool answers written in Dutch after
   it, and the thing read last decides. The note is now said again after every batch of tool
