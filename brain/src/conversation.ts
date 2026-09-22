@@ -23,6 +23,7 @@ import { language } from "./language.js";
 import { Opening } from "./opening.js";
 import { SpokenText } from "./spoken.js";
 import { RecordedLines } from "./voice/lines.js";
+import { pcmDurationMs, spreadAlignment } from "./voice/pace.js";
 import type { PendingDevAction } from "./dev-tools.js";
 import {
   openVoice,
@@ -291,7 +292,7 @@ export class Conversation {
         // Recorded earlier, so it is heard now and the voice's socket stays
         // free for the first sentence of the answer.
         const clip = speaking === null ? null : recorded.get(line, lang);
-        if (clip !== null && speaking !== null) speaking.play(clip);
+        if (clip !== null && speaking !== null) speaking.play(clip, said);
         else voice?.speak(said);
       }, opening.afterMs);
       thinking.unref?.();
@@ -458,8 +459,12 @@ export class Conversation {
     voice: SpeakingVoice;
     spoken: Promise<void>;
     ready: Promise<void>;
-    /** Plays audio that was recorded earlier, as if the voice had just made it. */
-    play: (clip: Buffer) => void;
+    /**
+     * Plays audio that was recorded earlier, as if the voice had just made
+     * it. The text is what the clip says, so the transcript can be paced on
+     * it the way it is paced on a voice that sends timings.
+     */
+    play: (clip: Buffer, text: string) => void;
   } | null> {
     console.log(
       `voice: opening (${voiceProviderName(config)}, key ${voiceConfigured(config) ? "present" : "missing"}, voice ${voiceFor(config, lang) || "default"}, lang ${lang})`,
@@ -536,7 +541,12 @@ export class Conversation {
       lang,
     );
 
-    return { voice, spoken, ready, play: (clip) => play(clip.toString("base64")) };
+    return {
+      voice,
+      spoken,
+      ready,
+      play: (clip, text) => play(clip.toString("base64"), spreadAlignment(text, pcmDurationMs(clip.length))),
+    };
   }
 
   cancel(turnId: string): void {

@@ -3372,14 +3372,26 @@ function speakTyped(text,render,fallbackSpeed=30){
    mono, 16 kHz, base64 per chunk. Chunks are scheduled back to back on one
    AudioContext so they play gapless, and the per-character alignment that comes
    with them (ElevenLabs sends it, Fish does not) paces the typewriter on the
-   transcript line; without it the reveal is paced by the audio's length. Everything below falls
-   back to speechSynthesis the moment the brain says it cannot speak. */
+   transcript line. Without it the reveal is paced by the audio's length at a
+   speaking rate learnt from the turns before it, and when the last chunk is in,
+   whatever is still unrevealed is spread over the audio still to play, so the
+   last word shows as it is heard. Everything below falls back to
+   speechSynthesis the moment the brain says it cannot speak. */
 const VOICE_SR       = 16000;
 const VOICE_LEAD     = 0.12;    // jitter buffer before the first chunk of a turn
 const VOICE_FIRST_MS = 9000;    // no audio at all within this -> browser voice
                                 // (a cold agent session takes six seconds to
                                 //  its first word, and speaking the answer in
                                 //  the wrong voice is worse than waiting)
+/* the speaking rate assumed for audio that came without timings, in
+   characters of transcript per second of sound. The default is a guess; the
+   rate measured on each finished turn is folded into what the page remembers
+   per language, so a voice that speaks faster than the guess is caught up with
+   in a turn or two rather than putting every later word late. */
+const VOICE_CPS_DEFAULT = 17;
+const VOICE_CPS_MIN     = 8;
+const VOICE_CPS_MAX     = 30;
+const VOICE_CPS_LEARN   = 0.4;  // weight of the latest turn against what was remembered
 const VOICE_STALL_MS = 20000;   // stream died mid-answer -> reveal the rest
                                 // (an answer that speaks a line, fetches for
                                 //  half a minute and then speaks the rest is
@@ -3425,6 +3437,8 @@ const voice = {
   playing:false,
   timeline:[],                  // {at: contextTime, n: characters revealed}
   charCursor:0, lastN:0, lastSeq:null,
+  estimated:false,              // some chunk came without timings: the pace is guessed
+  audioSec:0,                   // sound scheduled this turn, for the rate it turns out to have
   firstTimer:null, stallTimer:null, ticker:null
 };
 
@@ -3615,12 +3629,51 @@ function pushVoiceTimeline(start,duration,alignment){
     voice.charCursor+=chars.length;
     return;
   }
-  // no alignment: pace the reveal by elapsed audio time
-  const total=Math.max(1,Math.round(duration*TTS_CPS));
+  // no alignment: pace the reveal by elapsed audio time at the learnt rate
+  voice.estimated=true;
+  const total=Math.max(1,Math.round(duration*voiceCps()));
   for(let i=1;i<=total;i++){
     voice.timeline.push({ at:start+duration*(i/total), n:voice.charCursor+i });
   }
   voice.charCursor+=total;
+}
+
+/* characters per second this language's voice is assumed to speak */
+function voiceCps(){
+  try{
+    const v=parseFloat(localStorage.getItem('voiceCps.'+speechLang));
+    if(v>=VOICE_CPS_MIN && v<=VOICE_CPS_MAX) return v;
+  }catch(e){}
+  return VOICE_CPS_DEFAULT;
+}
+
+/* the turn has been heard to the end: what rate did it turn out to have? Only
+   a turn that was paced by guesswork teaches anything, and only a turn long
+   enough for the silences between sentences to average out. */
+function learnVoiceCps(){
+  const s=voice.stream;
+  if(!s||!voice.estimated||!voice.done||voice.audioSec<4) return;
+  const chars=s.text.length;
+  if(chars<60) return;
+  const seen=clamp(chars/voice.audioSec, VOICE_CPS_MIN, VOICE_CPS_MAX);
+  const next=voiceCps()*(1-VOICE_CPS_LEARN)+seen*VOICE_CPS_LEARN;
+  try{ localStorage.setItem('voiceCps.'+speechLang, next.toFixed(2)); }catch(e){}
+}
+
+/* the last chunk is in and the answer is fully written: whatever the guessed
+   pace has not revealed yet is spread over the sound still to play, so the
+   transcript reaches its last word as the voice does rather than seconds
+   after. A turn paced on real timings needs none of this. */
+function repaceVoiceTail(){
+  const ctx=voice.ctx, s=voice.stream;
+  if(!ctx||!s||!voice.estimated) return;
+  const now=ctx.currentTime;
+  let n=voice.lastN;
+  while(voice.timeline.length && voice.timeline[0].at<=now) n=voice.timeline.shift().n;
+  voice.timeline.length=0;
+  const total=s.text.length, left=total-n, span=voice.nextStart-now;
+  if(left<=0 || span<=0.05){ voice.timeline.push({ at:now, n:total }); return; }
+  for(let i=1;i<=left;i++) voice.timeline.push({ at:now+span*(i/left), n:n+i });
 }
 
 function voiceEnqueue(pcm,alignment){
@@ -3644,6 +3697,7 @@ function voiceEnqueue(pcm,alignment){
   src.onended=()=>{ voice.sources.delete(src); try{ src.disconnect(); }catch(e){} };
   voice.nextStart=start+buf.duration;
   voice.playing=true;
+  voice.audioSec+=buf.duration;
   pushVoiceTimeline(start,buf.duration,alignment);
   startVoiceTicker();
 }
@@ -3671,6 +3725,7 @@ function voiceTick(){
 /* everything played: let the transcript settle on the full answer */
 function voiceFinish(){
   const s=voice.stream;
+  learnVoiceCps();
   voiceStop();
   if(s) s.voiceFinished();
 }
@@ -3689,6 +3744,7 @@ function voiceStop(){
   voice.turnId=null; voice.ok=false; voice.done=false; voice.gapWarned=false;
   voice.stream=null; voice.nextStart=0; voice.playing=false;
   voice.charCursor=0; voice.lastN=0; voice.lastSeq=null;
+  voice.estimated=false; voice.audioSec=0;
   setVoiceFx('none');
   if(!voice.blocked) setVoiceState('off','local');
 }
@@ -3783,6 +3839,7 @@ function onAudioDone(m){
   clearTimeout(voice.firstTimer); voice.firstTimer=null;
   clearTimeout(voice.stallTimer); voice.stallTimer=null;
   voice.done=true;
+  repaceVoiceTail();
   startVoiceTicker();
   voiceTick();
 }

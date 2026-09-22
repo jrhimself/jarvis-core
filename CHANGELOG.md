@@ -77,6 +77,15 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Fixed
 
+- The transcript keeps pace with the voice. A voice that sends no per-character timings (Fish
+  Audio) had its words revealed at a fixed fifteen characters a second of sound, and the voice
+  speaks nearer twenty: every sentence of a long answer put the transcript further behind, until
+  the windows that go up on a word went up seconds after it was heard. The rate is now learnt per
+  language from every finished turn, and once the last chunk of sound is in, whatever is still
+  unrevealed is spread over the sound still to play, so the last word shows as it is said. A
+  recorded opening line ("One moment.") now travels with timings spread over its length, so it
+  no longer starts the turn off by a guess; and ElevenLabs' plain alignment is preferred over
+  the normalised one, which counts the text as read out rather than as written.
 - "Brief me" is briefed, every time. The model twice read the pull request tool's once-a-day
   gate -- "vandaag al gebriefd" -- as its own answer and said "already briefed today" to the one
   question that can never be the answer to; and because a tool had been called with
