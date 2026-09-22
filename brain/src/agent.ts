@@ -147,6 +147,12 @@ export interface TurnHandlers {
 export interface TurnResult {
   /** Full answer text, assembled from the streamed fragments. */
   text: string;
+  /**
+   * Whether this turn was the briefing: a tool was called with
+   * `briefing: true`. The HUD folds the last window down on the end of one,
+   * so what is left is the desk with everything on it and nothing over it.
+   */
+  briefing: boolean;
 }
 
 /** Reads a nested property without asserting the whole shape of the message. */
@@ -676,7 +682,7 @@ ${asked}`;
       }
     }
 
-    return { text: active.text };
+    return { text: active.text, briefing: active.briefing };
   }
 
   /**

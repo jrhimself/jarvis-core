@@ -82,8 +82,8 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             ? { kind: "audio", turnId, seq, data }
             : { kind: "audio", turnId, seq, data, alignment }),
         onAudioDone: (turnId) => send({ kind: "audio_done", turnId }),
-        onDone: (turnId, durationMs, expectsReply) =>
-          send({ kind: "done", turnId, durationMs, expectsReply }),
+        onDone: (turnId, durationMs, expectsReply, briefing) =>
+          send({ kind: "done", turnId, durationMs, expectsReply, ...(briefing === true ? { briefing: true } : {}) }),
         onError: (turnId, message) => send({ kind: "error", turnId, message }),
       },
       { idleMs: config.sessionIdleMs, maxTurns: config.sessionMaxTurns },

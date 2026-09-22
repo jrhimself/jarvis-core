@@ -77,6 +77,17 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Fixed
 
+- The row he names lights on the name, and no other row lights with it. Three faults in the
+  matcher. It compared the row's words with the sentence as spoken, capitals and all, so a name
+  ("Knijn") never lit anything: names are capitalised. It asked the whole answer so far, so by
+  the fourth minute of a briefing a note from April shared two words with something said
+  somewhere and lit while he spoke of last night; now only the sentence he is in and the one
+  before it count. And it lit every row that fit; now one row per list per tick, the one the
+  sentence names best. One word is enough when no other row of the list has it, so the row
+  lights on "Knijn" rather than two words later.
+- The briefing ends with the desk. `done` says when the turn was the briefing, and the HUD folds
+  the last window down beside the others, so what is left is every window on the desk and
+  nothing over it.
 - The transcript keeps pace with the voice. A voice that sends no per-character timings (Fish
   Audio) had its words revealed at a fixed fifteen characters a second of sound, and the voice
   speaks nearer twenty: every sentence of a long answer put the transcript further behind, until

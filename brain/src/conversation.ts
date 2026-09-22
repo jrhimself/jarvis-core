@@ -163,7 +163,7 @@ export interface ConversationCallbacks {
   ) => void;
   onAudio: (turnId: string, seq: number, data: string, alignment?: Alignment) => void;
   onAudioDone: (turnId: string) => void;
-  onDone: (turnId: string, durationMs: number, expectsReply: boolean) => void;
+  onDone: (turnId: string, durationMs: number, expectsReply: boolean, briefing?: boolean) => void;
   onError: (turnId: string | undefined, message: string) => void;
 }
 
@@ -379,6 +379,7 @@ export class Conversation {
         turnId,
         Math.round(performance.now() - startedAt),
         endsInQuestion(result.text),
+        result.briefing,
       );
     } catch (error) {
       voice?.abort();

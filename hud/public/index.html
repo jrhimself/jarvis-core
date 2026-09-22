@@ -1669,6 +1669,21 @@ async function placeCard(m, gen){
   setTimeout(sizeOrb, 520);
 }
 
+/* The briefing is over: the window still open goes down beside the others,
+   after the same moment to read it, so what is left is the desk with every
+   window on it and nothing over it. Queued behind whatever is still arriving. */
+function settleDesk(){
+  arrivals=arrivals.then(async()=>{
+    const lead=dispStage.firstElementChild;
+    if(!lead) return;
+    if(!REDUCED.matches){
+      const read=performance.now()-(lead._d.shownAt||0);
+      if(read<DWELL_MS) await pause(DWELL_MS-read);
+    }
+    if(lead.parentElement===dispStage) await minimizeCard(lead);
+  }).catch(()=>{});
+}
+
 /* An item arrives the moment its tool answered, which is a sentence or two
    before the subject comes up. `cue` says where it belongs: how far into the
    answer the tool was reached for, or a word to wait for. With nothing being
@@ -1715,17 +1730,60 @@ function anchorAt(lower, anchor){
    later in the same answer does not start blinking again. */
 function markRows(said){
   let waiting=false;
+  // The sentence he is in, not the whole answer: a briefing is long, and by
+  // its fourth minute every row of every list shares two words with something
+  // said somewhere in it. A note from April lit while he spoke of last night.
+  const recent=recentSaid(said);
   for(const card of allCards()){
+    const count=rowWordCount(card);
+    // One row per list per tick: the one the sentence names best. Two rows
+    // that both fit -- a note from April and last night's, about the same
+    // deployment -- would otherwise both light, and the wrong one may be
+    // the one in view. The other, if it is truly named, is next tick's.
+    let best=null, score=0;
     for(const row of card._rows||[]){
       if(row.tr.dataset.lit){ continue; }
-      if(!mentions(said, row.subject)){ waiting=true; continue; }
-      // Same clock as a context tile and as today's row. The card usually goes
-      // away at the next question long before the fade fires.
-      raiseRow(card, row.tr);
-      lightRow(row.tr);
+      waiting=true;
+      const s=mentionScore(recent, row.subject, count);
+      if(s>score){ best=row; score=s; }
     }
+    if(!best) continue;
+    // Same clock as a context tile and as today's row. The card usually goes
+    // away at the next question long before the fade fires.
+    raiseRow(card, best.tr);
+    lightRow(best.tr);
   }
   return waiting;
+}
+
+/* The last two sentences of what has been spoken: the one he is in and the one
+   before it, because a subject is often named in one and described in the
+   next. Anything older is done with. */
+function recentSaid(said){
+  const ends=[];
+  const re=/[.!?…]["'’”)\]]*(?=\s|$)/g;
+  let m;
+  while((m=re.exec(said))!==null) ends.push(m.index+m[0].length);
+  if(ends.length<2) return said;
+  // the last end may be the very end of what is spoken so far: then the
+  // sentence he is in is the empty one after it, and the two before count
+  const cut=ends.length>=2 && ends[ends.length-1]>=said.trimEnd().length
+    ? ends[ends.length-3] ?? 0
+    : ends[ends.length-2];
+  return said.slice(cut);
+}
+
+/* In how many rows of this list each distinctive word occurs. A word that is
+   in one row only names that row on its own: "Knijn" is enough, where "audit"
+   in a list with three audit pipelines is not. Counted once per card. */
+function rowWordCount(card){
+  if(card._wordCount) return card._wordCount;
+  const count=new Map();
+  for(const row of card._rows||[]){
+    for(const w of new Set(ctxWords(row.subject))) count.set(w,(count.get(w)||0)+1);
+  }
+  card._wordCount=count;
+  return count;
 }
 
 /* The rows he talks about move to the top of their list, in the order he
@@ -2038,9 +2096,9 @@ function drawWave(){
    *spoken* so far rather than of the whole answer -- the point is to light up on
    the word, not a paragraph early.
 
-   Two distinctive words in common, or one long one. Below that it is not a
-   mention, it is a coincidence: every mail in a list shares "van" and "de" with
-   every sentence about any of them. */
+   Two distinctive words in common, or one long one, or one that no other row of
+   the same list has. Below that it is not a mention, it is a coincidence: every
+   mail in a list shares "van" and "de" with every sentence about any of them. */
 const CTX_STOP=new Set(['de','het','een','van','voor','met','over','naar','aan','door','uit','bij',
   'dat','die','deze','daar','ook','maar','nog','wel','niet','zijn','haar','jouw','jij','wij',
   'er','en','of','is','was','wordt','worden','heeft','hebben','staat','the','and','for',
@@ -2054,24 +2112,33 @@ function ctxNorm(s){
 function ctxWords(s){
   return ctxNorm(s).split(' ').filter(w=>w.length>=4 && !CTX_STOP.has(w));
 }
-/** A whole word and whatever was suffixed onto it: "mail" also hears "mailtje". */
-function saidWord(said,word){
+/** A whole word and whatever was suffixed onto it: "mail" also hears "mailtje".
+    Both sides normalised the same way, so "Knijn" in the sentence is the
+    "knijn" of the row: names are capitalised, and were never heard before. */
+function saidWord(said,word){ return hasWord(ctxNorm(said), word); }
+function hasWord(norm,word){
   const w=ctxNorm(word);
   if(w==='' || w.length<4) return false;
-  return new RegExp('\\b'+w.replace(/ /g,'\\s+')+'[a-z]*\\b').test(said);
+  return new RegExp('\\b'+w.replace(/ /g,'\\s+')+'[a-z]*\\b').test(norm);
 }
-function mentions(said,subject){
-  const seen=new Set();
-  let hits=0, long=false;
+/* How strongly the sentence names the subject: 0 is not at all. With `count`
+   (how many rows of the list each word is in) one word is enough when it is in
+   this row alone; without it, one long word is. Two words are always enough. */
+function mentionScore(said,subject,count){
+  const norm=ctxNorm(said), seen=new Set();
+  let hits=0, longest=0, alone=false;
   for(const w of ctxWords(subject)){
     if(seen.has(w)) continue;
     seen.add(w);
-    if(!saidWord(said,w)) continue;
+    if(!hasWord(norm,w)) continue;
     hits++;
-    if(w.length>=8) long=true;
+    longest=Math.max(longest,w.length);
+    if(count ? count.get(w)===1 && w.length>=5 : w.length>=8) alone=true;
   }
-  return long || hits>=2;
+  if(!alone && hits<2) return 0;
+  return hits*10+longest;
 }
+function mentions(said,subject,count){ return mentionScore(said,subject,count)>0; }
 
 /* ---- the context panel ----
    Whatever the packs doing the work say is worth knowing, one block per
@@ -2940,6 +3007,7 @@ async function onDone(m){
   lastTurnMs = dur; renderMeters();
   if(t.stream){ t.stream.close(); await t.stream.done; }
   flushDisplays();                           // niets laten wachten op een woord dat niet meer komt
+  if(m.briefing===true) settleDesk();        // the briefing is over: everything down on the desk
   if(turn!==t) return;                       // ondertussen afgebroken of vervangen
   voiceStop();
   if(t.step){ stepDone(t.step, Math.round(performance.now()-t.stepAt)); t.step=null; }
