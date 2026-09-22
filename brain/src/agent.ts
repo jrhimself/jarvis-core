@@ -49,7 +49,7 @@ import { recipesBlock } from "./memory/recipes.js";
 import { distilSession } from "./memory/distiller.js";
 import { memory } from "./memory/store.js";
 import { usageFromResult } from "./memory/usage.js";
-import { language, languageBlock } from "./language.js";
+import { language, languageBlock, languageNote } from "./language.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
@@ -556,12 +556,17 @@ export class AgentSession {
     // Facts the question already reaches for, found locally in a few milliseconds
     // and sent along with it. Without this the assistant pays a tool round trip to
     // learn something the database could have volunteered.
-    let asked = text;
+    //
+    // The language note goes last, against the question itself: the primed
+    // facts are in whatever language the memory is written in, and the thing
+    // read right before a question decides the language of its answer.
+    let asked = `${languageNote(this.lang)}
+${text}`;
     try {
       const block = primingBlock(await primeFacts(store, text));
       if (block !== "") asked = `${block}
 
-${text}`;
+${asked}`;
     } catch (error) {
       console.error("memory: could not prime the question:", error);
     }

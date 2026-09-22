@@ -7,11 +7,15 @@
  * the people it talks to, and survives a restart without anybody editing a
  * file. Nothing about it is written into the repository or the config.
  *
- * The model is told the language at the very top of its instructions rather
- * than by the persona. A persona is written in one language, and so are the
- * memory and the tools' descriptions: a rule about the language of the answer
- * buried in the middle of all that loses to the language of everything around
- * it. First, in plain words, it holds.
+ * The model is told the language twice, and neither is the persona's job. A
+ * persona is written in one language, and so are the memory and the tools'
+ * descriptions: a rule about the language of the answer buried in the middle
+ * of all that loses to the language of everything around it. So the rule opens
+ * the system prompt, and a one-line note sits directly in front of every
+ * question. Measured on a Dutch persona with a Dutch memory: the system prompt
+ * alone still drew Dutch answers to Dutch questions, because the facts primed
+ * in front of the question and the question itself are the last thing read.
+ * The note is the thing read last.
  */
 
 import type { SpeechLang } from "@jarvis/shared";
@@ -85,6 +89,16 @@ export function language(): Language {
     shared = new Language(memory(config.memoryPath), config.speechLang);
   }
   return shared;
+}
+
+/**
+ * The note that goes directly in front of every question.
+ *
+ * Never shown and never stored: the turn log keeps what was asked, not what
+ * the model was handed.
+ */
+export function languageNote(lang: SpeechLang): string {
+  return `[Answer in ${NAMES[lang]}.]`;
 }
 
 /**

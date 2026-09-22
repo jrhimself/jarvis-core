@@ -6,7 +6,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { Language, LANGUAGE_SETTING, languageBlock, type SettingStore } from "../dist/language.js";
+import {
+  Language,
+  LANGUAGE_SETTING,
+  languageBlock,
+  languageNote,
+  type SettingStore,
+} from "../dist/language.js";
 
 function table(initial: Record<string, string> = {}): SettingStore & { rows: Map<string, string> } {
   const rows = new Map(Object.entries(initial));
@@ -53,4 +59,9 @@ test("the model is told the language by name, and that its material may be in an
   assert.match(languageBlock("en"), /answer in English/);
   assert.match(languageBlock("nl"), /answer in Dutch/);
   assert.match(languageBlock("en"), /another language/);
+});
+
+test("the note in front of a question names the language and nothing else", () => {
+  assert.equal(languageNote("en"), "[Answer in English.]");
+  assert.equal(languageNote("nl"), "[Answer in Dutch.]");
 });
