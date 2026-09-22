@@ -20,12 +20,25 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 ### Added
 
 - A weather window. The forecast used to be a sentence and a row of tiles; it is now a picture
-  where the orb sits, the same frame every other window has: the sky as an icon, the high and the
-  low, the chance of rain, the wind as an arrow flying the way it blows, a temperature curve
-  through the rest of today with the rain as bars under it when the provider forecasts by the
-  hour, and the days after in a strip beneath. It is a new `weather` shape in `DisplayPayload`,
-  drawn by the HUD from readings alone: nothing on it is prose, so nothing on it can be a figure
-  the model got wrong. The hass pack puts it up as soon as the weather comes up.
+  where the orb sits, the same frame every other window has, laid out the way a weather app lays
+  it out: the sky as an icon with the temperature it is now beside it, large; the condition in
+  words; today's high and low; when the sun rises and sets; the chance of rain and the wind as an
+  arrow flying the way it blows; and the days after as tiles along the bottom, each with its sky
+  and its two temperatures -- or today's hours as tiles, for a provider with no days after today.
+  It is a new `weather` shape in `DisplayPayload` (`now`, `sun`, `days`, `hours`), drawn by the
+  HUD from readings alone: nothing on it is prose, so nothing on it can be a figure the model got
+  wrong. The hass pack puts it up as soon as the weather comes up.
+- The desk. The windows he has finished with used to shrink into a row under the one being read,
+  four in view at most and the fifth thrown away. The whole middle of the screen is now the desk:
+  the thumbnails lie on it in rows from the top left, as many as the screen has room for -- a
+  dozen on a laptop, more on a wall -- and the window being read stands on top of them at full
+  size. Windows go up one at a time: each is read for a moment, then seen going down onto the
+  desk, and lies there a beat before the next goes up, so two windows from one sentence are still
+  two things happening in order, and the desk is always a picture of what has been said so far.
+  Closing the window being read leaves the desk at full brightness rather than pulling the newest
+  thumbnail back up: that is the overview, and any thumbnail is a click from full size. A desk
+  that shrinks -- a smaller browser window -- lets go of the oldest rather than showing half of
+  one.
 - The briefing said again is a lookup, not seven tool calls. The turn in which any tool is
   called with `briefing: true` is kept whole -- the words and the windows that went up with them
   -- in the settings table, and a new `briefing_again` tool puts the windows back and hands the

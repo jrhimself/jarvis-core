@@ -115,6 +115,8 @@ test("a weather window is summarised per day, from the readings it carried", () 
     type: "weather",
     title: "Weer",
     units: { temperature: "°C", windSpeed: "km/h" },
+    now: { temperature: 14.4, condition: "cloudy", summary: "bewolkt" },
+    sun: { rise: "07:25", set: "19:35" },
     days: [
       { label: "vandaag", condition: "rainy", summary: "regen", high: 17, low: 12, precipitationChance: 70,
         windSpeed: 20, windDirection: "ZW" },
@@ -125,6 +127,8 @@ test("a weather window is summarised per day, from the readings it carried", () 
   assert.ok(record !== undefined);
   const described = describeScreen(record);
   assert.match(described, /weather -- Weer/);
+  assert.match(described, /- now: 14°C, bewolkt/);
+  assert.match(described, /- sun: 07:25 - 19:35/);
   assert.match(described, /- vandaag: regen, 12-17°C, rain 70%, wind 20km\/h ZW/);
   assert.match(described, /- morgen: 19°C/);
 });

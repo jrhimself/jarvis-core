@@ -233,34 +233,46 @@ main.showing.collapsed #display{display:none}
 main.showing.collapsed #orb{position:static;left:auto;bottom:auto;opacity:1;
   width:var(--orbFit);height:var(--orbFit)}
 main.showing.collapsed #stateText{align-self:auto;margin-left:0;padding-left:0;text-align:center}
-#dispDock{position:absolute;left:18px;bottom:18px;width:172px;height:112px;display:none;z-index:3}
+#dispDock{position:absolute;left:18px;bottom:18px;width:196px;height:128px;display:none;z-index:3}
 main.showing.collapsed #dispDock{display:block}
 
-/* One card per thing shown. The newest is read, the ones before it shrink into a
-   row beneath it: what he already talked about stays in view without taking the
-   room the thing he is talking about now needs. */
-#display{position:relative;display:none;flex-direction:column;gap:12px;
-  font-size:calc(15px * var(--ds));
-  width:min(72ch,92%)}
-main.showing #display{display:flex}
+/* One card per thing shown. The whole middle of the screen is a desk: the
+   windows he has finished with lie on it as thumbnails, in rows from the top
+   left, as many as the desk has room for; the one he is talking about stands
+   on top of them at full size. A window is shown, then seen going down onto
+   the desk, and only then does the next one go up -- so what the desk holds
+   is always a picture of what has been said so far. The desk ends where the
+   orb in the corner and the state line begin; the number is the breakpoint's,
+   and `sizeStage` raises it when the line grows taller than expected. */
+#display{position:absolute;display:none;left:14px;right:14px;top:14px;
+  bottom:var(--dispBottom,162px);font-size:calc(15px * var(--ds))}
+main.showing #display{display:block}
 /* The window is a frame, not a bag: it is the same height whether it holds a
    three-line forecast or twelve mails, and a list longer than the frame scrolls
-   inside it. Growing with its contents put the mail window through the state
-   line at the bottom of the screen and moved the thumbnail row every time the
-   subject changed -- the two things you navigate by, never in the same place.
-   The vh cap is what keeps the whole thing clear of that state line; the em is
-   what the size control moves. */
-#dispStage{display:flex;min-height:0;height:min(44vh,26em,var(--stageH,44vh))}
-#dispStage .dcard{height:100%;max-height:none}
-/* The thumbnail row keeps its place even while it is empty, so the first window
-   of an answer stands exactly where the fourth one will. */
-#dispStrip{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
-  min-height:var(--stripH,112px);align-content:flex-start}
+   inside it. Centred over the desk, so it goes down onto the desk from the
+   middle and comes back up to it. The vh cap keeps it clear of the state
+   line; the em is what the size control moves; `--stageH` is the measured
+   room and only ever a cap. */
+#dispStage{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  display:flex;width:min(72ch,94%);height:min(58vh,32em,var(--stageH,58vh));z-index:2}
+#dispStage:empty{display:none}
+#dispStage .dcard{height:100%;max-height:none;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+/* The desk. A grid of fixed cells, filled in the order the windows went down,
+   clipped at the bottom: what would fall off the desk is thrown away first, in
+   `makeRoom`, so nothing is ever half shown. */
+#dispStrip{--thumbW:196px;--thumbH:128px;
+  position:absolute;inset:34px 0 0 0;display:grid;
+  grid-template-columns:repeat(auto-fill,var(--thumbW));grid-auto-rows:var(--thumbH);
+  gap:12px;justify-content:center;align-content:start;overflow:hidden;
+  transition:opacity .35s ease}
+/* Something on the stage: the desk steps back, so the eye finds the window. */
+#dispStage:not(:empty) ~ #dispStrip{opacity:.5}
 
 /* The size control. Deliberately not browser zoom: that grows the header, the
    panels and the transcript along with it, and the complaint was about the
    windows only. */
-#dispZoom{display:flex;align-items:center;gap:6px;align-self:flex-end;
+#dispZoom{position:absolute;top:0;right:0;z-index:3;display:flex;align-items:center;gap:6px;
   font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
 #dispZoom button{width:26px;height:24px;line-height:22px;padding:0;cursor:pointer;
   font-family:inherit;font-size:14px;color:var(--muted);background:transparent;
@@ -303,14 +315,14 @@ main.showing #display{display:flex}
    you glance at is recognisably the thing you were shown a minute ago. Its own
    font-size pins it: a thumbnail is a fixed-size landmark, so the size control
    above must not drag it along. */
-#dispStrip .dcard,#dispDock .dcard{flex:0 0 auto;width:172px;height:112px;padding:9px 11px;gap:5px;
-  font-size:11.5px;
+#dispStrip .dcard,#dispDock .dcard{flex:0 0 auto;width:var(--thumbW,196px);height:var(--thumbH,128px);
+  padding:9px 11px;gap:5px;font-size:11.5px;
   overflow:hidden;cursor:pointer;box-shadow:0 10px 26px -16px hsla(var(--hue),90%,40%,.6);
   animation:none}
 #dispStrip .dcard:hover,#dispStrip .dcard:focus-visible,
 #dispDock .dcard:hover,#dispDock .dcard:focus-visible{border-color:hsla(var(--hue),85%,65%,.6);outline:none}
 #dispStrip .body,#dispDock .body{overflow:hidden;pointer-events:none;
-  transform:scale(.46);transform-origin:top left;width:217%;height:217%}
+  transform:scale(.5);transform-origin:top left;width:200%;height:200%}
 #dispStrip .dclose,#dispDock .dclose,#dispStrip .dmin,#dispDock .dmin{display:none}
 /* The dock is the one place a card is the way back to somewhere, so it says so. */
 #dispDock .dcard{width:100%;height:100%;border-color:hsla(var(--hue),85%,65%,.5)}
@@ -383,39 +395,38 @@ main.showing #display{display:flex}
    coat. Everything in here is drawn from the readings the pack handed over;
    nothing is a row. The icons are inline SVG so they take the card's own hue
    and its gold, and stay sharp at thumbnail size. */
-.dcard .wx{display:flex;flex-direction:column;gap:.55em;height:100%;min-height:0}
-.dcard .wx svg{width:auto;height:auto;display:block}
-.dcard .wx-now{display:flex;align-items:center;gap:1em;flex:none}
-.dcard .wx-now .ico{flex:0 0 auto;width:5em;height:5em}
-.dcard .wx-now .temps{display:flex;flex-direction:column;line-height:1;flex:none}
-.dcard .wx-now .hi{font-size:2.7em;font-weight:200;color:#e8f1f8;font-variant-numeric:tabular-nums;
-  letter-spacing:-.02em}
-.dcard .wx-now .lo{font-size:.95em;color:var(--muted);margin-top:.3em;font-variant-numeric:tabular-nums}
-.dcard .wx-now .sum{margin-left:auto;text-align:right;display:flex;flex-direction:column;gap:.3em;
-  font-size:.85em;color:var(--muted);min-width:0}
-.dcard .wx-now .sum b{display:block;font-weight:400;color:#e8f1f8;font-size:1.15em;letter-spacing:.02em;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dcard .wx-stat{display:flex;align-items:center;justify-content:flex-end;gap:.4em;
-  font-variant-numeric:tabular-nums;white-space:nowrap}
-.dcard .wx-stat svg{width:1.15em;height:1.15em;flex:none}
-.dcard .wx-stat.on{color:hsl(var(--hue) 85% 72%)}
-.dcard .wx-curve{flex:1 1 auto;min-height:4.5em}
-.dcard .wx-curve svg{width:100%;height:100%}
-.dcard .wx-curve .wx-area{fill:hsla(var(--hue),85%,55%,.14)}
-.dcard .wx-curve .wx-line{fill:none;stroke:hsl(var(--hue),85%,62%);stroke-width:2.2;
-  stroke-linejoin:round;stroke-linecap:round}
-.dcard .wx-curve .wx-rain{fill:hsla(var(--hue),70%,55%,.45)}
-.dcard .wx-curve .wx-axis{stroke:rgba(255,255,255,.1);stroke-width:1}
-.dcard .wx-curve .wx-dot{fill:hsl(var(--hue),90%,70%)}
-.dcard .wx-curve text{fill:var(--muted);font-size:11px}
-.dcard .wx-curve text.wx-t{fill:#e8f1f8;font-size:12px}
-.dcard .wx-days{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.4em;flex:none;
-  border-top:1px solid rgba(255,255,255,.06);padding-top:.55em}
-.dcard .wx-day{display:flex;flex-direction:column;align-items:center;gap:.15em;font-size:.78em;
-  color:var(--muted);min-width:0;text-transform:none}
-.dcard .wx-day .ico{width:2.1em;height:2.1em}
-.dcard .wx-day b{font-weight:400;color:#e8f1f8;font-variant-numeric:tabular-nums;white-space:nowrap}
-.dcard .wx-day small{font-size:.9em;white-space:nowrap}
+/* The weather, laid out the way a weather app lays it out: the sky and the
+   temperature it is now, large; the condition in words; today's high and low;
+   the sun's clocks; and the days after as tiles along the bottom. Spread over
+   the height of the frame, so the card is as full with three readings as with
+   all of them. */
+.dcard .wx{display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  gap:.3em;height:100%;min-height:0;text-align:center;
+  background:radial-gradient(ellipse 70% 55% at 50% 0%,hsla(var(--hue),70%,45%,.2),transparent)}
+.dcard .wx svg{display:block}
+.dcard .wx-hero{display:flex;align-items:center;justify-content:center;gap:.5em;flex:none;margin-top:.2em}
+.dcard .wx-hero .ico{width:6.4em;height:6.4em;flex:none}
+.dcard .wx-temp{font-size:4.9em;font-weight:300;line-height:1;color:#e8f1f8;letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums}
+.dcard .wx-cond{font-size:1.9em;font-weight:600;color:#e8f1f8;line-height:1.1;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:capitalize}
+.dcard .wx-range{display:flex;gap:1.8em;font-size:.72em;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.dcard .wx-range b{font-weight:600;color:#e8f1f8;letter-spacing:0;margin-left:.35em}
+.dcard .wx-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.6em;font-size:.95em;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.dcard .wx-meta span{display:flex;align-items:center;gap:.4em;white-space:nowrap}
+.dcard .wx-meta svg{width:1.6em;height:1.6em;flex:none}
+.dcard .wx-meta .on{color:hsl(var(--hue) 85% 72%)}
+.dcard .wx-tiles{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.5em;width:100%;
+  flex:none;margin-top:.2em}
+.dcard .wx-tile{display:flex;flex-direction:column;align-items:center;gap:.1em;padding:.55em .3em .5em;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:.75em;min-width:0}
+.dcard .wx-tile .d{font-size:.78em;color:var(--muted);text-transform:capitalize;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.dcard .wx-tile .ico{width:2.7em;height:2.7em}
+.dcard .wx-tile b{font-size:1.3em;font-weight:600;color:#e8f1f8;font-variant-numeric:tabular-nums;line-height:1.1}
+.dcard .wx-tile small{font-size:.82em;color:var(--muted);font-variant-numeric:tabular-nums}
 /* The icons' own colours: the sun is the gold everything else on the screen
    lights up in, cloud is the text colour with the light behind it, rain and
    snow take the accent. */
@@ -432,6 +443,9 @@ main.showing #display{display:flex}
 .dcard .wx .warn{fill:none;stroke:hsl(var(--gold) 95% 60%);stroke-width:3;stroke-linejoin:round}
 .dcard .wx .arrow{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
 .dcard .wx .dropico{fill:currentColor}
+.dcard .wx .horizon{stroke:rgba(232,241,248,.45);stroke-width:3;stroke-linecap:round}
+.dcard .wx .sunhalf{fill:hsl(var(--gold) 90% 62%)}
+.dcard .wx .sunway{fill:none;stroke:rgba(232,241,248,.8);stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round}
 
 @media (prefers-reduced-motion:reduce){
   #orb{transition:none}
@@ -598,15 +612,16 @@ footer{grid-column:1/4;z-index:3;padding:0 26px 18px;display:flex;align-items:ce
   main.showing #liveText{padding:0}
   main.showing.collapsed #liveText{padding:0 16px}
   #dispDock{left:12px;bottom:calc(var(--grip) + 10px);width:128px;height:86px}
+  /* the desk ends above the orb in the corner: its bottom, its 76px, and a gap */
+  #display{left:12px;right:12px;top:8px;--dispBottom:calc(var(--grip) + 98px)}
 
   /* A phone starts closer to the text size the screen already uses; the control
      is still there for anyone who wants more. */
   :root{--ds:1}
-  #display{width:calc(100% - 24px)}
-  #dispStage{height:min(34dvh,var(--stageH,34dvh))}
-  #dispStrip{--stripH:86px}
+  #dispStage{width:100%;height:min(46dvh,var(--stageH,46dvh))}
+  #dispStrip{--thumbW:128px;--thumbH:86px;gap:8px;inset:30px 0 0 0}
   .dcard{padding:14px 14px 12px}
-  #dispStrip .dcard,#dispDock .dcard{width:128px;height:86px;padding:8px 9px;font-size:11px}
+  #dispStrip .dcard,#dispDock .dcard{padding:8px 9px;font-size:11px}
   #dispDock .dcard{width:100%;height:100%}
   #dispStrip .body,#dispDock .body{transform:scale(.4);width:250%;height:250%}
   .dclose{width:34px;height:34px;line-height:32px;top:7px;right:8px}
@@ -860,8 +875,13 @@ function readAudio(){
    so you can still see what he is doing while you look at what he showed. */
 const dispEl = $('#display'), dispStage = $('#dispStage'), dispStrip = $('#dispStrip');
 const dispDock = $('#dispDock'), mainEl = document.querySelector('main');
-const THUMBS = 3;                                    // plus the one being read
 const REDUCED = matchMedia('(prefers-reduced-motion:reduce)');
+/* How long a window is read before the next one may step it down, and how long
+   it lies on the desk before the next goes up. The first is what makes "shown,
+   then put down, then the next" a sequence rather than a shuffle when two
+   answers arrive in the same breath; the second is the beat in which the eye
+   sees where it landed. */
+const DWELL_MS = 900, SETTLE_MS = 160;
 
 /* Cards live in three places -- the stage, the strip under it, and the corner
    dock the folded-away view leaves behind -- so anything counting them has to
@@ -893,15 +913,11 @@ function dropCard(card, reason){
     setTimeout(sizeOrb, 520);
     return;
   }
-  // Losing the docked card leaves the fold with nothing to point at, and losing
-  // the one on the stage leaves an empty stage under a row of thumbnails; in
-  // both cases the most recent survivor takes over.
+  // Losing the docked card leaves the fold with nothing to point at, so the
+  // fold is undone. Losing the one on the stage leaves the desk, at full
+  // brightness: that is the overview, and any thumbnail is a click from full size.
   if(wasDocked) mainEl.classList.remove('collapsed');
-  if(!dispStage.firstElementChild){
-    const next = dispStrip.lastElementChild;
-    if(next) glide(next, dispStage);
-    setTimeout(sizeOrb, 520);
-  }
+  setTimeout(sizeOrb, 520);
 }
 
 function clearDisplay(id, reason){
@@ -909,7 +925,9 @@ function clearDisplay(id, reason){
 }
 
 /** Clears anything that was only meant to live until the next question. */
+let dispGen=0;                                 // which question the desk belongs to
 function clearTransientDisplay(){
+  dispGen++;                                   // whatever is still on its way up belongs to the last one
   dropDisplays();
   for(const card of allCards()) if(card._d.untilNextTurn) dropCard(card,'next-turn');
 }
@@ -1125,47 +1143,24 @@ function wxArrowIco(bearing){
 }
 const wxNum=v=>Number.isFinite(v) ? Math.round(v).toLocaleString('nl-NL') : null;
 
-/* Today by the hour: the temperature as a line, the rain as bars under it.
-   Labels every few hours and at the warmest and coldest point, which are the
-   two the eye wants; a curve with a number on every point is a table again. */
-function wxCurve(hours, units){
-  const pts=(hours||[]).filter(h=>Number.isFinite(h.temperature));
-  if(pts.length<3) return '';
-  const W=640,H=180,L=10,R=10,T=26,B=24;
-  const temps=pts.map(h=>h.temperature);
-  let lo=Math.min(...temps), hi=Math.max(...temps);
-  if(hi-lo<4){ const mid=(hi+lo)/2; lo=mid-2; hi=mid+2; }
-  const x=i=>L+(W-L-R)*(i/(pts.length-1));
-  const y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
-  const rain=pts.map(h=>Number.isFinite(h.precipitation)?h.precipitation:(Number.isFinite(h.precipitationChance)?h.precipitationChance/100:0));
-  const byMm=pts.some(h=>Number.isFinite(h.precipitation));
-  const rainMax=Math.max(byMm?1:0.5, ...rain);
-  const slot=(W-L-R)/Math.max(1,pts.length-1);
-  let bars='';
-  rain.forEach((r,i)=>{
-    if(!(r>0)) return;
-    const h=Math.max(2,(H-T-B)*0.55*(r/rainMax));
-    bars+=`<rect class="wx-rain" x="${(x(i)-slot*0.32).toFixed(1)}" y="${(H-B-h).toFixed(1)}" width="${(slot*0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="2"/>`;
-  });
-  const line=pts.map((h,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(h.temperature).toFixed(1)}`).join(' ');
-  const area=`${line} L${x(pts.length-1).toFixed(1)},${H-B} L${x(0).toFixed(1)},${H-B} Z`;
-  const iHi=temps.indexOf(Math.max(...temps)), iLo=temps.indexOf(Math.min(...temps));
-  const deg=units&&units.temperature?units.temperature:'°';
-  const mark=i=>`<circle class="wx-dot" cx="${x(i).toFixed(1)}" cy="${y(temps[i]).toFixed(1)}" r="3.5"/>`+
-    `<text class="wx-t" x="${x(i).toFixed(1)}" y="${(y(temps[i])-9).toFixed(1)}" text-anchor="${i===0?'start':i===pts.length-1?'end':'middle'}">${esc(wxNum(temps[i])+deg)}</text>`;
-  // A clock every few hours, and the last one; a regular one that would sit
-  // on top of the last is left out rather than printed through it.
-  const every=Math.max(1,Math.round(pts.length/6));
-  let labels='';
-  pts.forEach((h,i)=>{
-    const last=i===pts.length-1;
-    if(!last && (i%every || pts.length-1-i<every)) return;
-    labels+=`<text x="${x(i).toFixed(1)}" y="${H-6}" text-anchor="${i===0?'start':last?'end':'middle'}">${esc(h.label||'')}</text>`;
-  });
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">`+
-    bars+`<path class="wx-area" d="${area}"/><path class="wx-line" d="${line}"/>`+
-    mark(iHi)+(iLo!==iHi?mark(iLo):'')+
-    `<line class="wx-axis" x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}"/>`+labels+'</svg>';
+/* The sun coming up or going down: half a sun on the horizon, and which way it
+   is going. The two clocks on the weather card. */
+function wxSunIco(up){
+  return '<svg viewBox="0 0 64 64" aria-hidden="true">'+
+    '<path class="sunhalf" d="M17 40 A15 15 0 0 1 47 40 Z"/>'+
+    '<line class="ray" x1="32" y1="14" x2="32" y2="20"/><line class="ray" x1="14" y1="22" x2="18.5" y2="26.5"/>'+
+    '<line class="ray" x1="50" y1="22" x2="45.5" y2="26.5"/>'+
+    '<line class="horizon" x1="6" y1="44" x2="58" y2="44"/>'+
+    (up ? '<path class="sunway" d="M32 60 V50 M26.5 55.5 L32 50 L37.5 55.5"/>'
+        : '<path class="sunway" d="M32 50 V60 M26.5 54.5 L32 60 L37.5 54.5"/>')+
+    '</svg>';
+}
+
+/* A tile along the bottom: a day after today, or an hour of today when the
+   provider has no days after today to show. */
+function wxTile(label, condition, big, small){
+  return `<div class="wx-tile"><span class="d">${esc(label||'')}</span>${wxIcon(condition)}`+
+    `${big!==null?`<b>${big}</b>`:''}${small?`<small>${small}</small>`:''}</div>`;
 }
 
 function renderWeather(p){
@@ -1176,34 +1171,57 @@ function renderWeather(p){
     wrap.className='fallback'; wrap.textContent='no forecast';
     return {node:wrap, title:p.title||'weather'};
   }
-  const units=p.units||{}, deg=units.temperature||'°';
+  const units=p.units||{}, unit=units.temperature||'°';
+  // "14°" on the card, the way a weather app writes it; the letter is on the tiles' unit only
+  // when the unit has no degree sign to stand in for it.
+  const deg=esc(unit.includes('°') ? '°' : unit);
+  const now=p.now||{};
+  const condition=now.condition||today.condition;
+  const summary=now.summary||today.summary||condition||'';
+  const temp=wxNum(Number.isFinite(now.temperature)?now.temperature:today.high);
   const hi=wxNum(today.high), lo=wxNum(today.low);
-  const stats=[];
+  const en=(typeof speechLang!=='undefined' && speechLang==='en');
+  const words=en?{high:'high',low:'low'}:{high:'hoog',low:'laag'};
+
+  let html=`<div class="wx-hero">${wxIcon(condition)}`+
+    `${temp!==null?`<span class="wx-temp">${temp}${deg}</span>`:''}</div>`;
+  if(summary) html+=`<div class="wx-cond" title="${esc(summary)}">${esc(summary)}</div>`;
+  const range=[];
+  if(hi!==null) range.push(`<span>${words.high}<b>${hi}${deg}</b></span>`);
+  if(lo!==null) range.push(`<span>${words.low}<b>${lo}${deg}</b></span>`);
+  if(range.length) html+=`<div class="wx-range">${range.join('')}</div>`;
+
+  const meta=[];
+  const sun=p.sun||{};
+  if(sun.rise) meta.push(`<span>${wxSunIco(true)}${esc(sun.rise)}</span>`);
+  if(sun.set) meta.push(`<span>${wxSunIco(false)}${esc(sun.set)}</span>`);
   if(Number.isFinite(today.precipitationChance)){
     const c=Math.round(today.precipitationChance);
-    stats.push(`<span class="wx-stat${c>=50?' on':''}">${WX_DROP_ICO}${c} %</span>`);
+    meta.push(`<span class="${c>=50?'on':''}">${WX_DROP_ICO}${c} %</span>`);
   }else if(Number.isFinite(today.precipitation)){
-    stats.push(`<span class="wx-stat${today.precipitation>=1?' on':''}">${WX_DROP_ICO}${esc(String(today.precipitation))} ${esc(units.precipitation||'mm')}</span>`);
+    meta.push(`<span class="${today.precipitation>=1?'on':''}">${WX_DROP_ICO}${esc(String(today.precipitation))} ${esc(units.precipitation||'mm')}</span>`);
   }
   if(Number.isFinite(today.windSpeed)||today.windDirection){
     const speed=Number.isFinite(today.windSpeed)?`${wxNum(today.windSpeed)} ${esc(units.windSpeed||'')}`:'';
-    stats.push(`<span class="wx-stat">${wxArrowIco(today.windBearing)}${[speed,esc(today.windDirection||'')].filter(Boolean).join(' ')}</span>`);
+    meta.push(`<span>${wxArrowIco(today.windBearing)}${[speed,esc(today.windDirection||'')].filter(Boolean).join(' ')}</span>`);
   }
-  const summary=today.summary||today.condition||'';
-  let html=`<div class="wx-now">${wxIcon(today.condition)}`+
-    `<div class="temps">${hi!==null?`<span class="hi">${hi}${esc(deg)}</span>`:''}`+
-    `${lo!==null?`<span class="lo">${lo}${esc(deg)}</span>`:''}</div>`+
-    `<div class="sum"><b title="${esc(summary)}">${esc(summary)}</b>${stats.join('')}</div></div>`;
-  const curve=wxCurve(p.hours, units);
-  if(curve) html+=`<div class="wx-curve">${curve}</div>`;
+  if(meta.length) html+=`<div class="wx-meta">${meta.join('')}</div>`;
+
+  // The days after today; failing those, today by the hour, five of them spread
+  // over what is left of the day.
+  let tiles='';
   if(days.length>1){
-    html+='<div class="wx-days">'+days.slice(1,7).map(d=>{
-      const h=wxNum(d.high), l=wxNum(d.low);
-      const t=h!==null&&l!==null?`${l}${esc(deg)} / ${h}${esc(deg)}`:h!==null?`${h}${esc(deg)}`:'';
-      const rain=Number.isFinite(d.precipitationChance)?`<small>${Math.round(d.precipitationChance)} %</small>`:'';
-      return `<div class="wx-day"><span>${esc(d.label||'')}</span>${wxIcon(d.condition)}<b>${t}</b>${rain}</div>`;
-    }).join('')+'</div>';
+    tiles=days.slice(1,6).map(d=>wxTile(d.label, d.condition, wxNum(d.high)!==null?wxNum(d.high)+deg:null,
+      wxNum(d.low)!==null?wxNum(d.low)+deg:'')).join('');
+  }else if(Array.isArray(p.hours) && p.hours.length){
+    const hours=p.hours, step=Math.max(1,Math.ceil(hours.length/5));
+    tiles=hours.filter((h,i)=>i%step===0).slice(0,5).map(h=>{
+      const rain=Number.isFinite(h.precipitationChance)?`${Math.round(h.precipitationChance)} %`
+               : Number.isFinite(h.precipitation)&&h.precipitation>0?`${esc(String(h.precipitation))} ${esc(units.precipitation||'mm')}`:'';
+      return wxTile(h.label, h.condition, wxNum(h.temperature)!==null?wxNum(h.temperature)+deg:null, rain);
+    }).join('');
   }
+  if(tiles) html+=`<div class="wx-tiles">${tiles}</div>`;
   wrap.innerHTML=html;
   return {node:wrap, title:p.title||'weather'};
 }
@@ -1222,14 +1240,29 @@ function renderNote(p){
 function glide(card, into, from){
   from = from || card.getBoundingClientRect();
   into.appendChild(card);
-  if(REDUCED.matches) return;
+  if(REDUCED.matches) return Promise.resolve();
   const to=card.getBoundingClientRect();
-  if(!to.width || !to.height) return;
+  if(!to.width || !to.height) return Promise.resolve();
   card.style.transition='none';
   card.style.transformOrigin='top left';
   card.style.transform='translate('+(from.left-to.left)+'px,'+(from.top-to.top)+'px) '+
                        'scale('+(from.width/to.width)+','+(from.height/to.height)+')';
-  requestAnimationFrame(()=>{
+  // Settled when the transform has run its course, or a little after it should
+  // have: a card removed mid-flight fires no transitionend, and nothing may wait
+  // on it for ever.
+  return new Promise(resolve=>{
+    let done=false;
+    const land=e=>{
+      if(e && (e.target!==card || e.propertyName!=='transform')) return;   // a row's glow, not the flight
+      if(done) return; done=true; card.removeEventListener('transitionend',land); resolve();
+    };
+    card.addEventListener('transitionend', land);
+    setTimeout(land, 520);
+    // A forced layout between the two writes is what makes the second one a
+    // flight rather than a jump: the card is measured standing where it came
+    // from before it is told to go. A frame callback would do the same, and
+    // does not come on a screen that is not drawing frames.
+    void card.offsetWidth;
     card.style.transition='transform .42s cubic-bezier(.22,.61,.36,1)';
     card.style.transform='';
   });
@@ -1260,6 +1293,7 @@ function makeCard(m, r){
   card._rows = r.rows || [];
   card._d={
     id:m.id,
+    shownAt: performance.now(),
     untilNextTurn: dismiss.mode==='next-turn',
     timer: dismiss.mode==='timeout'
       ? setTimeout(()=>dropCard(card,'timeout'), Math.max(2000, dismiss.ms||30000))
@@ -1269,20 +1303,45 @@ function makeCard(m, r){
   return card;
 }
 
-/** Keep this window on screen, but step it down into the thumbnail row. */
+/** Keep this window on screen, but put it down on the desk. Settles when it has landed. */
 function minimizeCard(card){
-  if(card.parentElement!==dispStage) return;
-  glide(card, dispStrip);
-  setTimeout(sizeOrb, 520);
+  if(card.parentElement!==dispStage) return Promise.resolve();
+  makeRoom(1);
+  return glide(card, dispStrip);
 }
 
-/** Bring a thumbnail back to full size; what was being read joins the row. */
+/** Bring a thumbnail back to full size; what was being read goes down onto the desk. */
 function promote(card){
   const lead=dispStage.firstElementChild;
   if(lead===card) return;
-  if(lead) glide(lead, dispStrip);
+  if(lead){ makeRoom(1); glide(lead, dispStrip); }
   glide(card, dispStage);
   setTimeout(sizeOrb, 520);
+}
+
+/* ---- how many the desk holds ----
+   Whole cells only, counted from the desk's own size, so a smaller window is a
+   smaller desk rather than a desk with half a thumbnail hanging off it. Null
+   while the desk is not on screen: a desk with no size has no answer, and
+   "none" would throw every window away. */
+function deskCapacity(){
+  const r=dispStrip.getBoundingClientRect();
+  if(!r.width || !r.height) return null;
+  const cs=getComputedStyle(dispStrip);
+  const w=parseFloat(cs.getPropertyValue('--thumbW'))||196, h=parseFloat(cs.getPropertyValue('--thumbH'))||128;
+  const gap=parseFloat(cs.columnGap)||12;
+  const cols=Math.max(1,Math.floor((r.width+gap)/(w+gap)));
+  const rows=Math.max(0,Math.floor((r.height+gap)/(h+gap)));   // a desk too short for a row holds none
+  return cols*rows;
+}
+
+/** Room for `n` more on the desk: the oldest go first. */
+function makeRoom(n){
+  const cap=deskCapacity();
+  if(cap===null) return;
+  while(dispStrip.children.length+n>cap && dispStrip.firstElementChild){
+    dropCard(dispStrip.firstElementChild,'aged-out');
+  }
 }
 
 /* ---- the two views ----
@@ -1360,30 +1419,50 @@ for(const ev of ['pointerdown','pointermove','keydown','wheel','touchstart']){
 }
 bumpIdle();
 
-function showCard(m){
-  const p=m.payload; if(!p) return;
-  const r = p.type==='image' ? renderImage(p)
-          : p.type==='panel' ? renderPanel(p)
-          : p.type==='chart' ? renderChart(p)
-          : p.type==='text'  ? renderNote(p)
-          : p.type==='weather' ? renderWeather(p)
-          : null;
-  if(!r) return;
+const RENDER={image:renderImage, panel:renderPanel, chart:renderChart, text:renderNote, weather:renderWeather};
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
 
+/* Windows go up one at a time. Each waits for the one before it to have been
+   read for a moment, seen going down onto the desk, and lain there a beat --
+   so two windows from one sentence are still two things happening, in order,
+   and the desk is always a picture of what has been shown so far. */
+let arrivals=Promise.resolve();
+
+function showCard(m){
+  const p=m.payload; if(!p || !RENDER[p.type]) return;
+  const gen=dispGen;
+  arrivals=arrivals.then(()=>placeCard(m, gen)).catch(()=>{});
+}
+
+async function placeCard(m, gen){
+  const dismiss=m.dismiss||{mode:'next-turn'};
+  // It waited its turn into the next question, and it was only ever for this one.
+  if(gen!==dispGen && dismiss.mode==='next-turn'){
+    if(m.id && connOk()) try{ ws.send(JSON.stringify({kind:'display_closed', id:m.id, reason:'next-turn'})); }catch(e){}
+    return;
+  }
   clearDisplay(m.id,'replaced');               // a replacement, not a second copy
   // Something new to show outranks a fold: the windows come back on their own
-  // rather than waiting to be asked, and what was docked joins the row.
+  // rather than waiting to be asked, and what was docked goes onto the desk.
   if(mainEl.classList.contains('collapsed')){
     const docked=dispDock.firstElementChild;
     mainEl.classList.remove('collapsed');
-    if(docked){ delete docked.dataset.fromStrip; dispStrip.appendChild(docked); }
+    if(docked){ delete docked.dataset.fromStrip; makeRoom(1); dispStrip.appendChild(docked); }
   }
-  const lead=dispStage.firstElementChild;
-  if(lead) glide(lead, dispStrip);             // the last one shrinks out of the way
-  dispStage.appendChild(makeCard(m, r));
-  while(dispStrip.children.length>THUMBS) dropCard(dispStrip.firstElementChild,'aged-out');
   mainEl.classList.add('showing');
   sizeStage();                                 // the frame first, then what is in it
+  const lead=dispStage.firstElementChild;
+  if(lead && !REDUCED.matches){
+    const read=performance.now()-(lead._d.shownAt||0);
+    if(read<DWELL_MS) await pause(DWELL_MS-read);
+    if(lead.parentElement===dispStage){        // still there: nobody closed it meanwhile
+      await minimizeCard(lead);                // seen going down
+      await pause(SETTLE_MS);                  // and lying there
+    }
+  }else if(lead){
+    minimizeCard(lead);
+  }
+  dispStage.appendChild(makeCard(m, RENDER[m.payload.type](m.payload)));
   bumpIdle();                                  // something to read: the minute starts over
   // A list that went up without waiting for a word still has rows to light as
   // he reaches them, and that is the tick's other job.
@@ -1540,19 +1619,16 @@ function sizeStage(){
   const main=mainEl.getBoundingClientRect();
   const line=$('#stateText').getBoundingClientRect();
   if(!main.height || !line.height) return;
-  const reserve=(main.bottom-line.top)+12;      // the state line, and a gap over it
-  // Everything in the window that is not the stage: the size control, the gaps
-  // and the thumbnail row. It does not move when the stage does.
-  const strip=dispStrip.getBoundingClientRect().height;
-  const chrome=dispEl.getBoundingClientRect().height-dispStage.getBoundingClientRect().height;
-  let room=main.height-2*reserve-chrome;
-  // A short window -- a small screen, or a browser window pulled down to half
-  // the desk -- cannot afford to hold a row of thumbnails open for later. The
-  // empty row is given up before the thing being read is made unreadable.
-  const keepStrip=room>=MIN_STAGE || dispStrip.children.length>0;
-  dispStrip.style.setProperty('--stripH', keepStrip ? '' : '0px');
-  if(!keepStrip) room+=strip;
+  // The desk ends where the stylesheet says, or higher when the state line has
+  // grown taller than the stylesheet allowed for: a long sentence wraps.
+  dispEl.style.removeProperty('--dispBottom');
+  const styled=parseFloat(getComputedStyle(dispEl).getPropertyValue('--dispBottom'))||162;
+  const reserve=Math.max(styled, (main.bottom-line.top)+12);
+  if(reserve>styled) dispEl.style.setProperty('--dispBottom', Math.round(reserve)+'px');
+  const top=dispEl.getBoundingClientRect().top-main.top;
+  const room=main.height-reserve-top-24;        // the desk, less a margin over and under the window
   dispEl.style.setProperty('--stageH', Math.max(MIN_STAGE, Math.round(room))+'px');
+  makeRoom(0);                                  // a smaller desk holds fewer
 }
 
 function sizeOrb(){

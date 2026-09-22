@@ -115,9 +115,11 @@ made out loud.
 Each of those appears at the moment it is being talked about rather than the moment its tool
 answered — a window may name a word to wait for, or several separated by `|` for a deployment that
 switches languages, and is held until the voice reaches one of them. The one before it does not
-disappear: it shrinks into a row underneath, four in view at most. A morning briefing that covers
-the weather, the agenda, the mail and the pull requests therefore ends with all four side by side,
-in the order they were spoken.
+disappear: it is seen going down onto the desk -- the whole middle of the screen, where the windows
+he has finished with lie as thumbnails in rows, as many as the screen has room for -- and only then
+does the next one go up. A morning briefing that covers the weather, the agenda, the mail and the
+pull requests therefore ends with the desk showing all of them, in the order they were spoken, and
+any one of them a click from full size again.
 
 **Itself.** What it noticed about the house and about its own jobs (`anomalies`), what earlier
 conversations were about, what it remembers and why, what every model call cost, and what the last

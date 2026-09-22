@@ -132,7 +132,18 @@ export function screenContents(payload: DisplayPayload): string {
       return payload.caption === undefined ? payload.alt : `${payload.alt} -- ${payload.caption}`;
     case "weather": {
       const degrees = payload.units.temperature;
-      return payload.days
+      const head: string[] = [];
+      if (payload.now !== undefined) {
+        const now: string[] = [];
+        if (payload.now.temperature !== undefined) now.push(`${Math.round(payload.now.temperature)}${degrees}`);
+        if (payload.now.summary !== undefined) now.push(payload.now.summary);
+        else if (payload.now.condition !== undefined) now.push(payload.now.condition);
+        if (now.length > 0) head.push(`- now: ${now.join(", ")}`);
+      }
+      if (payload.sun?.rise !== undefined || payload.sun?.set !== undefined) {
+        head.push(`- sun: ${[payload.sun.rise, payload.sun.set].filter((t) => t !== undefined).join(" - ")}`);
+      }
+      const days = payload.days
         .map((day) => {
           const parts: string[] = [];
           if (day.summary !== undefined) parts.push(day.summary);
@@ -147,8 +158,8 @@ export function screenContents(payload: DisplayPayload): string {
             );
           }
           return `- ${day.label}: ${parts.join(", ")}`;
-        })
-        .join("\n");
+        });
+      return [...head, ...days].join("\n");
     }
   }
 }

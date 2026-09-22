@@ -148,11 +148,12 @@ export type DisplayPayload =
        * The weather as a picture rather than a table.
        *
        * A forecast read out loud is one sentence; the same forecast looked at
-       * is a sky, two temperatures and whether to take a coat, and none of
-       * those is a row in a table. So the pack that read it hands over the
-       * readings and the HUD draws them: a condition icon, the high and the
-       * low, the chance of rain, the wind, a curve through the day when the
-       * provider gives one, and the days after in a strip beneath.
+       * is a sky, a temperature and whether to take a coat, and none of those
+       * is a row in a table. So the pack that read it hands over the readings
+       * and the HUD draws them the way a weather app does: the sky as an icon
+       * with the temperature it is now beside it, the condition in words under
+       * that, today's high and low, when the sun rises and sets, and the days
+       * after as a row of tiles along the bottom.
        *
        * Every reading is optional. Providers disagree about what a day
        * contains, and a missing one is left out of the drawing rather than
@@ -165,7 +166,18 @@ export type DisplayPayload =
       title: string;
       /** The units the figures carry, e.g. "°C", "km/h", "mm". */
       units: { temperature: string; windSpeed?: string; precipitation?: string };
-      /** Today first, then the days after, as many as were asked for. */
+      /**
+       * The weather this minute, when the provider has it: the big number on
+       * the card. Left out, today's high stands in for it.
+       */
+      now?: { temperature?: number; condition?: string; summary?: string };
+      /** When the sun rises and sets, as clocks: "07:25", "19:35". */
+      sun?: { rise?: string; set?: string };
+      /**
+       * Today first, then the days after. Today is drawn large; the days after
+       * are the tiles along the bottom, so a pack sends the days it wants
+       * seen there, not only the ones that were asked about.
+       */
       days: Array<{
         /** "vandaag", "tomorrow", "wo" -- whatever the caller calls the day. */
         label: string;
@@ -186,8 +198,8 @@ export type DisplayPayload =
       }>;
       /**
        * Today by the hour, from now to the end of the day, when the provider
-       * forecasts by the hour. Drawn as a temperature curve with the rain
-       * underneath it; left out, the card shows the day's figures alone.
+       * forecasts by the hour. The tiles along the bottom are made of these
+       * when there are no days after today to make them of.
        */
       hours?: Array<{
         /** "14:00". */
