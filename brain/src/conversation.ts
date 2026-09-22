@@ -343,10 +343,12 @@ export class Conversation {
             opening.said();
             stopThinking();
           },
-          onDisplay: (id, payload, dismiss, anchor) => {
+          onDisplay: (id, payload, dismiss, anchor, at) => {
             if (abort.signal.aborted) return;
+            // A window said again belongs where it was the first time: that far
+            // into the answer, counted from where this answer begins.
             this.callbacks.onDisplay(turnId, id, payload, dismiss, {
-              chars: written,
+              chars: written + (at ?? 0),
               ...(anchor === undefined ? {} : { anchor }),
             });
           },

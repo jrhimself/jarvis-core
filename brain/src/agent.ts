@@ -197,6 +197,8 @@ interface ActiveTurn {
   tools: Array<{ name: string; input: string }>;
   /** Whether a tool was called with `briefing: true`: this turn is the briefing. */
   briefing: boolean;
+  /** Whether `briefing_again` was called: the briefing said again is the briefing too. */
+  replayed: boolean;
   /** Whether the question asked for the briefing in so many words. */
   asked: boolean;
   /** Whether a briefing call was answered by the once-a-day gate: then it was no briefing. */
@@ -261,18 +263,27 @@ export class AgentSession {
     // Everything that reaches the screen passes here -- the display tools and
     // the packs that show their own windows both -- so this is the one place
     // that can keep a copy of what the user is looking at.
-    const sink: DisplaySink = (id, payload, dismiss, anchor) => {
+    const sink: DisplaySink = (id, payload, dismiss, anchor, at) => {
       recordScreen(id, payload);
       const active = this.#active;
       if (active !== null) {
-        active.windows.push({ payload, dismiss, ...(anchor === undefined ? {} : { anchor }) });
-        active.handlers.onDisplay(id, payload, dismiss, anchor);
+        active.windows.push({
+          payload,
+          dismiss,
+          ...(anchor === undefined ? {} : { anchor }),
+          at: at ?? active.text.length,
+        });
+        active.handlers.onDisplay(id, payload, dismiss, anchor, at);
       }
     };
     const display = createDisplayServer(sink, home);
     const briefing = createBriefingServer(
       briefingCache,
-      showVia(sink),
+      (payload, dismiss, anchor, at) => {
+        const id = randomUUID().slice(0, 8);
+        sink(id, payload, dismiss, anchor, at);
+        return id;
+      },
       () => this.lang,
       config.briefingCacheHours * 3_600_000,
     );
@@ -519,6 +530,7 @@ export class AgentSession {
                   this.#active.toolCalls += 1;
                   const input = pick(block, "input");
                   if (marksBriefing(input)) this.#active.briefing = true;
+                  if (typeof name === "string" && name.endsWith("briefing_again")) this.#active.replayed = true;
                   if (typeof name === "string") {
                     this.#active.tools.push({ name, input: describeInput(input) });
                   }
@@ -609,6 +621,7 @@ export class AgentSession {
       toolCalls: 0,
       tools: [],
       briefing: false,
+      replayed: false,
       asked: asksForBriefing(text),
       gated: false,
       windows: [],
@@ -682,7 +695,7 @@ ${asked}`;
       }
     }
 
-    return { text: active.text, briefing: active.briefing };
+    return { text: active.text, briefing: active.briefing || active.replayed };
   }
 
   /**

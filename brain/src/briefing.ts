@@ -40,7 +40,17 @@ export interface ShownWindow {
   payload: DisplayPayload;
   dismiss: DisplayDismiss;
   anchor?: string;
+  /** How far into the answer it went up, in characters, so it can go up there again. */
+  at?: number;
 }
+
+/** Puts a window back on screen; `at` is where in the answer it belongs. */
+export type ReplayDisplay = (
+  payload: DisplayPayload,
+  dismiss: DisplayDismiss,
+  anchor?: string,
+  at?: number,
+) => string;
 
 export interface CachedBriefing {
   /** When it was given, ISO 8601. */
@@ -263,7 +273,7 @@ export function freshInstruction(last: CachedBriefing | null, maxAgeMs: number):
  */
 export function createBriefingServer(
   cache: BriefingCache,
-  display: PackDisplay,
+  display: ReplayDisplay,
   lang: () => SpeechLang,
   maxAgeMs: number,
 ) {
@@ -282,7 +292,7 @@ export function createBriefingServer(
         return { content: [{ type: "text" as const, text: freshInstruction(cache.last(), maxAgeMs) }] };
       }
       for (const window of cached.windows) {
-        display(window.payload, window.dismiss, window.anchor);
+        display(window.payload, window.dismiss, window.anchor, window.at);
       }
       return { content: [{ type: "text" as const, text: repeatInstruction(cached, lang(), now) }] };
     },

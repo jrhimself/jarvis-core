@@ -1467,6 +1467,8 @@ function makeCard(m, r){
   card._rows = r.rows || [];
   card._d={
     id:m.id,
+    type:m.payload.type,
+    title:String(m.payload.title||'').trim().toLowerCase(),
     shownAt: performance.now(),
     untilNextTurn: dismiss.mode==='next-turn',
     timer: dismiss.mode==='timeout'
@@ -1641,6 +1643,10 @@ async function placeCard(m, gen){
     return;
   }
   clearDisplay(m.id,'replaced');               // a replacement, not a second copy
+  // The same window again under another id -- the mail list and then the mails
+  // he picked out of it, both "Mail" -- is the newer one taking the older's
+  // place, not a second Mail on the desk.
+  for(const card of allCards()) if(sameWindow(card, m.payload)) dropCard(card,'replaced');
   // Something new to show outranks a fold: the windows come back on their own
   // rather than waiting to be asked, and what was docked goes onto the desk.
   if(mainEl.classList.contains('collapsed')){
@@ -1667,6 +1673,12 @@ async function placeCard(m, gen){
   // he reaches them, and that is the tick's other job.
   if(turn) startPump();
   setTimeout(sizeOrb, 520);
+}
+
+/* Is this card the same window as the payload: same kind, same title? */
+function sameWindow(card, p){
+  const title=String(p.title||'').trim().toLowerCase();
+  return title!=='' && card._d.type===p.type && card._d.title===title;
 }
 
 /* The briefing is over: the window still open goes down beside the others,
@@ -1712,6 +1724,9 @@ function cueReached(cue, text, seen){
     }
     return false;
   }
+  // Nothing goes up on the opening line. A window cued by how far the answer
+  // had got belongs in the answer, and "I am looking that up" is not it.
+  if(turn && !turn.answering) return false;
   return seen>=(cue.chars||0);
 }
 

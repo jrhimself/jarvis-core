@@ -87,7 +87,15 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   lights on "Knijn" rather than two words later.
 - The briefing ends with the desk. `done` says when the turn was the briefing, and the HUD folds
   the last window down beside the others, so what is left is every window on the desk and
-  nothing over it.
+  nothing over it. A briefing said again from the cache is the briefing too, and ends the same way.
+- A briefing said again puts its windows up where they went up the first time. `briefing_again`
+  put all of them back the moment it was called, which is during "I am looking that up", and a
+  window without a word to wait for went up on that line. Each window now remembers how far into
+  the answer it went up, and goes up that far into the answer again. Nothing cued by distance
+  goes up on the opening line at all.
+- One Mail on the desk. The mail list and then the mails picked out of it are both a window
+  called Mail; the newer takes the older's place rather than lying beside it. The same for any
+  two windows of one kind with one title.
 - The transcript keeps pace with the voice. A voice that sends no per-character timings (Fish
   Audio) had its words revealed at a fixed fifteen characters a second of sound, and the voice
   speaks nearer twenty: every sentence of a long answer put the transcript further behind, until

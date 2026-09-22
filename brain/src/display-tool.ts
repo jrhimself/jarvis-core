@@ -25,6 +25,13 @@ export type DisplaySink = (
   payload: DisplayPayload,
   dismiss: DisplayDismiss,
   anchor?: string,
+  /**
+   * For a window said again: how far into the answer it went up the first
+   * time, in characters. The cue is then that far into this answer too,
+   * rather than the moment the replaying tool was called, which is before the
+   * answer has begun.
+   */
+  at?: number,
 ) => void;
 
 /**

@@ -96,11 +96,11 @@ test("the instruction to start afresh says why, and how to get past the daily ga
 });
 
 async function callAgain(cache: BriefingCache, maxAgeMs: number) {
-  const shown: Array<{ payload: DisplayPayload; anchor: string | undefined }> = [];
+  const shown: Array<{ payload: DisplayPayload; anchor: string | undefined; at: number | undefined }> = [];
   const server = createBriefingServer(
     cache,
-    (payload, _dismiss, anchor) => {
-      shown.push({ payload, anchor });
+    (payload, _dismiss, anchor, at) => {
+      shown.push({ payload, anchor, at });
       return "id";
     },
     () => "en",
@@ -130,7 +130,7 @@ test("asked again within the window, the tool puts the windows back and hands ov
   assert.match(text, /Say the briefing again now/);
   assert.ok(text.endsWith("Good morning. Rain later."));
   assert.equal(shown.length, 1);
-  assert.deepEqual(shown[0], { payload: agenda, anchor: "agenda|calendar" });
+  assert.deepEqual(shown[0], { payload: agenda, anchor: "agenda|calendar", at: undefined });
 });
 
 test("asked again with nothing recent, the tool shows nothing and asks for a fresh one", async () => {
@@ -203,4 +203,18 @@ test("a briefing call answered by the gate marks the turn", async () => {
   await call({ briefing: true }, { content: [{ type: "text", text: "12 open pull requests." }] });
   await call({}, { content: [{ type: "text", text: "Vandaag al gebriefd om 08:50." }] });
   assert.equal(gated, 1);
+});
+
+test("a window said again goes up where it went up the first time", async () => {
+  const cache = new BriefingCache(memory(), 2 * HOUR);
+  cache.remember({
+    lang: "en",
+    text: "Rain today. Four things on the agenda. Last night's note pass read four notes.",
+    windows: [
+      { payload: { type: "text", title: "Note-ingest", text: "17 facts" }, dismiss: { mode: "next-turn" }, at: 41 },
+    ],
+  });
+  const { shown } = await callAgain(cache, 2 * HOUR);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0]?.at, 41);
 });
