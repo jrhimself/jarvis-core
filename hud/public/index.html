@@ -94,8 +94,8 @@ header{grid-column:1/4;z-index:3;display:flex;align-items:center;justify-content
 .lang-switch{font-family:inherit;cursor:pointer;transition:.25s}
 .lang-switch:hover,.lang-switch:focus-visible{color:var(--accent);border-color:hsla(var(--hue),90%,60%,.55);
   box-shadow:0 0 18px hsla(var(--hue),100%,60%,.16);outline:none}
-.lang-switch b span{color:var(--muted);transition:color .25s}
-.lang-switch b span.on{color:var(--text)}
+.lang-switch b span{color:var(--muted);opacity:.45;transition:color .25s,opacity .25s}
+.lang-switch b span.on{color:var(--accent);opacity:1;text-shadow:0 0 8px hsla(var(--hue),100%,60%,.45)}
 /* Memory and the tour are appended to this row by their own modules, so their
    place in the DOM is whichever module ran first. Where they sit is a layout
    decision, so it is made here rather than left to that: both after the status
