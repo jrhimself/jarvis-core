@@ -268,6 +268,9 @@ main.showing #display{display:block}
   transition:opacity .35s ease}
 /* Something on the stage: the desk steps back, so the eye finds the window. */
 #dispStage:not(:empty) ~ #dispStrip{opacity:.5}
+/* The gap a thumbnail left when it was brought back up to full size. It goes
+   back down into it, so what lies where on the desk never changes under you. */
+.dslot{border:1px dashed hsla(var(--hue),80%,60%,.22);border-radius:14px}
 
 /* The size control. Deliberately not browser zoom: that grows the header, the
    panels and the transcript along with it, and the complaint was about the
@@ -349,6 +352,11 @@ main.showing #display{display:block}
    property of the mail rather than of the sentence, so it does not breathe and
    it does not go out; it is the quieter of the two golds for that reason. It is
    written before `tr.hot` so the row being spoken about still wins while lit. */
+/* A row he named. Raised to the top and, once the gold has moved on to the
+   next thing he names, kept faintly warm: out of twelve, the ones talked about
+   stay recognisable as the ones talked about. Written before `tr.hot`. */
+.dcard tr.said td{background:hsla(var(--gold),95%,55%,.05)}
+.dcard tr.said td.k{color:hsl(var(--gold) 45% 70%)}
 .dcard tr.flag td{background:hsla(var(--gold),95%,55%,.07)}
 .dcard tr.flag td.k{color:hsl(var(--gold) 85% 74%);
   box-shadow:inset 3px 0 0 hsla(var(--gold),95%,60%,.75)}
@@ -395,57 +403,105 @@ main.showing #display{display:block}
    coat. Everything in here is drawn from the readings the pack handed over;
    nothing is a row. The icons are inline SVG so they take the card's own hue
    and its gold, and stay sharp at thumbnail size. */
-/* The weather, laid out the way a weather app lays it out: the sky and the
+/* The weather, as a picture of the sky. The card's whole body is the sky for
+   the weather it is -- a blue day, an indigo night, a slate rain -- and in it
+   the sun turns and breathes, the clouds drift, the rain falls, the stars
+   blink. Over that, laid out the way a weather app lays it out: the
    temperature it is now, large; the condition in words; today's high and low;
-   the sun's clocks; and the days after as tiles along the bottom. Spread over
-   the height of the frame, so the card is as full with three readings as with
-   all of them. */
-.dcard .wx{display:flex;flex-direction:column;align-items:center;justify-content:space-between;
-  gap:.3em;height:100%;min-height:0;text-align:center;
-  background:radial-gradient(ellipse 70% 55% at 50% 0%,hsla(var(--hue),70%,45%,.2),transparent)}
+   the sun's clocks; and the days after as tiles along the bottom. */
+.dcard .wx{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  gap:.3em;height:100%;min-height:0;text-align:center;overflow:hidden;border-radius:10px;
+  margin:0 -.35em;padding:.4em .9em .7em}
+.dcard .wx>*{position:relative;z-index:1}
+.dcard .wx[data-sky=day]{background:linear-gradient(180deg,#2f6fc7 0%,#1c478f 42%,#0d2247 78%,#0a1626 100%)}
+.dcard .wx[data-sky=night]{background:linear-gradient(180deg,#0c1431 0%,#172654 45%,#0b1226 100%)}
+.dcard .wx[data-sky=grey]{background:linear-gradient(180deg,#5b7191 0%,#33465f 45%,#131d2c 100%)}
+.dcard .wx[data-sky=rain]{background:linear-gradient(180deg,#3d5470 0%,#22354c 45%,#0d1620 100%)}
+.dcard .wx[data-sky=storm]{background:linear-gradient(180deg,#2c3150 0%,#1a1e35 45%,#0a0c17 100%)}
+.dcard .wx[data-sky=snow]{background:linear-gradient(180deg,#7d93b3 0%,#3f557a 45%,#152034 100%)}
+.dcard .wx[data-night]:not([data-sky=night])::after{content:'';position:absolute;inset:0;z-index:0;
+  background:rgba(4,8,24,.42);pointer-events:none}
+.dcard .wx-scene{position:absolute;inset:0;width:100%;height:100%;z-index:0;overflow:visible}
 .dcard .wx svg{display:block}
-.dcard .wx-hero{display:flex;align-items:center;justify-content:center;gap:.5em;flex:none;margin-top:.2em}
-.dcard .wx-hero .ico{width:6.4em;height:6.4em;flex:none}
-.dcard .wx-temp{font-size:4.9em;font-weight:300;line-height:1;color:#e8f1f8;letter-spacing:-.04em;
+.dcard .wx-hero{display:flex;align-items:center;justify-content:flex-end;width:100%;flex:none;
+  min-height:40%;padding-right:.4em}
+.dcard .wx-tempbox{text-align:right;text-shadow:0 2px 22px rgba(0,0,0,.55)}
+.dcard .wx-temp{display:block;font-size:5.2em;font-weight:300;line-height:1;color:#fff;letter-spacing:-.04em;
   font-variant-numeric:tabular-nums}
-.dcard .wx-cond{font-size:1.9em;font-weight:600;color:#e8f1f8;line-height:1.1;max-width:100%;
+.dcard .wx-cond{font-size:1.5em;font-weight:600;color:#eaf2ff;line-height:1.15;max-width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:capitalize}
 .dcard .wx-range{display:flex;gap:1.8em;font-size:.72em;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--muted);font-variant-numeric:tabular-nums}
-.dcard .wx-range b{font-weight:600;color:#e8f1f8;letter-spacing:0;margin-left:.35em}
+  color:rgba(234,242,255,.72);font-variant-numeric:tabular-nums;text-shadow:0 1px 10px rgba(0,0,0,.5)}
+.dcard .wx-range b{font-weight:600;color:#fff;letter-spacing:0;margin-left:.35em}
 .dcard .wx-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.6em;font-size:.95em;
-  color:var(--muted);font-variant-numeric:tabular-nums}
+  color:rgba(234,242,255,.8);font-variant-numeric:tabular-nums;text-shadow:0 1px 10px rgba(0,0,0,.5)}
 .dcard .wx-meta span{display:flex;align-items:center;gap:.4em;white-space:nowrap}
 .dcard .wx-meta svg{width:1.6em;height:1.6em;flex:none}
-.dcard .wx-meta .on{color:hsl(var(--hue) 85% 72%)}
+.dcard .wx-meta .on{color:#9fd8ff}
 .dcard .wx-tiles{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.5em;width:100%;
   flex:none;margin-top:.2em}
 .dcard .wx-tile{display:flex;flex-direction:column;align-items:center;gap:.1em;padding:.55em .3em .5em;
-  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:.75em;min-width:0}
-.dcard .wx-tile .d{font-size:.78em;color:var(--muted);text-transform:capitalize;white-space:nowrap;
+  background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.04));
+  border:1px solid rgba(255,255,255,.14);border-radius:.75em;min-width:0;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 8px 24px -14px rgba(0,0,0,.8);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.dcard .wx-tile .d{font-size:.78em;color:rgba(234,242,255,.72);text-transform:capitalize;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .dcard .wx-tile .ico{width:2.7em;height:2.7em}
-.dcard .wx-tile b{font-size:1.3em;font-weight:600;color:#e8f1f8;font-variant-numeric:tabular-nums;line-height:1.1}
-.dcard .wx-tile small{font-size:.82em;color:var(--muted);font-variant-numeric:tabular-nums}
-/* The icons' own colours: the sun is the gold everything else on the screen
-   lights up in, cloud is the text colour with the light behind it, rain and
-   snow take the accent. */
-.dcard .wx .sun{fill:hsl(var(--gold) 90% 62%)}
+.dcard .wx-tile b{font-size:1.3em;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1.1}
+.dcard .wx-tile small{font-size:.82em;color:rgba(234,242,255,.7);font-variant-numeric:tabular-nums}
+/* The icons' own colours, and the sky's. The sun is the gold everything else
+   on the screen lights up in, the clouds white with the light behind them, rain
+   and snow take the cool end. Gradients come from the one <defs> block the
+   script puts in the page. */
+.dcard .wx .sun{fill:url(#wxSunG)}
 .dcard .wx .ray{stroke:hsl(var(--gold) 90% 62%);stroke-width:3;stroke-linecap:round}
-.dcard .wx .moon{fill:hsl(var(--gold) 40% 82%)}
-.dcard .wx .cloud{fill:rgba(232,241,248,.82)}
-.dcard .wx .cloud.dark{fill:hsl(var(--hue) 18% 58%)}
-.dcard .wx .drop{stroke:hsl(var(--hue) 85% 65%);stroke-width:3;stroke-linecap:round}
-.dcard .wx .flake{fill:#e8f1f8}
+.dcard .wx .moon{fill:url(#wxMoonG)}
+.dcard .wx .cloud{fill:url(#wxCloudG)}
+.dcard .wx .cloud.dark{fill:url(#wxCloudDarkG)}
+.dcard .wx .drop{stroke:#9fd8ff;stroke-width:3;stroke-linecap:round}
+.dcard .wx .flake{fill:#f4f8ff}
 .dcard .wx .bolt{fill:hsl(var(--gold) 95% 60%)}
-.dcard .wx .gust{stroke:rgba(232,241,248,.7);stroke-width:3;stroke-linecap:round;fill:none}
-.dcard .wx .fogline{stroke:rgba(232,241,248,.45);stroke-width:3;stroke-linecap:round}
+.dcard .wx .gust{stroke:rgba(232,241,248,.75);stroke-width:3;stroke-linecap:round;fill:none}
+.dcard .wx .fogline{stroke:rgba(232,241,248,.5);stroke-width:3;stroke-linecap:round}
 .dcard .wx .warn{fill:none;stroke:hsl(var(--gold) 95% 60%);stroke-width:3;stroke-linejoin:round}
 .dcard .wx .arrow{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
 .dcard .wx .dropico{fill:currentColor}
-.dcard .wx .horizon{stroke:rgba(232,241,248,.45);stroke-width:3;stroke-linecap:round}
-.dcard .wx .sunhalf{fill:hsl(var(--gold) 90% 62%)}
-.dcard .wx .sunway{fill:none;stroke:rgba(232,241,248,.8);stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round}
+.dcard .wx .horizon{stroke:rgba(232,241,248,.55);stroke-width:3;stroke-linecap:round}
+.dcard .wx .sunhalf{fill:url(#wxSunG)}
+.dcard .wx .sunway{fill:none;stroke:rgba(232,241,248,.85);stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round}
+/* The sky in motion. Every moving thing turns about its own middle. */
+.wx-scene .sun-g,.wx-scene .moon-g,.wx-scene .rays,.wx-scene .cloud,.wx-scene .drop,.wx-scene .flake,
+.wx-scene .star,.wx-scene .fog,.wx-scene .gust,.wx-scene .warn-g{transform-box:fill-box;transform-origin:center}
+.wx-scene .glow{fill:url(#wxSunGlowG);opacity:.55}
+.wx-scene .glow.moon{fill:url(#wxMoonGlowG)}
+.wx-scene .sun-g{animation:wxBreathe 7s ease-in-out infinite}
+.wx-scene .rays{animation:wxSpin 80s linear infinite}
+.wx-scene .rays .ray{stroke-width:4;opacity:.7}
+.wx-scene .cloud{animation:wxDrift var(--d,18s) ease-in-out infinite alternate;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.25))}
+.wx-scene .drop{stroke-width:2.6;animation:wxFall 1.1s linear infinite}
+.wx-scene .drop.hard{animation-duration:.8s}
+.wx-scene .flake{animation:wxSnow 4.2s linear infinite}
+.wx-scene .flake.hail{animation:wxFall .9s linear infinite;fill:#dbe9ff}
+.wx-scene .bolt{animation:wxFlash 5.5s ease-out infinite;filter:drop-shadow(0 0 10px hsl(var(--gold) 95% 60%))}
+.wx-scene .star{fill:#fff;animation:wxTwinkle var(--d,3s) ease-in-out infinite}
+.wx-scene .fog{animation:wxFog var(--d,8s) ease-in-out infinite}
+.wx-scene .gust{animation:wxGust var(--d,3.4s) ease-in infinite}
+.wx-scene .warn-g{animation:wxBreathe 2.2s ease-in-out infinite}
+.wx-scene .ground{fill:url(#wxGroundG)}
+@keyframes wxSpin{to{transform:rotate(360deg)}}
+@keyframes wxBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+@keyframes wxDrift{from{transform:translateX(-16px)}to{transform:translateX(16px)}}
+@keyframes wxFall{0%{transform:translateY(0);opacity:0}12%{opacity:1}100%{transform:translateY(48px);opacity:0}}
+@keyframes wxSnow{0%{transform:translate(0,0);opacity:0}15%{opacity:1}100%{transform:translate(10px,60px);opacity:0}}
+@keyframes wxFlash{0%,80%,86%,100%{opacity:0}82%,84%{opacity:1}}
+@keyframes wxTwinkle{0%,100%{opacity:.2}50%{opacity:1}}
+@keyframes wxFog{0%,100%{opacity:.3;transform:translateX(0)}50%{opacity:.7;transform:translateX(14px)}}
+@keyframes wxGust{0%{transform:translateX(-50px);opacity:0}25%{opacity:1}100%{transform:translateX(80px);opacity:0}}
+/* A thumbnail is a still; a wall of moving skies would be the only thing on the screen. */
+#dispStrip .wx-scene *,#dispDock .wx-scene *{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){ .wx-scene *{animation:none} }
 
 @media (prefers-reduced-motion:reduce){
   #orb{transition:none}
@@ -902,6 +958,12 @@ function noteClosed(card, reason){
 
 function dropCard(card, reason){
   if(!card) return;
+  if(card.classList.contains('dslot')){         // the gap a raised window left: it will not go back
+    if(card._for) card._for._slot=null;
+    card.remove();
+    return;
+  }
+  if(card._slot) card._slot.remove();
   clearTimeout(card._d.timer);
   clearInterval(card._d.refresh);
   const wasDocked = card.parentElement===dispDock;
@@ -1143,6 +1205,112 @@ function wxArrowIco(bearing){
 }
 const wxNum=v=>Number.isFinite(v) ? Math.round(v).toLocaleString('nl-NL') : null;
 
+/* The gradients every weather picture refers to, once, in the page. An inline
+   SVG can use a gradient defined in any other inline SVG of the same document,
+   so the icons and the scene share these rather than each carrying a copy. */
+document.body.insertAdjacentHTML('beforeend',
+  '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>'+
+  '<radialGradient id="wxSunG"><stop offset="0" stop-color="#fff8dc"/><stop offset=".5" stop-color="#ffd767"/><stop offset="1" stop-color="#f5a623"/></radialGradient>'+
+  '<radialGradient id="wxSunGlowG"><stop offset="0" stop-color="#ffd767" stop-opacity=".9"/><stop offset=".45" stop-color="#ffb347" stop-opacity=".35"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>'+
+  '<radialGradient id="wxMoonG"><stop offset="0" stop-color="#fffdf2"/><stop offset="1" stop-color="#d8d3b6"/></radialGradient>'+
+  '<radialGradient id="wxMoonGlowG"><stop offset="0" stop-color="#e8e4c8" stop-opacity=".7"/><stop offset=".5" stop-color="#c9d3ff" stop-opacity=".2"/><stop offset="1" stop-color="#c9d3ff" stop-opacity="0"/></radialGradient>'+
+  '<linearGradient id="wxCloudG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#b7c6d8"/></linearGradient>'+
+  '<linearGradient id="wxCloudDarkG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93a5bb"/><stop offset="1" stop-color="#4f6078"/></linearGradient>'+
+  '<linearGradient id="wxGroundG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#ffffff" stop-opacity=".08"/></linearGradient>'+
+  '</defs></svg>');
+
+/* The sky over the card: what the condition looks like, moving.
+   A 400x280 picture laid over the whole card and cropped to it, the sun or the
+   moon at the left where the temperature is not, the clouds across the upper
+   half, the weather falling out of them. Every element is a class the
+   stylesheet animates; a reduced-motion setting stills them all. */
+const WX_CLOUD_BIG='M22 52 H84 A14 14 0 0 0 86 24 A21 21 0 0 0 47 14 A17 17 0 0 0 18 26 A13 13 0 0 0 22 52 Z';
+function sceneCloud(x,y,scale,dark,dur,delay){
+  return `<g class="cloud${dark?' dark':''}" style="--d:${dur}s;animation-delay:${delay}s">`+
+    `<path d="${WX_CLOUD_BIG}" transform="translate(${x} ${y}) scale(${scale})"/></g>`;
+}
+function sceneRain(count, hard){
+  let out='<g class="rain">';
+  for(let i=0;i<count;i++){
+    const x=112+i*(hard?9:14)+(i%2)*4, y=98+(i%3)*6;
+    out+=`<line class="drop${hard?' hard':''}" style="animation-delay:${(-(i*0.17)%1.1).toFixed(2)}s" x1="${x}" y1="${y}" x2="${x-4}" y2="${y+14}"/>`;
+  }
+  return out+'</g>';
+}
+function sceneSnow(count, hail){
+  let out='<g class="snow">';
+  for(let i=0;i<count;i++){
+    const x=118+i*13+(i%2)*5, y=100+(i%3)*8;
+    out+=`<circle class="flake${hail?' hail':''}" style="animation-delay:${(-(i*0.53)%4.2).toFixed(2)}s" cx="${x}" cy="${y}" r="${hail?3.2:2.6}"/>`;
+  }
+  return out+'</g>';
+}
+function sceneStars(){
+  let out='<g class="stars">';
+  for(let i=0;i<22;i++){
+    const x=(i*167+41)%400, y=(i*89+13)%96+4, r=0.9+(i%3)*0.5;
+    out+=`<circle class="star" style="--d:${(2.4+(i%5)*0.6).toFixed(1)}s;animation-delay:${(-(i*0.7)%4).toFixed(1)}s" cx="${x}" cy="${y}" r="${r}"/>`;
+  }
+  return out+'</g>';
+}
+function sceneSun(){
+  let rays='';
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI/6, x1=100+Math.cos(a)*36, y1=58+Math.sin(a)*36, x2=100+Math.cos(a)*45, y2=58+Math.sin(a)*45;
+    rays+=`<line class="ray" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+  }
+  return `<g class="sun-g"><circle class="glow" cx="100" cy="58" r="64"/><g class="rays">${rays}</g><circle class="sun" cx="100" cy="58" r="27"/></g>`;
+}
+function sceneMoon(){
+  return '<g class="moon-g"><circle class="glow moon" cx="104" cy="58" r="56"/>'+
+    '<path class="moon" d="M112 28 A30 30 0 1 0 129 80 A23 23 0 0 1 112 28 Z"/></g>';
+}
+function wxScene(condition, night){
+  const c=String(condition||'').toLowerCase();
+  const clear=c==='sunny'||c==='clear-night';
+  const partly=c==='partlycloudy';
+  const dark=/pouring|lightning|hail/.test(c);
+  let out='';
+  if(night) out+=sceneStars();
+  if(clear||partly) out+= night?sceneMoon():sceneSun();
+  if(partly){
+    out+=sceneCloud(120,56,.95,false,20,-6);
+  }else if(!clear && c!=='windy' && c!=='exceptional'){
+    out+=sceneCloud(206,18,.7,dark,18,-4)+sceneCloud(104,46,1.05,dark,23,-11);
+    if(c==='cloudy'||c==='fog') out+=sceneCloud(258,66,.55,false,15,-2);
+  }
+  if(/rainy|pouring|snowy-rainy/.test(c) && c!=='snowy') out+=sceneRain(c==='pouring'?16:9, c==='pouring');
+  if(/^snowy|hail/.test(c)) out+=sceneSnow(c==='hail'?7:9, c==='hail');
+  if(/lightning/.test(c)) out+='<path class="bolt" d="M168 100 L154 132 L166 132 L156 160 L182 122 L170 122 L180 100 Z"/>';
+  if(c==='fog'){
+    for(let i=0;i<3;i++) out+=`<line class="fogline fog" style="--d:${7+i*1.5}s;animation-delay:${-i*2}s" x1="${70+i*20}" y1="${104+i*14}" x2="${300-i*25}" y2="${104+i*14}"/>`;
+  }
+  if(/windy/.test(c)){
+    for(let i=0;i<3;i++) out+=`<path class="gust" style="--d:${3.2+i*.5}s;animation-delay:${-i*1.1}s" d="M${60+i*30} ${40+i*24} H${150+i*30} A7 7 0 1 ${i%2} ${143+i*30} ${33+i*24}"/>`;
+  }
+  if(c==='exceptional') out+='<g class="warn-g"><path class="warn" d="M100 22 L145 100 H55 Z"/><line class="drop" x1="100" y1="48" x2="100" y2="72"/><circle class="flake" cx="100" cy="86" r="3"/></g>';
+  out+='<rect class="ground" x="0" y="200" width="400" height="80"/>';
+  return `<svg class="wx-scene" viewBox="0 0 400 280" preserveAspectRatio="xMidYMin slice" aria-hidden="true">${out}</svg>`;
+}
+
+/* Which sky the condition is under, and whether it is night here. Night is
+   read off the sun's clocks when the card has them, off the hour when not. */
+function wxSky(c, night){
+  if(/lightning/.test(c)) return 'storm';
+  if(/rainy|pouring|hail/.test(c)) return 'rain';
+  if(/^snowy/.test(c)) return 'snow';
+  if(c==='cloudy'||c==='fog'||/^windy/.test(c)) return 'grey';
+  return night?'night':'day';
+}
+function wxNight(sun, condition){
+  if(condition==='clear-night') return true;
+  const now=new Date(), m=now.getHours()*60+now.getMinutes();
+  const at=t=>{ const x=/^(\d{1,2}):(\d{2})/.exec(t||''); return x ? (+x[1])*60+(+x[2]) : null; };
+  const rise=at(sun&&sun.rise), set=at(sun&&sun.set);
+  if(rise!==null && set!==null) return m<rise || m>set;
+  return m<6*60 || m>21*60;
+}
+
 /* The sun coming up or going down: half a sun on the horizon, and which way it
    is going. The two clocks on the weather card. */
 function wxSunIco(up){
@@ -1182,10 +1350,15 @@ function renderWeather(p){
   const hi=wxNum(today.high), lo=wxNum(today.low);
   const en=(typeof speechLang!=='undefined' && speechLang==='en');
   const words=en?{high:'high',low:'low'}:{high:'hoog',low:'laag'};
+  const night=wxNight(p.sun, String(condition||'').toLowerCase());
+  const sky=wxSky(String(condition||'').toLowerCase(), night);
+  wrap.dataset.sky=sky;
+  if(night) wrap.dataset.night='1';
 
-  let html=`<div class="wx-hero">${wxIcon(condition)}`+
-    `${temp!==null?`<span class="wx-temp">${temp}${deg}</span>`:''}</div>`;
-  if(summary) html+=`<div class="wx-cond" title="${esc(summary)}">${esc(summary)}</div>`;
+  let html=wxScene(condition, night)+
+    `<div class="wx-hero"><div class="wx-tempbox">`+
+    `${temp!==null?`<span class="wx-temp">${temp}${deg}</span>`:''}`+
+    `${summary?`<div class="wx-cond" title="${esc(summary)}">${esc(summary)}</div>`:''}</div></div>`;
   const range=[];
   if(hi!==null) range.push(`<span>${words.high}<b>${hi}${deg}</b></span>`);
   if(lo!==null) range.push(`<span>${words.low}<b>${lo}${deg}</b></span>`);
@@ -1237,9 +1410,10 @@ function renderNote(p){
    let go. `from` may be passed in for the one case where the move and the
    measurement cannot happen in that order: folding the windows away hides the
    stage, so where the card *was* has to be read before the class goes on. */
-function glide(card, into, from){
+function glide(card, into, from, replacing){
   from = from || card.getBoundingClientRect();
-  into.appendChild(card);
+  if(replacing && replacing.parentElement===into) into.replaceChild(card, replacing);
+  else into.appendChild(card);
   if(REDUCED.matches) return Promise.resolve();
   const to=card.getBoundingClientRect();
   if(!to.width || !to.height) return Promise.resolve();
@@ -1303,9 +1477,12 @@ function makeCard(m, r){
   return card;
 }
 
-/** Keep this window on screen, but put it down on the desk. Settles when it has landed. */
+/** Keep this window on screen, but put it down on the desk. Settles when it has landed.
+    A window that came up off the desk goes back into the gap it left there. */
 function minimizeCard(card){
   if(card.parentElement!==dispStage) return Promise.resolve();
+  const slot=card._slot; card._slot=null;
+  if(slot && slot.parentElement===dispStrip) return glide(card, dispStrip, null, slot);
   makeRoom(1);
   return glide(card, dispStrip);
 }
@@ -1314,10 +1491,32 @@ function minimizeCard(card){
 function promote(card){
   const lead=dispStage.firstElementChild;
   if(lead===card) return;
-  if(lead){ makeRoom(1); glide(lead, dispStrip); }
+  // The gap it leaves is kept for it, so it goes back to where it lay.
+  const slot=document.createElement('div');
+  slot.className='dslot'; slot._for=card;
+  dispStrip.insertBefore(slot, card);
+  card._slot=slot;
+  if(lead) minimizeCard(lead);
   glide(card, dispStage);
   setTimeout(sizeOrb, 520);
 }
+
+/* The newest thumbnail on the desk, skipping the gaps. */
+function lastThumb(){
+  for(let n=dispStrip.lastElementChild; n; n=n.previousElementSibling){
+    if(n.classList.contains('dcard')) return n;
+  }
+  return null;
+}
+
+/* A click beside the window -- on the desk, or on the empty middle around it
+   -- puts the window down. The same as its own minimize button, from anywhere. */
+function clickBeside(e){
+  if(e.target!==mainEl && e.target!==dispEl && e.target!==dispStrip) return;
+  const lead=dispStage.firstElementChild;
+  if(lead) minimizeCard(lead);
+}
+mainEl.addEventListener('click', clickBeside);
 
 /* ---- how many the desk holds ----
    Whole cells only, counted from the desk's own size, so a smaller window is a
@@ -1359,7 +1558,7 @@ function collapseDisplay(){
      and it remembers where it came from, so unfolding puts it back in the row
      rather than promoting it to the stage behind your back. */
   const fromStrip=!dispStage.firstElementChild;
-  const lead=dispStage.firstElementChild || dispStrip.lastElementChild;
+  const lead=dispStage.firstElementChild || lastThumb();
   if(lead){
     if(fromStrip) lead.dataset.fromStrip='1'; else delete lead.dataset.fromStrip;
   }
@@ -1522,10 +1721,43 @@ function markRows(said){
       if(!mentions(said, row.subject)){ waiting=true; continue; }
       // Same clock as a context tile and as today's row. The card usually goes
       // away at the next question long before the fade fires.
+      raiseRow(card, row.tr);
       lightRow(row.tr);
     }
   }
   return waiting;
+}
+
+/* The rows he talks about move to the top of their list, in the order he
+   comes to them: the first one named is the first row, the second the second.
+   Out of twelve pull requests the two being discussed are then the two in
+   view, lit, rather than the ninth and the eleventh somewhere below the fold.
+   The other rows slide out of the way rather than jump. */
+function raiseRow(card, tr){
+  const table=tr.parentElement;
+  if(!table) return;
+  const n=card._raised||0;
+  card._raised=n+1;
+  tr.classList.add('said');
+  const target=table.children[n];
+  if(!target || target===tr) return;
+  const rows=[...table.children];
+  const before=new Map(rows.map(r=>[r, r.getBoundingClientRect().top]));
+  table.insertBefore(tr, target);
+  const body=card.querySelector('.body');
+  if(body) body.scrollTop=0;
+  if(REDUCED.matches) return;
+  for(const r of rows){
+    const d=before.get(r)-r.getBoundingClientRect().top;
+    if(!d) continue;
+    r.style.transition='none';
+    r.style.transform='translateY('+d+'px)';
+  }
+  void table.offsetWidth;
+  for(const r of rows){
+    r.style.transition='transform .45s cubic-bezier(.22,.61,.36,1)';
+    r.style.transform='';
+  }
 }
 
 function pumpDisplays(){

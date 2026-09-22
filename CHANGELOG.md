@@ -25,9 +25,14 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   words; today's high and low; when the sun rises and sets; the chance of rain and the wind as an
   arrow flying the way it blows; and the days after as tiles along the bottom, each with its sky
   and its two temperatures -- or today's hours as tiles, for a provider with no days after today.
-  It is a new `weather` shape in `DisplayPayload` (`now`, `sun`, `days`, `hours`), drawn by the
-  HUD from readings alone: nothing on it is prose, so nothing on it can be a figure the model got
-  wrong. The hass pack puts it up as soon as the weather comes up.
+  The card's whole body is the sky for the weather it is -- a blue day, an indigo night with
+  stars, a slate rain, a violet storm -- and the sky moves: the sun turns and breathes, the
+  clouds drift, the rain falls, the snow drifts down, the lightning flashes, the stars blink.
+  Whether it is night is read off the sun's clocks. It is a new `weather` shape in
+  `DisplayPayload` (`now`, `sun`, `days`, `hours`), drawn by the HUD from readings alone:
+  nothing on it is prose, so nothing on it can be a figure the model got wrong. A reduced-motion
+  setting stills the sky; a thumbnail is a still. The hass pack puts it up as soon as the
+  weather comes up.
 - The desk. The windows he has finished with used to shrink into a row under the one being read,
   four in view at most and the fifth thrown away. The whole middle of the screen is now the desk:
   the thumbnails lie on it in rows from the top left, as many as the screen has room for -- a
@@ -36,9 +41,15 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   desk, and lies there a beat before the next goes up, so two windows from one sentence are still
   two things happening in order, and the desk is always a picture of what has been said so far.
   Closing the window being read leaves the desk at full brightness rather than pulling the newest
-  thumbnail back up: that is the overview, and any thumbnail is a click from full size. A desk
-  that shrinks -- a smaller browser window -- lets go of the oldest rather than showing half of
-  one.
+  thumbnail back up: that is the overview, and any thumbnail is a click from full size. A
+  thumbnail brought back up leaves its gap on the desk and goes back down into it, so what lies
+  where never changes under you; a click beside the window -- on the desk, or on the empty
+  middle around it -- puts the window down, the same as its own minimize button. A desk that
+  shrinks -- a smaller browser window -- lets go of the oldest rather than showing half of one.
+- The rows he talks about move to the top of their list, in the order he comes to them, the
+  others sliding out of the way. Out of twelve pull requests the two being discussed are the two
+  in view, lit as he reaches them, rather than the ninth and the eleventh below the fold; once
+  the gold has moved on, a row he named stays faintly warm.
 - The briefing said again is a lookup, not seven tool calls. The turn in which any tool is
   called with `briefing: true` is kept whole -- the words and the windows that went up with them
   -- in the settings table, and a new `briefing_again` tool puts the windows back and hands the
