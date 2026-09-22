@@ -46,8 +46,18 @@ export type ClientMessage =
       text: string;
       /** Client-generated id, echoed back on every message of the answer. */
       turnId: string;
-      /** Which language to pronounce it in. Defaults to Dutch. */
+      /** Which language to pronounce it in. Defaults to the current one. */
       lang?: SpeechLang;
+    }
+  | {
+      /**
+       * Switch the language JARVIS speaks, listens and answers in.
+       *
+       * For the whole deployment, not for this page: the choice is kept by the
+       * brain and every open HUD hears about it as a `lang` message.
+       */
+      kind: "set_lang";
+      lang: SpeechLang;
     }
   | {
       kind: "cancel";
@@ -224,7 +234,7 @@ export type ServerMessage =
       available: boolean;
       /** Why not, when it cannot — safe to show to the user. */
       reason?: string;
-      /** Which language this turn is pronounced in. Absent means Dutch. */
+      /** Which language this turn is pronounced in. Absent means the current one. */
       lang?: SpeechLang;
       /** Post-processing the HUD should put the audio through. */
       fx?: SpeechFx;
@@ -258,7 +268,7 @@ export type ServerMessage =
        */
       kind: "announce";
       text: string;
-      /** Absent means Dutch, like everywhere else. */
+      /** Absent means the current language, like everywhere else. */
       lang?: SpeechLang;
     }
   | {
@@ -283,6 +293,14 @@ export type ServerMessage =
       /** What that subject is called on screen, e.g. "Weather". */
       topicLabel: string;
       tiles: HudTile[];
+    }
+  | {
+      /**
+       * The language JARVIS speaks now. Sent when the page connects and again
+       * whenever it is switched, from this page or any other.
+       */
+      kind: "lang";
+      lang: SpeechLang;
     }
   | {
       /** Whether the brain can transcribe; false means the browser should. */
@@ -424,6 +442,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     return lang === undefined
       ? { kind: "say", text, turnId }
       : { kind: "say", text, turnId, lang };
+  }
+
+  if (value["kind"] === "set_lang") {
+    const { lang } = value;
+    if (lang !== "nl" && lang !== "en") return null;
+    return { kind: "set_lang", lang };
   }
 
   if (value["kind"] === "listen_start") return { kind: "listen_start" };

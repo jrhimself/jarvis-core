@@ -16,7 +16,10 @@
  * own message forty times is unreadable.
  */
 
+import type { SpeechLang } from "@jarvis/shared";
+
 import { Conversation } from "./conversation.js";
+import { language } from "./language.js";
 import { escapeHtml } from "./dev/notify.js";
 import type { Said } from "./telegram.js";
 
@@ -33,10 +36,16 @@ const CHUNK = 3800;
 const TYPING_MS = 4000;
 
 /** What is said when a question arrives while the last one is still being answered. */
-const BUSY = "Ik ben nog met je vorige vraag bezig.";
+const BUSY: Record<SpeechLang, string> = {
+  en: "I am still working on your last question.",
+  nl: "Ik ben nog met je vorige vraag bezig.",
+};
 
 /** And when a turn produced no words at all, which should not happen but can. */
-const NOTHING = "Ik heb daar geen antwoord op kunnen vormen.";
+const NOTHING: Record<SpeechLang, string> = {
+  en: "I could not put an answer together for that.",
+  nl: "Ik heb daar geen antwoord op kunnen vormen.",
+};
 
 /** Splits a long answer on line breaks where it can, mid-line where it must. */
 export function pieces(text: string, limit = CHUNK): string[] {
@@ -86,7 +95,7 @@ export class Chat {
 
     const live = this.#for(said.chatId);
     if (live.busy) {
-      await this.bot.send(said.chatId, BUSY);
+      await this.bot.send(said.chatId, BUSY[language().current]);
       return;
     }
 
@@ -122,7 +131,7 @@ export class Chat {
       live.busy = false;
     }
 
-    const body = failure !== null ? String(failure) : answer.trim() === "" ? NOTHING : answer;
+    const body = failure !== null ? String(failure) : answer.trim() === "" ? NOTHING[language().current] : answer;
     for (const piece of pieces(body)) {
       await this.bot.send(said.chatId, escapeHtml(piece));
     }

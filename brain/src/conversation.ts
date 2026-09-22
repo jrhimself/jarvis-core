@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 
 import { loadConfig } from "./config.js";
 import { AgentSession } from "./agent.js";
+import { language } from "./language.js";
 import { Opening } from "./opening.js";
 import { SpokenText } from "./spoken.js";
 import { RecordedLines } from "./voice/lines.js";
@@ -41,9 +42,12 @@ const config = loadConfig();
  */
 const recorded = new RecordedLines(config, join(dirname(config.memoryPath), "voice-lines"));
 
-/** Records the deployment's lines that are not on disk yet. Called at startup. */
-export function warmRecordedLines(): Promise<number> {
-  return recorded.warm(config.thinkingLines, config.speechLang);
+/**
+ * Records one language's lines that are not on disk yet. Called at startup for
+ * the current language, and again for a language the moment it is switched to.
+ */
+export function warmRecordedLines(lang: SpeechLang = language().current): Promise<number> {
+  return recorded.warm(config.spoken[lang].thinking, lang);
 }
 
 /** Re-check the credit balance at most this often. */
@@ -220,6 +224,10 @@ export class Conversation {
     const startedAt = performance.now();
     this.callbacks.onActivity(turnId, "denkt na");
 
+    // Read once, so a switch halfway through a turn cannot give it a voice in
+    // one language and an answer in the other.
+    const lang = language().current;
+
     // How far the answer has been written when something is put on screen. A
     // tool is reached for mid-sentence and answers in milliseconds, so this is
     // the only moment at which the screen and the sentence are still in step.
@@ -227,7 +235,7 @@ export class Conversation {
 
     // Opened before the first token so the first sentence can be spoken as
     // soon as it exists, rather than after the answer is complete.
-    const speaking = this.voice === "off" ? null : await this.#openVoice(turnId, abort);
+    const speaking = this.voice === "off" ? null : await this.#openVoice(turnId, abort, lang);
     const voice = speaking?.voice ?? null;
 
     // Text for the screen waits until the browser knows whether the brain
@@ -252,7 +260,7 @@ export class Conversation {
 
     // Something to say while this turn is still fetching. The boundaries are
     // Opening's; the clock is this one's, because it is the one holding a voice.
-    const opening = new Opening(config.thinkingLines, config.thinkingAfterMs);
+    const opening = new Opening(config.spoken[lang].thinking, config.thinkingAfterMs);
     let thinking: NodeJS.Timeout | null = null;
     // The answer, with its dashes taken out on the way to the voice and the
     // transcript. Everything the model writes goes through it; the opening
@@ -282,7 +290,7 @@ export class Conversation {
         show(said, true);
         // Recorded earlier, so it is heard now and the voice's socket stays
         // free for the first sentence of the answer.
-        const clip = speaking === null ? null : recorded.get(line, config.speechLang);
+        const clip = speaking === null ? null : recorded.get(line, lang);
         if (clip !== null && speaking !== null) speaking.play(clip);
         else voice?.speak(said);
       }, opening.afterMs);
@@ -292,6 +300,12 @@ export class Conversation {
     armThinking();
 
     try {
+      // A session speaks the language it was opened in. After a switch the
+      // next question starts a new one: what was said before is in memory, and
+      // a session told to answer in two languages answers in neither reliably.
+      if (this.#agent !== null && !this.#agent.broken && this.#agent.lang !== lang) {
+        this.#endSession();
+      }
       if (this.#agent === null || this.#agent.broken) {
         this.#agent?.close();
         this.#agent = new AgentSession();
@@ -391,7 +405,7 @@ export class Conversation {
    * audio the way it does for an answer, but nothing is thought about and no
    * tokens are spent: the text goes straight to the voice.
    */
-  async say(turnId: string, text: string, lang: SpeechLang = config.speechLang): Promise<void> {
+  async say(turnId: string, text: string, lang: SpeechLang = language().current): Promise<void> {
     if (this.#closed) return;
 
     if (this.#current !== null) this.#current.abort.abort();
@@ -438,7 +452,7 @@ export class Conversation {
   async #openVoice(
     turnId: string,
     abort: AbortController,
-    lang: SpeechLang = config.speechLang,
+    lang: SpeechLang = language().current,
     fx: SpeechFx = ANSWER_FX,
   ): Promise<{
     voice: SpeakingVoice;

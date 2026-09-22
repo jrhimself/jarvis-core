@@ -17,7 +17,73 @@ export type MemoryPanelMode = "off" | "read" | "edit";
 const MEMORY_PANEL_MODES: readonly MemoryPanelMode[] = ["off", "read", "edit"];
 
 /** The languages a deployment can be run in. */
-const SPEECH_LANGS: readonly SpeechLang[] = ["nl", "en"];
+export const SPEECH_LANGS: readonly SpeechLang[] = ["nl", "en"];
+
+/** What JARVIS says in one language without asking the model. */
+export interface SpokenLines {
+  /**
+   * What fills the silence while a slow turn is still fetching.
+   *
+   * One is picked at random: a turn that needs half a minute is rare enough
+   * that a single fixed line would be a tic before it was a courtesy. Empty
+   * turns the acknowledgement off.
+   */
+  thinking: string[];
+  /**
+   * What is said when a turn was stopped by one of the brakes. Short on
+   * purpose: it is an admission, not an explanation.
+   */
+  stopped: string;
+  /**
+   * What is said when the plan is spent and the model cannot answer.
+   *
+   * `{reset}` becomes the time the window opens again, as an hour or a weekday
+   * and an hour; the sentence carrying it is dropped when that is not known.
+   */
+  limit: string;
+}
+
+/** The lines a deployment gets without writing any of its own. */
+const BUILT_IN_LINES: Record<SpeechLang, SpokenLines> = {
+  en: {
+    thinking: ["One moment.", "Let me look.", "Bear with me."],
+    stopped:
+      "I did not get to the bottom of that in one go. Say the word and I will have it looked into.",
+    limit:
+      "I have reached the limit of my plan and cannot look anything up right now. It opens again at {reset}.",
+  },
+  nl: {
+    thinking: ["Momentje.", "Even kijken.", "Ik zoek het op."],
+    stopped: "Dat kreeg ik niet in één keer rond. Zeg het maar, dan laat ik het uitzoeken.",
+    limit:
+      "Ik zit aan de limiet van mijn plan en kan nu even niets opzoeken. Vanaf {reset} kan het weer.",
+  },
+};
+
+/**
+ * One language's lines, from the environment where it names them.
+ *
+ * `JARVIS_THINKING_LINES_NL` is the Dutch set, `_EN` the English one. The
+ * unsuffixed names are older than the switch: they were written in whatever
+ * language the deployment spoke, so they still count for the language it
+ * starts in, and for no other -- a Dutch sentence is no fallback for English.
+ */
+function spokenLinesFor(lang: SpeechLang, starting: SpeechLang): SpokenLines {
+  const base = BUILT_IN_LINES[lang];
+  const named = (name: string): string | null => {
+    const suffixed = `${name}_${lang.toUpperCase()}`;
+    if (process.env[suffixed] !== undefined) return suffixed;
+    return lang === starting ? name : null;
+  };
+  const thinking = named("JARVIS_THINKING_LINES");
+  const stopped = named("JARVIS_STOPPED_SENTENCE");
+  const limit = named("JARVIS_LIMIT_SENTENCE");
+  return {
+    thinking: thinking === null ? base.thinking : envList(thinking, base.thinking),
+    stopped: stopped === null ? base.stopped : envString(stopped, base.stopped),
+    limit: limit === null ? base.limit : envString(limit, base.limit),
+  };
+}
 
 /**
  * How far JARVIS is allowed to go on his own.
@@ -172,14 +238,6 @@ export interface Config {
   fishLatency: "balanced" | "normal";
   /** Whether Fish expands numbers and dates before reading them. */
   fishNormalize: boolean;
-  /**
-   * What is said when the plan is spent and the model cannot answer.
-   *
-   * `{reset}` becomes the time the window opens again, as an hour or a weekday
-   * and an hour; the sentence carrying it is dropped when that is not known.
-   * Spoken, so it belongs to the deployment's language.
-   */
-  limitSentence: string;
   /** From which percentage of a window the model is told to economise. */
   planWarnPct: number;
   /** How evenly the voice reads: 0 performs, 1 keeps one register. */
@@ -212,31 +270,23 @@ export interface Config {
   /** What one question may cost before the turn is stopped, in dollars. 0 does not stop it. */
   maxTurnUsd: number;
   /**
-   * The language this deployment speaks and listens in.
+   * The language a deployment starts in, before anybody has chosen one.
    *
-   * One setting for the whole house: which voice reads an answer, which
-   * language the microphone is transcribed as, and what a fixed line is
-   * spoken in when the caller names no language of its own. It does not
-   * translate anything -- the persona decides what the assistant writes,
-   * and this says how what it writes is heard, so the two belong together.
+   * Only the starting point: the HUD switches between the languages while the
+   * brain runs, and that choice is kept in the deployment's own database rather
+   * than here -- see `language.ts`. Whichever language is current decides what
+   * the assistant answers in, which voice reads the answer, what the
+   * microphone is transcribed as, and which of the lines below are spoken.
    */
   speechLang: SpeechLang;
   /**
-   * What is said when a turn was stopped by one of those brakes.
+   * The lines JARVIS says himself rather than the model, one set per language.
    *
-   * Spoken, so it belongs to the deployment's language rather than to the
-   * program, and short on purpose: it is an admission, not an explanation.
+   * Spoken, so each belongs to a language rather than to the program; with the
+   * language switchable while the brain runs, every language needs its set
+   * ready, not only the one the deployment happened to start in.
    */
-  stoppedSentence: string;
-  /**
-   * What is said to fill the silence while a slow turn is still fetching.
-   *
-   * Spoken, so these belong to the deployment's language rather than to the
-   * program. One is picked at random: a turn that needs half a minute is rare
-   * enough that a single fixed line would be a tic before it was a courtesy.
-   * Empty turns the acknowledgement off.
-   */
-  thinkingLines: string[];
+  spoken: Record<SpeechLang, SpokenLines>;
   /**
    * How long a turn may work in silence before one of those lines is spoken.
    *
@@ -413,6 +463,7 @@ function envEnum<T extends string>(name: string, allowed: readonly T[], fallback
 export function loadConfig(): Config {
   const elevenLabsKey = envString("ELEVENLABS_API_KEY", "");
   const fishAudioKey = envString("FISH_AUDIO_API_KEY", "");
+  const speechLang = envEnum("JARVIS_SPEECH_LANG", SPEECH_LANGS, "en");
   return {
     port: envPort("JARVIS_PORT", 443),
     certDir: envString("JARVIS_CERT_DIR", "/etc/jarvis/certs"),
@@ -460,10 +511,6 @@ export function loadConfig(): Config {
     fishVoiceIdEn: envString("JARVIS_FISH_VOICE_ID_EN", ""),
     fishLatency: envEnum("JARVIS_FISH_LATENCY", ["balanced", "normal"] as const, "normal"),
     fishNormalize: envFlag("JARVIS_FISH_NORMALIZE", true),
-    limitSentence: envString(
-      "JARVIS_LIMIT_SENTENCE",
-      "I have reached the limit of my plan and cannot look anything up right now. It opens again at {reset}.",
-    ),
     planWarnPct: envNumber("JARVIS_PLAN_WARN_PCT", 75, 0, 100),
     // An assistant reading out the temperature is not performing, so the
     // defaults lean towards an even register rather than an expressive one: a
@@ -473,7 +520,8 @@ export function loadConfig(): Config {
     voiceSpeed: envDecimal("JARVIS_VOICE_SPEED", 1.0, 0.7, 1.2),
     voiceTimbre: envNumber("JARVIS_VOICE_TIMBRE", 0, 0, 100),
     memoryPanel: envEnum("JARVIS_MEMORY_PANEL", MEMORY_PANEL_MODES, "read"),
-    speechLang: envEnum("JARVIS_SPEECH_LANG", SPEECH_LANGS, "nl"),
+    speechLang,
+    spoken: { en: spokenLinesFor("en", speechLang), nl: spokenLinesFor("nl", speechLang) },
     model: envString("JARVIS_MODEL", "sonnet"),
     escalateModel: envString("JARVIS_ESCALATE_MODEL", ""),
     fallbackModel: envString("JARVIS_FALLBACK_MODEL", ""),
@@ -481,11 +529,6 @@ export function loadConfig(): Config {
     // the shape a brake should have: invisible until something is wrong.
     maxSteps: envNumber("JARVIS_MAX_STEPS", 16, 0, 200),
     maxTurnUsd: envMoney("JARVIS_MAX_TURN_USD", 0),
-    stoppedSentence: envString(
-      "JARVIS_STOPPED_SENTENCE",
-      "I did not get to the bottom of that in one go. Say the word and I will have it looked into.",
-    ),
-    thinkingLines: envList("JARVIS_THINKING_LINES", ["One moment.", "Let me look.", "Bear with me."]),
     // Long enough that an ordinary question -- one tool, an answer three
     // seconds later -- never hears it, short enough to land before the silence
     // is what he notices.

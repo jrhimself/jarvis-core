@@ -77,6 +77,13 @@ test("the SDK's report fills both windows and is refused when the token may not 
   assert.deepEqual(bindingWindow(usage), { utilization: 38, resetsAt: "2026-09-16T15:00:00Z" });
 });
 
+test("the reset is said in the language being spoken, not the locale's", () => {
+  amsterdam(() => {
+    assert.equal(describeReset(new Date(TONIGHT * 1000), NOW, "nl"), "2 uur vannacht");
+    assert.equal(describeReset(new Date(TONIGHT * 1000), NOW, "en"), "2:00 a.m. tonight");
+  });
+});
+
 test("the reset is an hour tonight and a weekday later in the week", () => {
   amsterdam(() => {
     // NOW is two in the afternoon in Amsterdam.

@@ -23,7 +23,7 @@
 
 import { USAGE_LIMIT_ERROR_PREFIXES } from "@anthropic-ai/claude-agent-sdk";
 
-import { formatLocal, locale, type PlanUsage, type PlanWindow } from "@jarvis/shared";
+import { formatLocal, locale, type PlanUsage, type PlanWindow, type SpeechLang } from "@jarvis/shared";
 
 type Listener = (usage: PlanUsage) => void;
 
@@ -177,11 +177,13 @@ const ENGLISH_PART: Record<DayPart, [today: string, tomorrow: string, plain: str
  * "9 uur morgenochtend", "3 uur 30 vanmiddag". Beyond a day the weekday is
  * given by the caller and the part of day loses its "van": "'s nachts".
  */
-export function spokenHour(at: Date, now: Date, withinDay = true): string {
+export function spokenHour(at: Date, now: Date, withinDay = true, lang?: SpeechLang): string {
   const hour = Number(formatLocal(at, { hour: "numeric", hourCycle: "h23" }));
   const minute = Number(formatLocal(at, { minute: "numeric" }));
   const part = dayPart(hour);
-  const dutch = locale().toLowerCase().startsWith("nl");
+  // Named by the caller when it knows the language being spoken; the locale
+  // is only the guess for when it does not.
+  const dutch = lang === undefined ? locale().toLowerCase().startsWith("nl") : lang === "nl";
   const words = (dutch ? DUTCH_PART : ENGLISH_PART)[part];
   const when = !withinDay ? words[2] : sameDay(at, now) ? words[0] : words[1];
 
@@ -197,9 +199,9 @@ export function spokenHour(at: Date, now: Date, withinDay = true): string {
  * the day if that is within a day, a weekday before it otherwise. Local zone,
  * local language.
  */
-export function describeReset(at: Date, now = new Date()): string {
-  if (at.getTime() - now.getTime() < 24 * 60 * 60 * 1000) return spokenHour(at, now);
-  return `${formatLocal(at, { weekday: "long" })} ${spokenHour(at, now, false)}`;
+export function describeReset(at: Date, now = new Date(), lang?: SpeechLang): string {
+  if (at.getTime() - now.getTime() < 24 * 60 * 60 * 1000) return spokenHour(at, now, true, lang);
+  return `${formatLocal(at, { weekday: "long" })} ${spokenHour(at, now, false, lang)}`;
 }
 
 /**
@@ -230,10 +232,15 @@ export function isLimitMessage(text: string): boolean {
  * When no reset time is known, the sentence that wanted one is left out
  * rather than spoken with a hole in it.
  */
-export function limitSentence(template: string, usage: PlanUsage | null, now = new Date()): string {
+export function limitSentence(
+  template: string,
+  usage: PlanUsage | null,
+  now = new Date(),
+  lang?: SpeechLang,
+): string {
   const window = usage === null ? null : bindingWindow(usage);
   const resetsAt = window?.resetsAt ?? null;
-  if (resetsAt !== null) return template.replaceAll("{reset}", describeReset(new Date(resetsAt), now));
+  if (resetsAt !== null) return template.replaceAll("{reset}", describeReset(new Date(resetsAt), now, lang));
   return template
     .split(/(?<=[.!?])\s+/)
     .filter((sentence) => !sentence.includes("{reset}"))

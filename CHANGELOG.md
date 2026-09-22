@@ -15,6 +15,38 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [1.3.0] - 2026-09-22
+
+### Added
+
+- A language switch in the HUD's header: **Lang EN/NL**, the language being spoken lit. It
+  switches the whole deployment, every open page hears about it at once, and the choice is
+  kept in the deployment's own database rather than in a file, so it survives a restart and
+  is never part of anybody's configuration. A new `set_lang` client message asks for it; a
+  new `lang` server message says where it stands, on connecting and after every switch.
+- The model is told which language to answer in at the very top of its instructions, above
+  the persona. A persona, a memory and a set of tool descriptions written in Dutch outvoted
+  a single line about answering in English wherever it was put after them; first, and
+  naming the rest as material rather than as the language to use, it holds. A persona no
+  longer needs a line about language at all.
+- Spoken lines per language: `JARVIS_THINKING_LINES`, `JARVIS_STOPPED_SENTENCE` and
+  `JARVIS_LIMIT_SENTENCE` take `_EN` and `_NL` suffixes, and both languages have built-in
+  lines. The unsuffixed names still count, for the language the deployment starts in.
+- The Telegram chat's own two sentences (still busy, no answer) follow the language too.
+
+### Changed
+
+- `JARVIS_SPEECH_LANG` defaults to `en` and is now where a deployment starts rather than a
+  fixed setting. A deployment that relied on the Dutch default sets `JARVIS_SPEECH_LANG=nl`,
+  or switches once in the HUD.
+- A switch takes effect from the next question, and that question opens a fresh
+  conversation: the system prompt is written once per session, and a session told two
+  languages keeps neither reliably.
+- The hour in the plan's limit sentence follows the language being spoken rather than the
+  locale.
+- A line said through `say` without a language, and the brain's own announcements, are
+  spoken in the current language; the HUD no longer fills in Dutch for them.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added

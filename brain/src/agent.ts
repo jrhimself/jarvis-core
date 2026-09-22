@@ -14,6 +14,7 @@
 import { randomUUID } from "node:crypto";
 
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SpeechLang } from "@jarvis/shared";
 
 import { loadConfig, proactiveAtLeast } from "./config.js";
 import { describeDeployment, deploymentBlock } from "./deployment.js";
@@ -48,6 +49,7 @@ import { recipesBlock } from "./memory/recipes.js";
 import { distilSession } from "./memory/distiller.js";
 import { memory } from "./memory/store.js";
 import { usageFromResult } from "./memory/usage.js";
+import { language, languageBlock } from "./language.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
@@ -182,6 +184,14 @@ export class AgentSession {
    * down, and it has to survive the process being replaced mid-conversation.
    */
   readonly id = randomUUID();
+  /**
+   * The language this conversation was opened in.
+   *
+   * Fixed for the life of the session, because it is written into the system
+   * prompt and that is written once. A switch is picked up by the conversation
+   * noticing the difference and opening a new session.
+   */
+  readonly lang: SpeechLang = language().current;
   #active: ActiveTurn | null = null;
   #queue: SDKUserMessage[] = [];
   #wake: (() => void) | null = null;
@@ -283,7 +293,12 @@ export class AgentSession {
     // is the paragraph that bounds the rest: the persona describes an assistant
     // with a house, and on a machine without one that description is the thing
     // being contradicted.
+    //
+    // The language goes before all of it. The persona, the memory and the
+    // packs are each written in one language, and a rule about the answer's
+    // language anywhere after them is outvoted by the language they are in.
     const systemPrompt = [
+      languageBlock(this.lang),
       persona.text,
       deploymentBlock(deployment),
       ...packs.persona,
@@ -432,7 +447,7 @@ export class AgentSession {
             const active = this.#active;
             if (active !== null && active.text === "") {
               console.warn(`agent: the plan is spent -- ${typeof firstText === "string" ? firstText : "rate_limit"}`);
-              const sentence = limitSentence(config.limitSentence, planUsage());
+              const sentence = limitSentence(config.spoken[this.lang].limit, planUsage(), new Date(), this.lang);
               active.text = sentence;
               active.handlers.onLimit?.();
               active.handlers.onText(sentence);
@@ -477,8 +492,8 @@ export class AgentSession {
           const active = this.#active;
           if (active !== null && active.text === "" && typeof subtype === "string" && subtype.startsWith("error_")) {
             console.warn(`agent: a turn was stopped (${subtype})`);
-            active.text = config.stoppedSentence;
-            active.handlers.onText(config.stoppedSentence);
+            active.text = config.spoken[this.lang].stopped;
+            active.handlers.onText(active.text);
           }
           this.#active?.finish();
           void this.#refreshPlan();

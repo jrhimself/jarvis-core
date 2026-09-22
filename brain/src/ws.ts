@@ -13,7 +13,8 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import { packSummary } from "./agent.js";
 import { loadConfig } from "./config.js";
-import { Conversation } from "./conversation.js";
+import { Conversation, warmRecordedLines } from "./conversation.js";
+import { language } from "./language.js";
 import { runHealthChecks, specsFor } from "./health.js";
 import { screenGone } from "./screens.js";
 import { addLiveSession } from "./live.js";
@@ -103,6 +104,11 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     if (known !== null) send({ kind: "usage", usage: known });
     const forgetPlan = onPlanUsage((usage) => send({ kind: "usage", usage }));
 
+    // The language switch: where it stands, and every flip after, whichever
+    // page flipped it.
+    send({ kind: "lang", lang: language().current });
+    const forgetLang = language().onChange((lang) => send({ kind: "lang", lang }));
+
     // Ask every dependency whether it actually answers, and tell the HUD.
     // "ready" alone only ever proved the websocket; a dead bridge or an
     // expired mail token should be visible before the first question, not
@@ -166,7 +172,19 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       }
 
       if (message.kind === "say") {
-        void conversation.say(message.turnId, message.text, message.lang ?? config.speechLang);
+        void conversation.say(message.turnId, message.text, message.lang);
+        return;
+      }
+
+      if (message.kind === "set_lang") {
+        if (language().set(message.lang)) {
+          console.log(`language: switched to ${message.lang}`);
+          // The lines that fill a silence are recorded ahead, once per language;
+          // a language nobody spoke before has none yet.
+          void warmRecordedLines(message.lang).catch((error: unknown) =>
+            console.warn("language: could not record the lines:", error),
+          );
+        }
         return;
       }
 
@@ -211,7 +229,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             listener?.close();
             listener = null;
           },
-        });
+        }, language().current);
         return;
       }
 
@@ -239,6 +257,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       clearInterval(watchTimer);
       forgetLiveSession();
       forgetPlan();
+      forgetLang();
       listener?.close();
       conversation.close();
     };

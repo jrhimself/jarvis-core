@@ -1,5 +1,7 @@
 <!-- An example persona. Copy it to config/persona.md and make it yours: the
-     tone, the language, the routines, the name of whoever you are talking to.
+     tone, the routines, the name of whoever you are talking to. Which language
+     JARVIS answers in is not the persona's to say: it is the HUD's language
+     switch, and the model is told it above everything written here.
      Nothing here is required -- what is here is what one working deployment
      found worth saying, and every line of it is spoken out loud.
 
@@ -108,5 +110,3 @@ nergens vastgelegd, zeg dat dan en gis er niet naar.
 
 Kondig niet aan wat je gaat doen. Zoek op wat je nodig hebt en antwoord dan; zinnen als
 "even de details ophalen" worden hardop uitgesproken en zijn puur wachttijd.
-
-Je spreekt Nederlands.

@@ -89,6 +89,13 @@ header{grid-column:1/4;z-index:3;display:flex;align-items:center;justify-content
   padding:6px 11px;border:1px solid var(--line);border-radius:100px;
   background:var(--panel);color:var(--muted);white-space:nowrap;text-transform:uppercase}
 .pill b{color:var(--text);font-weight:500}
+/* The language switch looks like the pills around it and says both languages,
+   the one being spoken lit and the other dimmed, so what a tap does is on it. */
+.lang-switch{font-family:inherit;cursor:pointer;transition:.25s}
+.lang-switch:hover,.lang-switch:focus-visible{color:var(--accent);border-color:hsla(var(--hue),90%,60%,.55);
+  box-shadow:0 0 18px hsla(var(--hue),100%,60%,.16);outline:none}
+.lang-switch b span{color:var(--muted);transition:color .25s}
+.lang-switch b span.on{color:var(--text)}
 /* Memory and the tour are appended to this row by their own modules, so their
    place in the DOM is whichever module ran first. Where they sit is a layout
    decision, so it is made here rather than left to that: both after the status
@@ -639,6 +646,7 @@ footer{grid-column:1/4;z-index:3;padding:0 26px 18px;display:flex;align-items:ce
       <div class="pill"><i class="dot off" id="dVoice"></i>Voice <b id="voiceState">local</b></div>
       <div class="pill">Latency <b id="lat">—</b></div>
       <div class="pill" id="planPill"><i class="dot off" id="dPlan"></i>Plan <b id="planState">—</b></div>
+      <button class="pill lang-switch" id="langBtn" type="button" title="Switch language">Lang <b><span data-lang="en" class="on">EN</span>/<span data-lang="nl">NL</span></b></button>
     </div>
     <div class="clock"><div class="t" id="clockT">--:--</div><div class="d" id="clockD"></div></div>
   </header>
@@ -1836,12 +1844,40 @@ const wait = ms => new Promise(r=>setTimeout(r,ms));
 const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
 let rec=null, recActive=false;
 
-/* Which language this deployment is spoken to in. The brain owns the setting
-   and the page asks for it below; until the answer lands, Dutch, which is what
-   the brain falls back on too. Both halves of speech read this: what the
-   browser transcribes, and the voice it reads an answer with when the brain
-   cannot speak. */
-let speechTag='nl-NL';
+/* Which language JARVIS is spoken to in. The brain owns the setting: it says
+   which one on connecting and again after every switch, from this page or any
+   other, and the page only follows. Until it has said, English, which is where
+   a deployment starts. Both halves of speech read this: what the browser
+   transcribes, and the voice it reads an answer with when the brain cannot
+   speak. */
+const LANG_TAGS={en:'en-GB', nl:'nl-NL'};
+const LANG_NAMES={en:'English', nl:'Dutch'};
+let speechLang='en', speechTag=LANG_TAGS.en;
+
+/* True when this changed the language. */
+function applyLang(lang){
+  if(!LANG_TAGS[lang]) return false;
+  const changed=lang!==speechLang;
+  speechLang=lang; speechTag=LANG_TAGS[lang];
+  /* A recogniser that already exists keeps the language it was built with,
+     so it is told rather than left listening for the wrong one. */
+  if(rec) try{ rec.lang=speechTag; }catch(e){}
+  const btn=$('#langBtn');
+  if(btn){
+    btn.querySelectorAll('[data-lang]').forEach(s=>s.classList.toggle('on', s.dataset.lang===lang));
+    const other=lang==='en'?'nl':'en';
+    btn.title='Speaking '+LANG_NAMES[lang]+' \u2014 switch to '+LANG_NAMES[other];
+  }
+  return changed;
+}
+
+/* Asks, and waits to be told: the brain answers every open page with the new
+   language, this one included, so there is one path by which a page learns it. */
+$('#langBtn').addEventListener('click', ()=>{
+  const next=speechLang==='en'?'nl':'en';
+  if(!connOk()){ sys('brain unreachable \u2014 language not switched'); return; }
+  ws.send(JSON.stringify({kind:'set_lang', lang:next}));
+});
 
 function initSR(){
   if(!SR) return null;
@@ -2254,6 +2290,10 @@ function onBrainMessage(m){
   if(m.kind==='listen'){ onListen(m); return; }
   if(m.kind==='transcript'){ onTranscript(m); return; }
   if(m.kind==='announce'){ speakUnprompted(m.text, m.lang); return; }
+  if(m.kind==='lang'){
+    if(applyLang(m.lang)) sys('speaking '+LANG_NAMES[m.lang]);
+    return;
+  }
   if(!turn || m.turnId!==turn.id) return;                   // late brok van een afgebroken beurt
   if(m.kind==='display') onDisplay(m);
   else if(m.kind==='voice') onVoice(m);
@@ -2468,7 +2508,7 @@ function announce(text,lang){
   $('#liveText').textContent='';
   setMode('speaking');
   turn.step='tts'; turn.stepAt=performance.now(); stepActive('tts');
-  ws.send(JSON.stringify({kind:'say',text,turnId:id,lang:lang==='en'?'en':'nl'}));
+  ws.send(JSON.stringify(LANG_TAGS[lang] ? {kind:'say',text,turnId:id,lang} : {kind:'say',text,turnId:id}));
   return id;
 }
 window.jarvisAnnounce=announce;
@@ -2992,12 +3032,7 @@ function setVoiceTimbre(amount){
    than assumes. It arrives long before the first answer; if it somehow does
    not, the chain is already there at zero and the next update simply moves it. */
 fetch('/api/config').then(r=>r.json()).then(cfg=>{
-  if(cfg && cfg.speechLang==='en'){
-    speechTag='en-GB';
-    /* A recogniser that already exists keeps the language it was built with,
-       so it is told rather than left listening for the wrong one. */
-    if(rec) try{ rec.lang=speechTag; }catch(e){}
-  }
+  if(cfg && cfg.speechLang) applyLang(cfg.speechLang);
   const amount=Number(cfg && cfg.voiceTimbre);
   if(!Number.isFinite(amount)) return;
   voice.timbreAmount=amount;
