@@ -53,6 +53,11 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Fixed
 
+- A briefing answered in Dutch on an English deployment. The note in front of the question held
+  for a question answered in one breath; a briefing reads seven tool answers written in Dutch after
+  it, and the thing read last decides. The note is now said again after every batch of tool
+  answers, before the next model request (a `PostToolBatch` hook), and the repeated briefing
+  names the language whatever language its text was said in.
 - The agenda window came back. It waited for the word "agenda", and a briefing given in English
   says "calendar" -- so it waited through the whole briefing and went up when the answer was over,
   under no sentence at all, to be taken down by the next question. With the language switch above

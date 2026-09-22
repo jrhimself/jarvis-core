@@ -79,7 +79,7 @@ test("the instruction to repeat carries the text, and a translation note when th
   assert.match(same, /12 minutes ago/);
   assert.match(same, /Do not fetch anything\./);
   assert.ok(same.endsWith("\n\nHet regent."));
-  assert.doesNotMatch(same, /say it in/);
+  assert.match(same, /Say it in Dutch, whatever language the text below is in/);
   assert.match(repeatInstruction(cached, "en"), /given in Dutch; say it in English/);
 });
 

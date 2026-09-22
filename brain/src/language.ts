@@ -19,6 +19,7 @@
  */
 
 import type { SpeechLang } from "@jarvis/shared";
+import type { HookCallbackMatcher, HookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
 
 import { loadConfig, SPEECH_LANGS } from "./config.js";
 import { memory } from "./memory/store.js";
@@ -120,4 +121,27 @@ export function languageBlock(lang: SpeechLang): string {
     `The language is switched with the language button on the screen; if you are asked to`,
     `speak another one, say so in ${name}.`,
   ].join(" ");
+}
+
+/**
+ * The same note, after every round of tool answers.
+ *
+ * The note in front of the question holds for a question answered in one
+ * breath. A briefing is not: seven tools answer in the language the packs were
+ * written in, the model reads all of them after the note, and the thing read
+ * last is a page of Dutch. So the note is said again where the last thing read
+ * is -- once per batch of tool answers, before the next model request, which
+ * is what `PostToolBatch` is for. `additionalContext` is how a hook gets a
+ * line in front of the model without touching the tool answers themselves.
+ */
+export function languageHook(lang: SpeechLang): HookCallbackMatcher {
+  const output: HookJSONOutput = {
+    hookSpecificOutput: {
+      hookEventName: "PostToolBatch",
+      additionalContext:
+        `${languageNote(lang)} The tool answers above may be in another language; ` +
+        `that is material to work from. Everything you say from here is in ${NAMES[lang]}.`,
+    },
+  };
+  return { hooks: [async () => output] };
 }

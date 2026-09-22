@@ -6,13 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  Language,
-  LANGUAGE_SETTING,
-  languageBlock,
-  languageNote,
-  type SettingStore,
-} from "../dist/language.js";
+import { LANGUAGE_SETTING, Language, languageBlock, languageHook, languageNote, type SettingStore } from "../dist/language.js";
 
 function table(initial: Record<string, string> = {}): SettingStore & { rows: Map<string, string> } {
   const rows = new Map(Object.entries(initial));
@@ -64,4 +58,21 @@ test("the model is told the language by name, and that its material may be in an
 test("the note in front of a question names the language and nothing else", () => {
   assert.equal(languageNote("en"), "[Answer in English.]");
   assert.equal(languageNote("nl"), "[Answer in Dutch.]");
+});
+
+test("after every batch of tool answers the model is told the language once more", async () => {
+  const matcher = languageHook("en");
+  assert.equal(matcher.hooks.length, 1);
+  const hook = matcher.hooks[0];
+  assert.ok(hook !== undefined);
+  const output = await hook(
+    { hook_event_name: "PostToolBatch", session_id: "s", transcript_path: "", cwd: "", tool_calls: [] } as never,
+    undefined,
+    { signal: new AbortController().signal },
+  );
+  const specific = (output as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } })
+    .hookSpecificOutput;
+  assert.equal(specific?.hookEventName, "PostToolBatch");
+  assert.match(specific?.additionalContext ?? "", /^\[Answer in English\.\]/);
+  assert.match(specific?.additionalContext ?? "", /from here is in English/);
 });

@@ -57,7 +57,7 @@ import { recipesBlock } from "./memory/recipes.js";
 import { distilSession } from "./memory/distiller.js";
 import { memory } from "./memory/store.js";
 import { usageFromResult } from "./memory/usage.js";
-import { language, languageBlock, languageNote } from "./language.js";
+import { language, languageBlock, languageHook, languageNote } from "./language.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
@@ -395,6 +395,10 @@ export class AgentSession {
         tools: [],
         // Nothing from ~/.claude should leak into the assistant's behaviour.
         settingSources: [],
+        // The language, said again after every round of tool answers: a turn
+        // that reads seven Dutch tool answers after an English note answers in
+        // Dutch otherwise.
+        hooks: { PostToolBatch: [languageHook(this.lang)] },
         includePartialMessages: true,
       },
     });

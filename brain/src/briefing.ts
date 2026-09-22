@@ -130,9 +130,12 @@ function minutesAgo(iso: string, now: number): number {
  * tests, and so the wording lives in one place.
  */
 export function repeatInstruction(cached: CachedBriefing, lang: SpeechLang, now = Date.now()): string {
+  // The language is named every time, not only when the switch was flipped in
+  // between: the text below is whatever was said, and what was said is not
+  // always the language the session was in.
   const translate =
     cached.lang === lang
-      ? ""
+      ? ` Say it in ${NAMES[lang]}, whatever language the text below is in.`
       : ` It was given in ${NAMES[cached.lang]}; say it in ${NAMES[lang]}.`;
   return (
     `The briefing from ${clock(cached.at)} (${minutesAgo(cached.at, now)} minutes ago). ` +
