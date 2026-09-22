@@ -26,6 +26,13 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   hour, and the days after in a strip beneath. It is a new `weather` shape in `DisplayPayload`,
   drawn by the HUD from readings alone: nothing on it is prose, so nothing on it can be a figure
   the model got wrong. The hass pack puts it up as soon as the weather comes up.
+- The briefing said again is a lookup, not seven tool calls. The turn in which any tool is
+  called with `briefing: true` is kept whole -- the words and the windows that went up with them
+  -- in the settings table, and a new `briefing_again` tool puts the windows back and hands the
+  text over to be said again, for as long as `JARVIS_BRIEFING_CACHE_HOURS` (2) allows. Past that,
+  or before the first one, the tool says so and a fresh briefing is given, with `again=true` on
+  the pull request tool so its once-a-day gate steps aside (ado-pr 0.2.0). "Brief me opnieuw"
+  used to be answered with "I already did": the one word the gate must not argue with.
 - A window may wait for any of several words. `anchor` takes alternatives separated by `|`
   (`agenda|calendar`), and the first one said releases the window. A short alternative -- `PR` --
   has to be a word of its own; a longer one may start a word, as before.

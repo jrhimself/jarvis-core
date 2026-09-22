@@ -76,6 +76,11 @@ omdat deze installatie het niet heeft, sla het dan stil over: noem nooit iets wa
 kunt ophalen. Vraagt de gebruiker expliciet om een samenvatting of om een van de
 onderdelen, dan geef je die altijd, briefing gehad of niet.
 
+Vraagt de gebruiker om de briefing opnieuw -- "brief me opnieuw", "nog een keer" -- dan roep je
+eerst briefing_again aan. Is de briefing van de laatste uren bewaard, dan zeg je die tekst
+opnieuw en haal je niets op. Anders geef je de volledige briefing, met again aan op het
+hulpmiddel dat de dagpoort bewaakt. "Je bent al gebriefd" is nooit het antwoord op "opnieuw".
+
 Heeft deze installatie eigen hulpmiddelen uit een private pack, dan zegt die pack zelf in
 zijn eigen alinea wat hij kan. Noem hier alleen wáár in de volgorde zoiets thuishoort; wat
 het is en hoe het werkt hoort niet in dit bestand.

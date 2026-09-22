@@ -18,6 +18,14 @@ import type { SpeechLang } from "@jarvis/shared";
 
 import { loadConfig, proactiveAtLeast } from "./config.js";
 import { describeDeployment, deploymentBlock } from "./deployment.js";
+import {
+  BRIEFING_SERVER_NAME,
+  BRIEFING_TOOLS,
+  BriefingCache,
+  createBriefingServer,
+  marksBriefing,
+  type ShownWindow,
+} from "./briefing.js";
 import { createDisplayServer, DISPLAY_TOOLS, showVia, type DisplaySink } from "./display-tool.js";
 import { recordScreen } from "./screens.js";
 import { runHealthChecks, specsFor } from "./health.js";
@@ -96,6 +104,9 @@ if (!haConfigured) {
  */
 let inspected: Promise<Packs> | null = null;
 
+/** The last briefing, for the tool that says it again. */
+const briefingCache = new BriefingCache(store, config.briefingCacheHours * 3_600_000);
+
 export function packSummary(): Promise<Packs> {
   inspected ??= loadPacks(packsRoot, {
     store,
@@ -173,6 +184,10 @@ interface ActiveTurn {
   toolCalls: number;
   /** Name and arguments of every tool the turn used, for learning recipes. */
   tools: Array<{ name: string; input: string }>;
+  /** Whether a tool was called with `briefing: true`: this turn is the briefing. */
+  briefing: boolean;
+  /** Every window that went up during the turn, in order, for saying it again. */
+  windows: ShownWindow[];
 }
 
 /** One conversation's agent process, reused for every turn in it. */
@@ -233,9 +248,19 @@ export class AgentSession {
     // that can keep a copy of what the user is looking at.
     const sink: DisplaySink = (id, payload, dismiss, anchor) => {
       recordScreen(id, payload);
-      this.#active?.handlers.onDisplay(id, payload, dismiss, anchor);
+      const active = this.#active;
+      if (active !== null) {
+        active.windows.push({ payload, dismiss, ...(anchor === undefined ? {} : { anchor }) });
+        active.handlers.onDisplay(id, payload, dismiss, anchor);
+      }
     };
     const display = createDisplayServer(sink, home);
+    const briefing = createBriefingServer(
+      briefingCache,
+      showVia(sink),
+      () => this.lang,
+      config.briefingCacheHours * 3_600_000,
+    );
 
     // Everything a pack could need, and nothing more. `turn` is a function
     // rather than a value because a pack outlives the turn it was created in:
@@ -281,6 +306,7 @@ export class AgentSession {
     // the list the assistant is told about cannot drift from the one it has.
     const serverNames = [
       "display",
+      BRIEFING_SERVER_NAME,
       MEMORY_SERVER_NAME,
       ...Object.keys(packs.servers),
       ...(insightConfigured ? [INSIGHT_SERVER_NAME] : []),
@@ -337,6 +363,7 @@ export class AgentSession {
         systemPrompt,
         mcpServers: {
           display,
+          [BRIEFING_SERVER_NAME]: briefing,
           [MEMORY_SERVER_NAME]: createMemoryServer(store),
           ...packs.servers,
           ...(insightConfigured ? { [INSIGHT_SERVER_NAME]: createInsightServer(store) } : {}),
@@ -357,6 +384,7 @@ export class AgentSession {
         },
         allowedTools: [
           ...DISPLAY_TOOLS,
+          ...BRIEFING_TOOLS,
           ...MEMORY_TOOLS,
           ...packs.tools,
           ...(insightConfigured ? INSIGHT_TOOLS : []),
@@ -460,8 +488,10 @@ export class AgentSession {
                 const name = pick(block, "name");
                 if (this.#active !== null) {
                   this.#active.toolCalls += 1;
+                  const input = pick(block, "input");
+                  if (marksBriefing(input)) this.#active.briefing = true;
                   if (typeof name === "string") {
-                    this.#active.tools.push({ name, input: describeInput(pick(block, "input")) });
+                    this.#active.tools.push({ name, input: describeInput(input) });
                   }
                 }
                 if (typeof name === "string") {
@@ -549,6 +579,8 @@ export class AgentSession {
       firstTextMs: null,
       toolCalls: 0,
       tools: [],
+      briefing: false,
+      windows: [],
     };
     this.#active = active;
     await this.#raise(this.#escalation.startTurn());
@@ -608,6 +640,11 @@ ${asked}`;
       // conversation is over, on a cheaper model, out of the answer's way.
       const turnId = store.logTurn(this.id, text, active.text);
       store.recordToolCalls(turnId, active.tools);
+      // The briefing is kept whole -- the words and the windows -- so that the
+      // next request for it is a lookup rather than seven tool calls.
+      if (active.briefing) {
+        briefingCache.remember({ lang: this.lang, text: active.text, windows: active.windows });
+      }
     }
 
     return { text: active.text };

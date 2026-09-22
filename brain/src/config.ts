@@ -267,6 +267,8 @@ export interface Config {
   fallbackModel: string;
   /** How many steps one question may take before the turn is stopped. 0 does not stop it. */
   maxSteps: number;
+  /** How long a briefing is repeated from memory rather than fetched again, in hours. 0 keeps none. */
+  briefingCacheHours: number;
   /** What one question may cost before the turn is stopped, in dollars. 0 does not stop it. */
   maxTurnUsd: number;
   /**
@@ -528,6 +530,9 @@ export function loadConfig(): Config {
     // Sixteen is roughly twice the longest turn seen in ordinary use, which is
     // the shape a brake should have: invisible until something is wrong.
     maxSteps: envNumber("JARVIS_MAX_STEPS", 16, 0, 200),
+    // Two hours: long enough that the second person into the kitchen hears the
+    // same morning, short enough that the afternoon gets its own weather.
+    briefingCacheHours: envDecimal("JARVIS_BRIEFING_CACHE_HOURS", 2, 0, 24),
     maxTurnUsd: envMoney("JARVIS_MAX_TURN_USD", 0),
     // Long enough that an ordinary question -- one tool, an answer three
     // seconds later -- never hears it, short enough to land before the silence
