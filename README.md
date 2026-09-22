@@ -105,7 +105,7 @@ it. Mail, read-only, with newsletters filtered out and a judgement about which m
 reply.
 
 **The screen.** Anything worth looking at goes on the display surface where the orb sits: a camera
-still or feed, an image it fetched, a sensor panel, a chart, a note. The browser never fetches a
+still or feed, an image it fetched, a sensor panel, a chart, a note, the weather as a picture. The browser never fetches a
 source itself — everything is pulled server-side with whatever credential it needs and handed to the
 page as an opaque path, so the house's token stays out of the browser. `show_camera` is only
 registered when there is a house that says it has cameras: the assistant reads its tool list as a
@@ -113,9 +113,10 @@ list of promises, and a promise it discovers is empty halfway through an answer 
 made out loud.
 
 Each of those appears at the moment it is being talked about rather than the moment its tool
-answered — a window may name a word to wait for, and is held until the voice reaches it. The one
-before it does not disappear: it shrinks into a row underneath, four in view at most. A morning
-briefing that covers the house, the mail and the agenda therefore ends with all three side by side,
+answered — a window may name a word to wait for, or several separated by `|` for a deployment that
+switches languages, and is held until the voice reaches one of them. The one before it does not
+disappear: it shrinks into a row underneath, four in view at most. A morning briefing that covers
+the weather, the agenda, the mail and the pull requests therefore ends with all four side by side,
 in the order they were spoken.
 
 **Itself.** What it noticed about the house and about its own jobs (`anomalies`), what earlier

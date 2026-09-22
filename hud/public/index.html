@@ -378,6 +378,61 @@ main.showing #display{display:flex}
 .dcard svg .dot{fill:hsl(var(--hue),90%,70%)}
 .dcard svg text{fill:var(--muted);font-size:10px}
 
+/* ---- the weather card ----
+   A forecast is looked at, not read: a sky, two temperatures, whether to take a
+   coat. Everything in here is drawn from the readings the pack handed over;
+   nothing is a row. The icons are inline SVG so they take the card's own hue
+   and its gold, and stay sharp at thumbnail size. */
+.dcard .wx{display:flex;flex-direction:column;gap:.55em;height:100%;min-height:0}
+.dcard .wx svg{width:auto;height:auto;display:block}
+.dcard .wx-now{display:flex;align-items:center;gap:1em;flex:none}
+.dcard .wx-now .ico{flex:0 0 auto;width:5em;height:5em}
+.dcard .wx-now .temps{display:flex;flex-direction:column;line-height:1;flex:none}
+.dcard .wx-now .hi{font-size:2.7em;font-weight:200;color:#e8f1f8;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em}
+.dcard .wx-now .lo{font-size:.95em;color:var(--muted);margin-top:.3em;font-variant-numeric:tabular-nums}
+.dcard .wx-now .sum{margin-left:auto;text-align:right;display:flex;flex-direction:column;gap:.3em;
+  font-size:.85em;color:var(--muted);min-width:0}
+.dcard .wx-now .sum b{display:block;font-weight:400;color:#e8f1f8;font-size:1.15em;letter-spacing:.02em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcard .wx-stat{display:flex;align-items:center;justify-content:flex-end;gap:.4em;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.dcard .wx-stat svg{width:1.15em;height:1.15em;flex:none}
+.dcard .wx-stat.on{color:hsl(var(--hue) 85% 72%)}
+.dcard .wx-curve{flex:1 1 auto;min-height:4.5em}
+.dcard .wx-curve svg{width:100%;height:100%}
+.dcard .wx-curve .wx-area{fill:hsla(var(--hue),85%,55%,.14)}
+.dcard .wx-curve .wx-line{fill:none;stroke:hsl(var(--hue),85%,62%);stroke-width:2.2;
+  stroke-linejoin:round;stroke-linecap:round}
+.dcard .wx-curve .wx-rain{fill:hsla(var(--hue),70%,55%,.45)}
+.dcard .wx-curve .wx-axis{stroke:rgba(255,255,255,.1);stroke-width:1}
+.dcard .wx-curve .wx-dot{fill:hsl(var(--hue),90%,70%)}
+.dcard .wx-curve text{fill:var(--muted);font-size:11px}
+.dcard .wx-curve text.wx-t{fill:#e8f1f8;font-size:12px}
+.dcard .wx-days{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.4em;flex:none;
+  border-top:1px solid rgba(255,255,255,.06);padding-top:.55em}
+.dcard .wx-day{display:flex;flex-direction:column;align-items:center;gap:.15em;font-size:.78em;
+  color:var(--muted);min-width:0;text-transform:none}
+.dcard .wx-day .ico{width:2.1em;height:2.1em}
+.dcard .wx-day b{font-weight:400;color:#e8f1f8;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dcard .wx-day small{font-size:.9em;white-space:nowrap}
+/* The icons' own colours: the sun is the gold everything else on the screen
+   lights up in, cloud is the text colour with the light behind it, rain and
+   snow take the accent. */
+.dcard .wx .sun{fill:hsl(var(--gold) 90% 62%)}
+.dcard .wx .ray{stroke:hsl(var(--gold) 90% 62%);stroke-width:3;stroke-linecap:round}
+.dcard .wx .moon{fill:hsl(var(--gold) 40% 82%)}
+.dcard .wx .cloud{fill:rgba(232,241,248,.82)}
+.dcard .wx .cloud.dark{fill:hsl(var(--hue) 18% 58%)}
+.dcard .wx .drop{stroke:hsl(var(--hue) 85% 65%);stroke-width:3;stroke-linecap:round}
+.dcard .wx .flake{fill:#e8f1f8}
+.dcard .wx .bolt{fill:hsl(var(--gold) 95% 60%)}
+.dcard .wx .gust{stroke:rgba(232,241,248,.7);stroke-width:3;stroke-linecap:round;fill:none}
+.dcard .wx .fogline{stroke:rgba(232,241,248,.45);stroke-width:3;stroke-linecap:round}
+.dcard .wx .warn{fill:none;stroke:hsl(var(--gold) 95% 60%);stroke-width:3;stroke-linejoin:round}
+.dcard .wx .arrow{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+.dcard .wx .dropico{fill:currentColor}
+
 @media (prefers-reduced-motion:reduce){
   #orb{transition:none}
   .dcard{animation:none}
@@ -1012,6 +1067,147 @@ function renderChart(p){
   return {node:svg, title:p.title||'trend'};
 }
 
+/* ---- weather ----
+   Home Assistant's condition enum, drawn. Every icon is the same 64x64 box, so a
+   day in the strip and the sky over the card are the same picture at two sizes.
+   Anything the enum does not cover is a cloud: a provider that invents a
+   condition is read out by the assistant, and a plain cloud is a better picture
+   of "we do not know" than a question mark. */
+const WX_CLOUD='M18 46 H44 A9 9 0 0 0 44 28 A13 13 0 0 0 22 32 A8 8 0 0 0 18 46 Z';
+function wxSun(cx,cy,r){
+  let out=`<circle class="sun" cx="${cx}" cy="${cy}" r="${r}"/>`;
+  for(let i=0;i<8;i++){
+    const a=i*Math.PI/4, x1=cx+Math.cos(a)*(r+4), y1=cy+Math.sin(a)*(r+4),
+          x2=cx+Math.cos(a)*(r+9), y2=cy+Math.sin(a)*(r+9);
+    out+=`<line class="ray" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+  }
+  return out;
+}
+function wxDrops(xs,long){
+  return xs.map(x=>`<line class="drop" x1="${x}" y1="50" x2="${x-3}" y2="${long?60:57}"/>`).join('');
+}
+function wxFlakes(xs){
+  return xs.map(x=>`<circle class="flake" cx="${x}" cy="55" r="2.2"/>`).join('');
+}
+const WX_ICONS={
+  'sunny':()=>wxSun(32,32,11),
+  'clear-night':()=>'<path class="moon" d="M40 12 A20 20 0 1 0 52 44 A15 15 0 0 1 40 12 Z"/>',
+  'partlycloudy':()=>wxSun(42,22,8)+`<path class="cloud" d="${WX_CLOUD}" transform="translate(-4 4) scale(.92)"/>`,
+  'cloudy':()=>`<path class="cloud" d="${WX_CLOUD}"/>`,
+  'rainy':()=>`<path class="cloud" d="${WX_CLOUD}" transform="translate(0 -6)"/>`+wxDrops([26,34,42]),
+  'pouring':()=>`<path class="cloud dark" d="${WX_CLOUD}" transform="translate(0 -6)"/>`+wxDrops([22,29,36,43],true),
+  'lightning':()=>`<path class="cloud dark" d="${WX_CLOUD}" transform="translate(0 -8)"/>`+
+                  '<path class="bolt" d="M35 36 L27 50 L33 50 L29 62 L41 44 L35 44 L39 36 Z"/>',
+  'lightning-rainy':()=>`<path class="cloud dark" d="${WX_CLOUD}" transform="translate(0 -8)"/>`+
+                  wxDrops([22,44])+'<path class="bolt" d="M35 36 L27 50 L33 50 L29 62 L41 44 L35 44 L39 36 Z"/>',
+  'snowy':()=>`<path class="cloud" d="${WX_CLOUD}" transform="translate(0 -6)"/>`+wxFlakes([25,33,41]),
+  'snowy-rainy':()=>`<path class="cloud" d="${WX_CLOUD}" transform="translate(0 -6)"/>`+wxDrops([26,42])+wxFlakes([34]),
+  'hail':()=>`<path class="cloud dark" d="${WX_CLOUD}" transform="translate(0 -6)"/>`+
+             [24,32,40].map(x=>`<circle class="flake" cx="${x}" cy="56" r="2.6"/>`).join(''),
+  'fog':()=>`<path class="cloud" d="${WX_CLOUD}" transform="translate(0 -10)"/>`+
+            '<line class="fogline" x1="16" y1="48" x2="48" y2="48"/><line class="fogline" x1="22" y1="55" x2="42" y2="55"/>',
+  'windy':()=>'<path class="gust" d="M8 24 H38 A5 5 0 1 0 33 19"/><path class="gust" d="M8 34 H48 A5 5 0 1 1 43 39"/>'+
+              '<path class="gust" d="M14 44 H34 A4 4 0 1 0 30 40"/>',
+  'windy-variant':()=>`<path class="cloud" d="${WX_CLOUD}" transform="translate(4 -8) scale(.85)"/>`+
+              '<path class="gust" d="M6 46 H36 A5 5 0 1 1 31 51"/><path class="gust" d="M12 56 H28 A4 4 0 1 0 24 52"/>',
+  'exceptional':()=>'<path class="warn" d="M32 10 L56 52 H8 Z"/><line class="drop" x1="32" y1="26" x2="32" y2="38"/>'+
+                   '<circle class="flake" cx="32" cy="45" r="2"/>'
+};
+function wxIcon(condition, cls){
+  const draw=WX_ICONS[String(condition||'').toLowerCase()]||WX_ICONS.cloudy;
+  return `<svg class="${cls||'ico'}" viewBox="0 0 64 64" aria-hidden="true">${draw()}</svg>`;
+}
+const WX_DROP_ICO='<svg viewBox="0 0 24 24" aria-hidden="true"><path class="dropico" d="M12 2 C12 2 5 10.5 5 15 A7 7 0 0 0 19 15 C19 10.5 12 2 12 2 Z"/></svg>';
+function wxArrowIco(bearing){
+  // the arrow flies with the wind: a bearing is where it comes from
+  const rot=Number.isFinite(bearing) ? ((bearing+180)%360) : 0;
+  return `<svg viewBox="0 0 64 64" aria-hidden="true"><path class="arrow" d="M32 56 V12 M20 24 L32 12 L44 24" transform="rotate(${rot} 32 32)"/></svg>`;
+}
+const wxNum=v=>Number.isFinite(v) ? Math.round(v).toLocaleString('nl-NL') : null;
+
+/* Today by the hour: the temperature as a line, the rain as bars under it.
+   Labels every few hours and at the warmest and coldest point, which are the
+   two the eye wants; a curve with a number on every point is a table again. */
+function wxCurve(hours, units){
+  const pts=(hours||[]).filter(h=>Number.isFinite(h.temperature));
+  if(pts.length<3) return '';
+  const W=640,H=180,L=10,R=10,T=26,B=24;
+  const temps=pts.map(h=>h.temperature);
+  let lo=Math.min(...temps), hi=Math.max(...temps);
+  if(hi-lo<4){ const mid=(hi+lo)/2; lo=mid-2; hi=mid+2; }
+  const x=i=>L+(W-L-R)*(i/(pts.length-1));
+  const y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+  const rain=pts.map(h=>Number.isFinite(h.precipitation)?h.precipitation:(Number.isFinite(h.precipitationChance)?h.precipitationChance/100:0));
+  const byMm=pts.some(h=>Number.isFinite(h.precipitation));
+  const rainMax=Math.max(byMm?1:0.5, ...rain);
+  const slot=(W-L-R)/Math.max(1,pts.length-1);
+  let bars='';
+  rain.forEach((r,i)=>{
+    if(!(r>0)) return;
+    const h=Math.max(2,(H-T-B)*0.55*(r/rainMax));
+    bars+=`<rect class="wx-rain" x="${(x(i)-slot*0.32).toFixed(1)}" y="${(H-B-h).toFixed(1)}" width="${(slot*0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="2"/>`;
+  });
+  const line=pts.map((h,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(h.temperature).toFixed(1)}`).join(' ');
+  const area=`${line} L${x(pts.length-1).toFixed(1)},${H-B} L${x(0).toFixed(1)},${H-B} Z`;
+  const iHi=temps.indexOf(Math.max(...temps)), iLo=temps.indexOf(Math.min(...temps));
+  const deg=units&&units.temperature?units.temperature:'°';
+  const mark=i=>`<circle class="wx-dot" cx="${x(i).toFixed(1)}" cy="${y(temps[i]).toFixed(1)}" r="3.5"/>`+
+    `<text class="wx-t" x="${x(i).toFixed(1)}" y="${(y(temps[i])-9).toFixed(1)}" text-anchor="${i===0?'start':i===pts.length-1?'end':'middle'}">${esc(wxNum(temps[i])+deg)}</text>`;
+  // A clock every few hours, and the last one; a regular one that would sit
+  // on top of the last is left out rather than printed through it.
+  const every=Math.max(1,Math.round(pts.length/6));
+  let labels='';
+  pts.forEach((h,i)=>{
+    const last=i===pts.length-1;
+    if(!last && (i%every || pts.length-1-i<every)) return;
+    labels+=`<text x="${x(i).toFixed(1)}" y="${H-6}" text-anchor="${i===0?'start':last?'end':'middle'}">${esc(h.label||'')}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">`+
+    bars+`<path class="wx-area" d="${area}"/><path class="wx-line" d="${line}"/>`+
+    mark(iHi)+(iLo!==iHi?mark(iLo):'')+
+    `<line class="wx-axis" x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}"/>`+labels+'</svg>';
+}
+
+function renderWeather(p){
+  const days=Array.isArray(p.days)?p.days:[];
+  const today=days[0];
+  const wrap=document.createElement('div'); wrap.className='wx';
+  if(!today){
+    wrap.className='fallback'; wrap.textContent='no forecast';
+    return {node:wrap, title:p.title||'weather'};
+  }
+  const units=p.units||{}, deg=units.temperature||'°';
+  const hi=wxNum(today.high), lo=wxNum(today.low);
+  const stats=[];
+  if(Number.isFinite(today.precipitationChance)){
+    const c=Math.round(today.precipitationChance);
+    stats.push(`<span class="wx-stat${c>=50?' on':''}">${WX_DROP_ICO}${c} %</span>`);
+  }else if(Number.isFinite(today.precipitation)){
+    stats.push(`<span class="wx-stat${today.precipitation>=1?' on':''}">${WX_DROP_ICO}${esc(String(today.precipitation))} ${esc(units.precipitation||'mm')}</span>`);
+  }
+  if(Number.isFinite(today.windSpeed)||today.windDirection){
+    const speed=Number.isFinite(today.windSpeed)?`${wxNum(today.windSpeed)} ${esc(units.windSpeed||'')}`:'';
+    stats.push(`<span class="wx-stat">${wxArrowIco(today.windBearing)}${[speed,esc(today.windDirection||'')].filter(Boolean).join(' ')}</span>`);
+  }
+  const summary=today.summary||today.condition||'';
+  let html=`<div class="wx-now">${wxIcon(today.condition)}`+
+    `<div class="temps">${hi!==null?`<span class="hi">${hi}${esc(deg)}</span>`:''}`+
+    `${lo!==null?`<span class="lo">${lo}${esc(deg)}</span>`:''}</div>`+
+    `<div class="sum"><b title="${esc(summary)}">${esc(summary)}</b>${stats.join('')}</div></div>`;
+  const curve=wxCurve(p.hours, units);
+  if(curve) html+=`<div class="wx-curve">${curve}</div>`;
+  if(days.length>1){
+    html+='<div class="wx-days">'+days.slice(1,7).map(d=>{
+      const h=wxNum(d.high), l=wxNum(d.low);
+      const t=h!==null&&l!==null?`${l}${esc(deg)} / ${h}${esc(deg)}`:h!==null?`${h}${esc(deg)}`:'';
+      const rain=Number.isFinite(d.precipitationChance)?`<small>${Math.round(d.precipitationChance)} %</small>`:'';
+      return `<div class="wx-day"><span>${esc(d.label||'')}</span>${wxIcon(d.condition)}<b>${t}</b>${rain}</div>`;
+    }).join('')+'</div>';
+  }
+  wrap.innerHTML=html;
+  return {node:wrap, title:p.title||'weather'};
+}
+
 function renderNote(p){
   const d=document.createElement('div');
   d.className='note'; d.textContent=p.body||'';
@@ -1170,6 +1366,7 @@ function showCard(m){
           : p.type==='panel' ? renderPanel(p)
           : p.type==='chart' ? renderChart(p)
           : p.type==='text'  ? renderNote(p)
+          : p.type==='weather' ? renderWeather(p)
           : null;
   if(!r) return;
 
@@ -1210,13 +1407,29 @@ function onDisplay(m){
 function startPump(){ if(!dispPump) dispPump=setInterval(pumpDisplays, 60); }
 
 function cueReached(cue, text, seen){
-  const anchor=(cue.anchor||'').trim().toLowerCase();
-  if(anchor){
-    const at=text.toLowerCase().indexOf(anchor);
-    // not said yet: hold. If it is never said, the end of the turn releases it.
-    return at>=0 && seen>=at+anchor.length;
+  const anchors=String(cue.anchor||'').split('|').map(a=>a.trim().toLowerCase()).filter(Boolean);
+  if(anchors.length){
+    const lower=text.toLowerCase();
+    // Any one of them said releases it: "agenda" one morning, "calendar" the
+    // next, depending on the language he is speaking. Not said yet: hold. If
+    // none is ever said, the end of the turn releases it.
+    for(const anchor of anchors){
+      const at=anchorAt(lower, anchor);
+      if(at>=0 && seen>=at+anchor.length) return true;
+    }
+    return false;
   }
   return seen>=(cue.chars||0);
+}
+
+/* Where an anchor was said, or -1. A long one may start a word, so "mail" hears
+   "mailtje"; a short one -- "PR" -- has to be a word of its own, because as a
+   substring it is inside "problem" and "April". */
+function anchorAt(lower, anchor){
+  if(anchor.length>=4) return lower.indexOf(anchor);
+  const safe=anchor.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const m=new RegExp('(^|[^a-z0-9])'+safe+'(?![a-z0-9])').exec(lower);
+  return m ? m.index+m[1].length : -1;
 }
 
 /* Lighting the row he has reached. A row is lit once and never relit: `hot`

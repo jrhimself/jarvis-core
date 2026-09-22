@@ -19,6 +19,16 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Added
 
+- A weather window. The forecast used to be a sentence and a row of tiles; it is now a picture
+  where the orb sits, the same frame every other window has: the sky as an icon, the high and the
+  low, the chance of rain, the wind as an arrow flying the way it blows, a temperature curve
+  through the rest of today with the rain as bars under it when the provider forecasts by the
+  hour, and the days after in a strip beneath. It is a new `weather` shape in `DisplayPayload`,
+  drawn by the HUD from readings alone: nothing on it is prose, so nothing on it can be a figure
+  the model got wrong. The hass pack puts it up as soon as the weather comes up.
+- A window may wait for any of several words. `anchor` takes alternatives separated by `|`
+  (`agenda|calendar`), and the first one said releases the window. A short alternative -- `PR` --
+  has to be a word of its own; a longer one may start a word, as before.
 - A language switch in the HUD's header: **Lang EN/NL**, the language being spoken lit. It
   switches the whole deployment, every open page hears about it at once, and the choice is
   kept in the deployment's own database rather than in a file, so it survives a restart and
@@ -33,6 +43,16 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   `JARVIS_LIMIT_SENTENCE` take `_EN` and `_NL` suffixes, and both languages have built-in
   lines. The unsuffixed names still count, for the language the deployment starts in.
 - The Telegram chat's own two sentences (still busy, no answer) follow the language too.
+
+### Fixed
+
+- The agenda window came back. It waited for the word "agenda", and a briefing given in English
+  says "calendar" -- so it waited through the whole briefing and went up when the answer was over,
+  under no sentence at all, to be taken down by the next question. With the language switch above
+  that was every morning. The packs now name the word in both languages (hass 0.6.0), and the pull
+  requests get a window of their own the same way (ado-pr 0.2.0): what is being talked about is on
+  screen while it is being talked about, in the order it is spoken -- weather, agenda, mail, pull
+  requests, four windows, which is exactly what the row under the stage holds.
 
 ### Changed
 

@@ -108,3 +108,23 @@ test("the HUD's closed-window report is accepted, and a made-up reason is not", 
   assert.equal(parseClientMessage({ kind: "display_closed", id: "a1", reason: "bored" }), null);
   assert.equal(parseClientMessage({ kind: "display_closed", id: "", reason: "closed" }), null);
 });
+
+test("a weather window is summarised per day, from the readings it carried", () => {
+  forgetScreens();
+  recordScreen("wx", {
+    type: "weather",
+    title: "Weer",
+    units: { temperature: "°C", windSpeed: "km/h" },
+    days: [
+      { label: "vandaag", condition: "rainy", summary: "regen", high: 17, low: 12, precipitationChance: 70,
+        windSpeed: 20, windDirection: "ZW" },
+      { label: "morgen", high: 19 },
+    ],
+  });
+  const [record] = recentScreens(1);
+  assert.ok(record !== undefined);
+  const described = describeScreen(record);
+  assert.match(described, /weather -- Weer/);
+  assert.match(described, /- vandaag: regen, 12-17°C, rain 70%, wind 20km\/h ZW/);
+  assert.match(described, /- morgen: 19°C/);
+});

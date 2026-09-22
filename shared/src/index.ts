@@ -142,6 +142,61 @@ export type DisplayPayload =
       type: "text";
       title?: string;
       body: string;
+    }
+  | {
+      /**
+       * The weather as a picture rather than a table.
+       *
+       * A forecast read out loud is one sentence; the same forecast looked at
+       * is a sky, two temperatures and whether to take a coat, and none of
+       * those is a row in a table. So the pack that read it hands over the
+       * readings and the HUD draws them: a condition icon, the high and the
+       * low, the chance of rain, the wind, a curve through the day when the
+       * provider gives one, and the days after in a strip beneath.
+       *
+       * Every reading is optional. Providers disagree about what a day
+       * contains, and a missing one is left out of the drawing rather than
+       * drawn as a question mark. `condition` is Home Assistant's enum
+       * (`sunny`, `partlycloudy`, `rainy`, ...), which is the one vocabulary a
+       * house already speaks; `summary` is that condition in words, in
+       * whichever language is being spoken, for the caption.
+       */
+      type: "weather";
+      title: string;
+      /** The units the figures carry, e.g. "°C", "km/h", "mm". */
+      units: { temperature: string; windSpeed?: string; precipitation?: string };
+      /** Today first, then the days after, as many as were asked for. */
+      days: Array<{
+        /** "vandaag", "tomorrow", "wo" -- whatever the caller calls the day. */
+        label: string;
+        condition?: string;
+        summary?: string;
+        high?: number;
+        low?: number;
+        /** 0-100. */
+        precipitationChance?: number;
+        /** In `units.precipitation`. */
+        precipitation?: number;
+        /** In `units.windSpeed`. */
+        windSpeed?: number;
+        /** Short compass point, e.g. "ZW" or "SW". */
+        windDirection?: string;
+        /** Degrees the wind comes from, for drawing the arrow. */
+        windBearing?: number;
+      }>;
+      /**
+       * Today by the hour, from now to the end of the day, when the provider
+       * forecasts by the hour. Drawn as a temperature curve with the rain
+       * underneath it; left out, the card shows the day's figures alone.
+       */
+      hours?: Array<{
+        /** "14:00". */
+        label: string;
+        temperature?: number;
+        precipitation?: number;
+        precipitationChance?: number;
+        condition?: string;
+      }>;
     };
 
 /**
@@ -179,7 +234,15 @@ export type DisplayDismiss =
 export interface DisplayCue {
   /** Characters of the answer already written when this was pushed. */
   chars: number;
-  /** Word or short phrase to wait for, matched case-insensitively. */
+  /**
+   * Word or short phrase to wait for, matched case-insensitively.
+   *
+   * Several may be given, separated by `|`, and the first of them to be said
+   * releases the item: a deployment that can be switched between languages
+   * says "agenda" one morning and "calendar" the next, and a window that only
+   * knew the Dutch word waited through the whole English briefing and went up
+   * when it was over, under no sentence at all.
+   */
   anchor?: string;
 }
 

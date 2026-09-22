@@ -40,6 +40,7 @@ function defaultDismiss(payload: DisplayPayload): DisplayDismiss {
       return { mode: "timeout", ms: 45_000 };
     case "panel":
     case "chart":
+    case "weather":
       return { mode: "next-turn" };
     case "text":
       return { mode: "manual" };
@@ -78,8 +79,9 @@ const anchorField = z
   .optional()
   .describe(
     "A word from your own answer that this belongs to, for example 'mail' or 'agenda'. " +
-      "The screen holds it back until you say that word. Leave it out to have it " +
-      "appear where you are in the sentence right now.",
+      "The screen holds it back until you say that word. Several alternatives may be " +
+      "separated by '|' ('agenda|calendar'); the first one said releases it. Leave it " +
+      "out to have it appear where you are in the sentence right now.",
   );
 
 function ok(text: string) {

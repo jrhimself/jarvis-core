@@ -65,6 +65,8 @@ export interface PackContext<Store = unknown, Config = unknown> {
  * holds the item back until he says it. Without one the item appears at the
  * point in the sentence where the tool was called, which is right for an answer
  * that is about one thing and wrong for a briefing that walks through five.
+ * Alternatives are separated by `|` ("agenda|calendar"): he says one of them,
+ * in whichever language he is speaking, and the item goes up.
  *
  * `id` is the id of an item already put up, handed back in to replace it rather
  * than to put a second copy of it on screen. A window that gains something a

@@ -95,6 +95,7 @@ export function screenTitle(payload: DisplayPayload): string {
       return payload.alt;
     case "panel":
     case "chart":
+    case "weather":
       return payload.title;
     case "text":
       return payload.title ?? "note";
@@ -129,6 +130,26 @@ export function screenContents(payload: DisplayPayload): string {
       return payload.body;
     case "image":
       return payload.caption === undefined ? payload.alt : `${payload.alt} -- ${payload.caption}`;
+    case "weather": {
+      const degrees = payload.units.temperature;
+      return payload.days
+        .map((day) => {
+          const parts: string[] = [];
+          if (day.summary !== undefined) parts.push(day.summary);
+          else if (day.condition !== undefined) parts.push(day.condition);
+          if (day.low !== undefined && day.high !== undefined) parts.push(`${day.low}-${day.high}${degrees}`);
+          else if (day.high !== undefined) parts.push(`${day.high}${degrees}`);
+          if (day.precipitationChance !== undefined) parts.push(`rain ${day.precipitationChance}%`);
+          if (day.windSpeed !== undefined) {
+            const unit = payload.units.windSpeed ?? "";
+            parts.push(
+              `wind ${day.windSpeed}${unit}${day.windDirection === undefined ? "" : ` ${day.windDirection}`}`,
+            );
+          }
+          return `- ${day.label}: ${parts.join(", ")}`;
+        })
+        .join("\n");
+    }
   }
 }
 
