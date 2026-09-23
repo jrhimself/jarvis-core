@@ -1731,11 +1731,11 @@ function sameWindow(card, p){
 }
 
 /* ---- sticky desk windows ----
-   Joey wants five windows always on the desk: weather, agenda, mail, pull
-   requests and notes. They survive the next question, a fold, and a reload.
-   A newer reading of the same subject replaces the contents; nothing else
-   clears them. localStorage holds the last payload so a restart of the page
-   (or of Jarvis) still shows what was there. */
+   Five windows stay on the desk: weather, agenda, mail, pull requests and
+   notes. They survive the next question, a fold, and a reload. A newer
+   reading of the same subject replaces the contents; nothing else clears
+   them. localStorage holds the last payload so a restart of the page (or
+   of the service) still shows what was there. */
 const DESK_KEY='jarvis.desk.v1';
 // Defaults until the brain sends kind:desk (core + packs). Packs append topics.
 let STICKY_ORDER=['weather','agenda','mail','work','notes'];
