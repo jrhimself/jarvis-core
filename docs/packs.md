@@ -88,6 +88,8 @@ pre-approves no calendar tool and adds no paragraph about the agenda.
 | `persona` | this pack's own paragraph of prompt: when to reach for these tools and how to speak about what comes back. Optional — prose written twice drifts, and the drift is invisible until the model follows the stale copy |
 | `probes` | see §5 |
 | `prompt` | a block of prompt the pack computes rather than writes. Resolved once at session start and allowed to be slow |
+| `watch` | readings taken on a clock while a HUD is open; each names a server and tool so the figures land under the right subject |
+| `desk` | standing HUD windows this pack keeps on the desk; see §4a |
 | `delegate` | somewhere to hand work too big for the assistant. Core keeps the first offered |
 
 `create` is called once per session, not per turn, so a cache — or a pending confirmation — lives
@@ -95,6 +97,26 @@ happily in the closure and dies with the conversation.
 
 **Server names are one namespace across all packs.** The second pack to claim a name is skipped, so
 one pack's tools can never quietly replace another's.
+
+## 4a. Standing desk windows
+
+Packs add overview windows on the HUD desk through `desk` on what `create` returns:
+
+```ts
+desk: [
+  { topic: "house", label: "Huis" },
+  { topic: "mail", label: "Mail", briefing: true },
+],
+```
+
+Each slot is a standing window: it survives the next question and a page reload, and a newer
+reading of the same subject replaces its contents. Core ships five overview slots (weather,
+agenda, mail, work, notes); pack slots are merged on after them.
+
+`briefing` defaults to **false**. Leave it off when the pack only wants a window on the desk; set
+`briefing: true` when the morning briefing should cover that subject. A pack that redeclares a
+core topic wins for that topic's label and briefing flag, so a house can rename a heading or take
+a subject out of the briefing without editing core.
 
 ## 5. `probes` — a tick you have not earned is worse than no line
 

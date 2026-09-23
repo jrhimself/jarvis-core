@@ -359,6 +359,19 @@ export type ServerMessage =
     }
   | {
       /**
+       * Standing desk windows: which subjects stay on the HUD, and which of
+       * those the morning briefing should cover. Sent when a page connects so
+       * a newly installed pack can appear without a hard-coded list in the HUD.
+       */
+      kind: "desk";
+      slots: readonly {
+        topic: string;
+        label: string;
+        briefing?: boolean;
+      }[];
+    }
+  | {
+      /**
        * What one block of the context panel should show now.
        *
        * Sent when a tool answers with figures, not on a schedule and not per

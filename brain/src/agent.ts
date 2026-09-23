@@ -31,6 +31,7 @@ import {
   marksBriefing,
   type ShownWindow,
 } from "./briefing.js";
+import { deskBriefingBlock, mergeDeskSlots } from "./desk.js";
 import { createDisplayServer, DISPLAY_TOOLS, showVia, type DisplaySink } from "./display-tool.js";
 import { recordScreen } from "./screens.js";
 import { runHealthChecks, specsFor } from "./health.js";
@@ -354,6 +355,7 @@ export class AgentSession {
       persona.text,
       deploymentBlock(deployment),
       ...packs.persona,
+      deskBriefingBlock(mergeDeskSlots(packs.desk)),
       coreBlock(store),
       ...computed,
       recipesBlock(store),

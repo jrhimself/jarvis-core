@@ -990,7 +990,9 @@ let dispGen=0;                                 // which question the desk belong
 function clearTransientDisplay(){
   dispGen++;                                   // whatever is still on its way up belongs to the last one
   dropDisplays();
-  for(const card of allCards()) if(card._d.untilNextTurn) dropCard(card,'next-turn');
+  // Sticky desk windows survive the next question: they are the standing set
+  // (weather, agenda, mail, PRs, notes), not a one-shot answer.
+  for(const card of allCards()) if(card._d.untilNextTurn && !card._d.sticky) dropCard(card,'next-turn');
 }
 
 function renderImage(p){
@@ -1447,18 +1449,24 @@ function makeCard(m, r){
   const card=document.createElement('article');
   card.className='dcard';
   card.tabIndex=0;
-  const close=document.createElement('button');
-  close.type='button'; close.className='dclose'; close.title='close';
-  close.setAttribute('aria-label','close'); close.textContent='×';
-  close.addEventListener('click', e=>{ e.stopPropagation(); dropCard(card,'closed'); });
+  const stickyPreview=stickyTopicOf(m.payload);
+  // Sticky desk windows have no close control: they are furniture, and a
+  // mis-tap used to wipe the only copy of today's weather.
   const minimize=document.createElement('button');
   minimize.type='button'; minimize.className='dmin'; minimize.title='minimize';
-  minimize.setAttribute('aria-label','minimize'); minimize.textContent='−';
+  minimize.setAttribute('aria-label','minimize'); minimize.textContent='-';
   minimize.addEventListener('click', e=>{ e.stopPropagation(); minimizeCard(card); });
   const h=document.createElement('h3'); h.textContent=r.title;
   const body=document.createElement('div'); body.className='body';
   body.appendChild(r.node);
-  card.append(close,minimize,h,body);
+  if(!stickyPreview){
+    const close=document.createElement('button');
+    close.type='button'; close.className='dclose'; close.title='close';
+    close.setAttribute('aria-label','close'); close.textContent='\u00d7';
+    close.addEventListener('click', e=>{ e.stopPropagation(); dropCard(card,'closed'); });
+    card.append(close);
+  }
+  card.append(minimize,h,body);
   card.addEventListener('click', ()=>{
     if(card.parentElement===dispDock) expandDisplay();
     else if(card.parentElement===dispStrip) promote(card);
@@ -1546,8 +1554,11 @@ function deskCapacity(){
 function makeRoom(n){
   const cap=deskCapacity();
   if(cap===null) return;
-  while(dispStrip.children.length+n>cap && dispStrip.firstElementChild){
-    dropCard(dispStrip.firstElementChild,'aged-out');
+  while(dispStrip.children.length+n>cap){
+    // Prefer throwing a one-shot thumbnail away over a sticky desk window.
+    const fall=[...dispStrip.children].find(c=>c.classList.contains('dcard') && !c._d.sticky);
+    if(!fall) break;                           // only sticky windows left: keep them
+    dropCard(fall,'aged-out');
   }
 }
 
@@ -1642,7 +1653,8 @@ function showCard(m){
 }
 
 async function placeCard(m, gen){
-  const dismiss=m.dismiss||{mode:'next-turn'};
+  const sticky=stickyTopicOf(m.payload);
+  const dismiss=sticky ? {mode:'manual'} : (m.dismiss||{mode:'next-turn'});
   // It waited its turn into the next question, and it was only ever for this one.
   if(gen!==dispGen && dismiss.mode==='next-turn'){
     if(m.id && connOk()) try{ ws.send(JSON.stringify({kind:'display_closed', id:m.id, reason:'next-turn'})); }catch(e){}
@@ -1673,7 +1685,14 @@ async function placeCard(m, gen){
   }else if(lead){
     minimizeCard(lead);
   }
-  dispStage.appendChild(makeCard(m, RENDER[m.payload.type](m.payload)));
+  const card=makeCard({ ...m, dismiss }, RENDER[m.payload.type](m.payload));
+  if(sticky){
+    card._d.sticky=true;
+    card._d.stickyTopic=sticky;
+    card._d.untilNextTurn=false;
+    deskRemember(sticky, m.payload);
+  }
+  dispStage.appendChild(card);
   bumpIdle();                                  // something to read: the minute starts over
   // A list that went up without waiting for a word still has rows to light as
   // he reaches them, and that is the tick's other job.
@@ -1685,7 +1704,7 @@ async function placeCard(m, gen){
    Exact title used to be required, and a briefing that named the same list
    two ways left both on the desk. First matching topic word wins; otherwise
    the first word of the title. */
-const WINDOW_TOPICS={
+let WINDOW_TOPICS={
   agenda:'agenda', calendar:'agenda', kalender:'agenda', afspraak:'agenda', afspraken:'agenda',
   mail:'mail', email:'mail', inbox:'mail',
   weer:'weather', weather:'weather', forecast:'weather', weersverwachting:'weather',
@@ -1693,7 +1712,9 @@ const WINDOW_TOPICS={
   muziek:'music', music:'music', spotify:'music',
   telegram:'messages', message:'messages',
   televisie:'tv', netflix:'tv',
-  werk:'work', work:'work'
+  werk:'work', work:'work', pull:'work', pulls:'work', request:'work', requests:'work',
+  pr:'work', prs:'work',
+  note:'notes', notes:'notes', notitie:'notes', notities:'notes'
 };
 function windowTopic(title){
   const t=String(title||'').trim().toLowerCase();
@@ -1704,8 +1725,123 @@ function windowTopic(title){
 }
 /* Is this card the same window as the payload: same kind, same subject? */
 function sameWindow(card, p){
-  const topic=windowTopic(p.title);
-  return topic!=='' && card._d.type===p.type && windowTopic(card._d.title)===topic;
+  const topic=stickyTopicOf(p) || windowTopic(p.title);
+  const other=card._d.stickyTopic || windowTopic(card._d.title);
+  return topic!=='' && card._d.type===p.type && other===topic;
+}
+
+/* ---- sticky desk windows ----
+   Joey wants five windows always on the desk: weather, agenda, mail, pull
+   requests and notes. They survive the next question, a fold, and a reload.
+   A newer reading of the same subject replaces the contents; nothing else
+   clears them. localStorage holds the last payload so a restart of the page
+   (or of Jarvis) still shows what was there. */
+const DESK_KEY='jarvis.desk.v1';
+// Defaults until the brain sends kind:desk (core + packs). Packs append topics.
+let STICKY_ORDER=['weather','agenda','mail','work','notes'];
+const STICKY_LABEL={
+  weather:'Weer', agenda:'Agenda', mail:'Mail',
+  work:'Pull requests', notes:'Notities'
+};
+
+function applyDeskSlots(slots){
+  if(!Array.isArray(slots) || !slots.length) return;
+  const order=[];
+  for(const slot of slots){
+    const topic=String(slot.topic||'').trim();
+    if(!topic) continue;
+    const label=String(slot.label||topic).trim()||topic;
+    STICKY_LABEL[topic]=label;
+    WINDOW_TOPICS[topic]=topic;
+    order.push(topic);
+  }
+  if(!order.length) return;
+  STICKY_ORDER=order;
+  const have=new Set(allCards().filter(c=>c._d.sticky).map(c=>c._d.stickyTopic));
+  const store=deskLoad();
+  for(const topic of STICKY_ORDER){
+    if(have.has(topic)) continue;
+    const saved=store[topic];
+    const payload=saved && saved.payload ? saved.payload : emptyStickyPayload(topic);
+    placeStickyQuiet({ id:'sticky-'+topic, payload, dismiss:{ mode:'manual' } });
+  }
+}
+
+function stickyTopicOf(p){
+  if(!p) return '';
+  if(p.type==='weather') return 'weather';
+  const fromTitle=windowTopic(p.title||'');
+  if(STICKY_ORDER.includes(fromTitle)) return fromTitle;
+  if(p.type==='text'){
+    const t=windowTopic(p.title||'note');
+    if(t==='notes' || !p.title) return 'notes';
+  }
+  return '';
+}
+
+function deskLoad(){
+  try{
+    const raw=localStorage.getItem(DESK_KEY);
+    const parsed=raw ? JSON.parse(raw) : null;
+    if(!parsed || typeof parsed!=='object') return {};
+    const out={};
+    for(const topic of STICKY_ORDER){
+      const entry=parsed[topic];
+      if(entry && entry.payload && typeof entry.payload==='object') out[topic]=entry;
+    }
+    return out;
+  }catch(e){ return {}; }
+}
+function deskSave(store){
+  try{ localStorage.setItem(DESK_KEY, JSON.stringify(store)); }catch(e){}
+}
+function deskRemember(topic, payload){
+  if(!topic || !payload) return;
+  const store=deskLoad();
+  store[topic]={ payload, at:Date.now() };
+  deskSave(store);
+}
+
+function emptyStickyPayload(topic){
+  return {
+    type:'panel',
+    title:STICKY_LABEL[topic]||topic,
+    quiet:true,
+    rows:[{ label:'\u2014', value:'nog geen gegevens' }]
+  };
+}
+
+function isEmptyPlaceholder(p){
+  return !!(p && p.rows && p.rows.length===1 && p.rows[0].value==='nog geen gegevens');
+}
+
+/** Put a sticky window on the desk without the arrival choreography. */
+function placeStickyQuiet(m){
+  const p=m.payload; if(!p || !RENDER[p.type]) return;
+  const topic=stickyTopicOf(p);
+  for(const card of allCards()) if(sameWindow(card, p)) dropCard(card,'replaced');
+  const card=makeCard({ ...m, dismiss:{ mode:'manual' } }, RENDER[p.type](p));
+  card._d.sticky=true;
+  card._d.stickyTopic=topic;
+  card._d.untilNextTurn=false;
+  mainEl.classList.add('showing');
+  makeRoom(1);
+  dispStrip.appendChild(card);
+  if(topic && !isEmptyPlaceholder(p)) deskRemember(topic, p);
+}
+
+function restoreStickyDesk(){
+  const store=deskLoad();
+  for(const topic of STICKY_ORDER){
+    const saved=store[topic];
+    const payload=saved && saved.payload ? saved.payload : emptyStickyPayload(topic);
+    placeStickyQuiet({
+      id:'sticky-'+topic,
+      payload,
+      dismiss:{ mode:'manual' }
+    });
+  }
+  setTimeout(sizeOrb, 520);
 }
 
 /* The briefing is over: the window still open goes down beside the others,
@@ -2465,6 +2601,9 @@ ctxLoad();
 renderContext();
 setInterval(ctxRetime, 60000);
 addEventListener('resize', renderContext);
+// Standing desk windows: last briefing's weather / agenda / mail / PRs / notes,
+// or an empty placeholder so the five slots are always there after a reload.
+restoreStickyDesk();
 
 /* What the brain actually measures about itself, pushed over the socket every
    few seconds. This panel used to animate invented numbers; a value that could
@@ -3014,6 +3153,7 @@ function onBrainMessage(m){
   if(m.kind==='health'){ onHealth(m.checks||[]); return; }
   if(m.kind==='metrics'){ onMetrics(m.metrics||{}); return; }
   if(m.kind==='usage'){ onUsage(m.usage||null); return; }
+  if(m.kind==='desk'){ applyDeskSlots(m.slots||[]); return; }
   if(m.kind==='tiles'){ onTiles(m); return; }
   if(m.kind==='display_clear'){ clearDisplay(m.id); return; }
   if(m.kind==='listen'){ onListen(m); return; }

@@ -180,6 +180,19 @@ export interface PackWatch {
   read: () => Promise<HudTile[]>;
 }
 
+/** One standing window a pack keeps on the HUD desk. */
+export interface PackDeskSlot {
+  /** Subject key shared with the HUD (and with tiles when they use the same id). */
+  topic: string;
+  /** Heading on the empty placeholder and the preferred window title. */
+  label: string;
+  /**
+   * When true, the morning briefing is told this subject is part of the round.
+   * Default false: on the desk, not in the briefing, until the pack says so.
+   */
+  briefing?: boolean;
+}
+
 export interface PackSetup {
   servers: Record<string, unknown>;
   tools: readonly string[];
@@ -219,6 +232,18 @@ export interface PackSetup {
    * nothing new.
    */
   watch?: readonly PackWatch[];
+
+  /**
+   * Windows this pack keeps on the HUD desk.
+   *
+   * Each slot is a standing window: it survives the next question and a page
+   * reload, and a newer reading of the same subject replaces its contents. A
+   * pack that is installed adds its slots to the overview automatically; whether
+   * the morning briefing should cover that subject is briefing on the slot
+   * (default false), so a new capability can show up on the desk without joining
+   * the round until somebody asks for that.
+   */
+  desk?: readonly PackDeskSlot[];
 
   /**
    * Somewhere to hand work that is too big for the assistant itself.

@@ -12,6 +12,7 @@ import { parseClientMessage, type ServerMessage, type PipelineStage } from "@jar
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { packSummary } from "./agent.js";
+import { mergeDeskSlots } from "./desk.js";
 import { loadConfig } from "./config.js";
 import { Conversation, warmRecordedLines } from "./conversation.js";
 import { language } from "./language.js";
@@ -98,6 +99,21 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     const forgetLiveSession = addLiveSession((text) => send({ kind: "announce", text }));
 
     send({ kind: "ready", sessionId: null, version: brainVersion() });
+
+    // Standing desk windows: core defaults plus whatever started packs declared.
+    void packSummary()
+      .then((packs) => {
+        const slots = mergeDeskSlots(packs.desk);
+        send({
+          kind: "desk",
+          slots: slots.map((slot) => ({
+            topic: slot.topic,
+            label: slot.label,
+            ...(slot.briefing === true ? { briefing: true } : {}),
+          })),
+        });
+      })
+      .catch((error: unknown) => console.error("desk slots failed:", error));
 
     // The plan's pill: what is known now, and every change after.
     const known = planUsage();
