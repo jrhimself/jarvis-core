@@ -352,11 +352,9 @@ main.showing #display{display:block}
    property of the mail rather than of the sentence, so it does not breathe and
    it does not go out; it is the quieter of the two golds for that reason. It is
    written before `tr.hot` so the row being spoken about still wins while lit. */
-/* A row he named. Raised to the top and, once the gold has moved on to the
-   next thing he names, kept faintly warm: out of twelve, the ones talked about
-   stay recognisable as the ones talked about. Written before `tr.hot`. */
-.dcard tr.said td{background:hsla(var(--gold),95%,55%,.05)}
-.dcard tr.said td.k{color:hsl(var(--gold) 45% 70%)}
+/* A row he named is raised to the top so it is in view. The gold itself is only
+   `tr.hot` while he is on it -- once that fades, the row looks like the others
+   again. Keeping a warm tint after the blink made every spoken row stay lit. */
 .dcard tr.flag td{background:hsla(var(--gold),95%,55%,.07)}
 .dcard tr.flag td.k{color:hsl(var(--gold) 85% 74%);
   box-shadow:inset 3px 0 0 hsla(var(--gold),95%,60%,.75)}
@@ -1683,10 +1681,31 @@ async function placeCard(m, gen){
   setTimeout(sizeOrb, 520);
 }
 
-/* Is this card the same window as the payload: same kind, same title? */
+/* Subject of a window title: "Agenda vandaag" and "Agenda" are one window.
+   Exact title used to be required, and a briefing that named the same list
+   two ways left both on the desk. First matching topic word wins; otherwise
+   the first word of the title. */
+const WINDOW_TOPICS={
+  agenda:'agenda', calendar:'agenda', kalender:'agenda', afspraak:'agenda', afspraken:'agenda',
+  mail:'mail', email:'mail', inbox:'mail',
+  weer:'weather', weather:'weather', forecast:'weather', weersverwachting:'weather',
+  huis:'house', house:'house',
+  muziek:'music', music:'music', spotify:'music',
+  telegram:'messages', message:'messages',
+  televisie:'tv', netflix:'tv',
+  werk:'work', work:'work'
+};
+function windowTopic(title){
+  const t=String(title||'').trim().toLowerCase();
+  if(!t) return '';
+  const words=t.split(/[^a-z0-9]+/).filter(Boolean);
+  for(const w of words){ if(WINDOW_TOPICS[w]) return WINDOW_TOPICS[w]; }
+  return words[0]||'';
+}
+/* Is this card the same window as the payload: same kind, same subject? */
 function sameWindow(card, p){
-  const title=String(p.title||'').trim().toLowerCase();
-  return title!=='' && card._d.type===p.type && card._d.title===title;
+  const topic=windowTopic(p.title);
+  return topic!=='' && card._d.type===p.type && windowTopic(card._d.title)===topic;
 }
 
 /* The briefing is over: the window still open goes down beside the others,
@@ -1806,7 +1825,7 @@ function aboutARow(sentence, m){
   const p=(m && m.payload)||{};
   const title=String(p.title||'').trim().toLowerCase();
   for(const card of allCards()){
-    if(m && (card._d.id===m.id || (title!=='' && card._d.type===p.type && card._d.title===title))) continue;
+    if(m && (card._d.id===m.id || (title!=='' && card._d.type===p.type && windowTopic(card._d.title)===windowTopic(title)))) continue;
     const subjects=card._subjects||[];
     if(!subjects.length) continue;
     const count=rowWordCount(card);
@@ -1913,7 +1932,8 @@ function raiseRow(card, tr){
   if(!table) return;
   const n=card._raised||0;
   card._raised=n+1;
-  tr.classList.add('said');
+  // No lasting tint: gold lives only on `hot` while the row is the one being
+  // spoken about. Raising still brings it into view at the top of the list.
   const target=table.children[n];
   if(!target || target===tr) return;
   const rows=[...table.children];
