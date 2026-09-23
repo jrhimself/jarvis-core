@@ -862,6 +862,15 @@ const $ = s => document.querySelector(s);
 const lerp=(a,b,n)=>a+(b-a)*n;
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 
+// HTML escape for SVG/innerHTML builders. Must stay above renderWeather / restoreStickyDesk:
+// those run at load and used to hit a TDZ when esc lived next to the websocket helpers.
+const esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Spoken language. Declared early because restoreStickyDesk may render weather
+// before the speech block below runs; a late let made renderWeather hit a TDZ
+// on `typeof speechLang` (typeof does not protect let/const in the same scope).
+let speechLang='en', speechTag='en-GB';
+
 function setMode(m){
   if(S.mode===m) return;
   S.mode=m;
@@ -1351,7 +1360,7 @@ function renderWeather(p){
   const summary=now.summary||today.summary||condition||'';
   const temp=wxNum(Number.isFinite(now.temperature)?now.temperature:today.high);
   const hi=wxNum(today.high), lo=wxNum(today.low);
-  const en=(typeof speechLang!=='undefined' && speechLang==='en');
+  const en=speechLang==='en';
   const words=en?{high:'high',low:'low'}:{high:'hoog',low:'laag'};
   const night=wxNight(p.sun, String(condition||'').toLowerCase());
   const sky=wxSky(String(condition||'').toLowerCase(), night);
@@ -1647,7 +1656,7 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 let arrivals=Promise.resolve();
 
 function showCard(m){
-  const p=m.payload; if(!p || !RENDER[p.type]) return;
+  const p=m.payload; if(!p || !RENDER[p.type]) return false;
   const gen=dispGen;
   arrivals=arrivals.then(()=>placeCard(m, gen)).catch(()=>{});
 }
@@ -1820,7 +1829,13 @@ function placeStickyQuiet(m){
   const p=m.payload; if(!p || !RENDER[p.type]) return;
   const topic=stickyTopicOf(p);
   for(const card of allCards()) if(sameWindow(card, p)) dropCard(card,'replaced');
-  const card=makeCard({ ...m, dismiss:{ mode:'manual' } }, RENDER[p.type](p));
+  let rendered;
+  try { rendered = RENDER[p.type](p); }
+  catch (err) {
+    console.warn('sticky render failed', topic || p.type, err);
+    return false;
+  }
+  const card=makeCard({ ...m, dismiss:{ mode:'manual' } }, rendered);
   card._d.sticky=true;
   card._d.stickyTopic=topic;
   card._d.untilNextTurn=false;
@@ -1828,6 +1843,7 @@ function placeStickyQuiet(m){
   makeRoom(1);
   dispStrip.appendChild(card);
   if(topic && !isEmptyPlaceholder(p)) deskRemember(topic, p);
+  return true;
 }
 
 function restoreStickyDesk(){
@@ -1835,11 +1851,25 @@ function restoreStickyDesk(){
   for(const topic of STICKY_ORDER){
     const saved=store[topic];
     const payload=saved && saved.payload ? saved.payload : emptyStickyPayload(topic);
-    placeStickyQuiet({
+    const ok = placeStickyQuiet({
       id:'sticky-'+topic,
       payload,
       dismiss:{ mode:'manual' }
     });
+    // A corrupt localStorage weather/chart payload used to throw inside render*
+    // before esc existed and blank the whole HUD. Fall back to the empty slot.
+    if(ok === false){
+      placeStickyQuiet({
+        id:'sticky-'+topic,
+        payload: emptyStickyPayload(topic),
+        dismiss:{ mode:'manual' }
+      });
+      try {
+        const next = deskLoad();
+        delete next[topic];
+        deskSave(next);
+      } catch (e) {}
+    }
   }
   setTimeout(sizeOrb, 520);
 }
@@ -2720,7 +2750,7 @@ let rec=null, recActive=false;
    speak. */
 const LANG_TAGS={en:'en-GB', nl:'nl-NL'};
 const LANG_NAMES={en:'English', nl:'Dutch'};
-let speechLang='en', speechTag=LANG_TAGS.en;
+speechLang='en'; speechTag=LANG_TAGS.en;
 
 /* True when this changed the language. */
 function applyLang(lang){
@@ -3085,8 +3115,6 @@ function onTranscript(m){
 /* ============================== brein-verbinding ============================== */
 const WS_PATH='/ws';
 let ws=null, wsRetry=0, wsTimer=null, wsWasOpen=false, sessionId=null;
-
-const esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function connOk(){ return !!ws && ws.readyState===WebSocket.OPEN; }
 
@@ -5145,3 +5173,5 @@ async function doDelete(node, f, btn, note){
 <!-- ══════════════ MEMORY PANEL — END ══════════════ -->
 </body>
 </html>
+
+
