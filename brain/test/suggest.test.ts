@@ -69,6 +69,8 @@ function settings(overrides: Partial<Config> = {}): Config {
     suggestPerDay: 6,
     quietFrom: 21,
     quietTo: 7,
+    houseOpsWebhookUrl: "",
+    houseOpsWebhookKey: "",
     ...overrides,
   } as Config;
 }

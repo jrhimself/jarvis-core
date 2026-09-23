@@ -119,6 +119,16 @@ export interface Config {
   /** Where suggestions are sent, and the only chat whose answers are taken. */
   suggestChat: string;
   /**
+   * House Ops triage webhook for ripe anomalies.
+   *
+   * When set, Core POSTs each ripe finding here instead of Telegram. Empty keeps
+   * the previous Telegram path so a host without these variables does not go
+   * silent. The key is sent as Authorization: Bearer when non-empty.
+   */
+  houseOpsWebhookUrl: string;
+  /** Shared secret for that webhook; empty posts without an Authorization header. */
+  houseOpsWebhookKey: string;
+  /**
    * Shared secret a delegated runner reports with, empty leaves the door shut.
    *
    * The far side is a shell hook on another machine, so there is no session and
@@ -431,6 +441,8 @@ export function loadConfig(): Config {
     notifyWebhookHeaders: envObject("JARVIS_NOTIFY_WEBHOOK_HEADERS") as Record<string, string>,
     suggestToken: envString("JARVIS_TELEGRAM_TOKEN", ""),
     suggestChat: envString("JARVIS_TELEGRAM_CHAT", ""),
+    houseOpsWebhookUrl: envString("HOUSE_OPS_WEBHOOK_URL", ""),
+    houseOpsWebhookKey: envString("HOUSE_OPS_WEBHOOK_KEY", ""),
     runnerToken: envString("JARVIS_RUNNER_TOKEN", ""),
     suggestPerDay: envNumber("JARVIS_SUGGEST_PER_DAY", 6, 1, 50),
     quietFrom: envNumber("JARVIS_QUIET_FROM", 21, 0, 23),

@@ -15,6 +15,18 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [1.2.1] - 2026-09-23
+
+### Changed
+
+- Ripe anomalies can be routed to House Ops instead of Telegram. Set
+  `HOUSE_OPS_WEBHOOK_URL` (and optionally `HOUSE_OPS_WEBHOOK_KEY` for
+  `Authorization: Bearer`) and Core POSTs a JSON payload for triage; Telegram
+  is skipped for those findings. With the URL unset, the previous Telegram path
+  is unchanged. If the webhook fails, rows marked escalate may fall back to
+  Telegram when it is configured; otherwise the attempt is retried next pass.
+  Detection itself is unchanged.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added
