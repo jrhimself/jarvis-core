@@ -130,6 +130,17 @@ export type DisplayPayload =
        * a property of the list and not of the screen.
        */
       quiet?: boolean;
+      /**
+       * The rows are in the order they will be spoken about.
+       *
+       * A window of the mails the assistant chose is such a list: it was drawn
+       * from what he is about to say, in that order. The gold then walks down
+       * it rather than jumping to whichever row the sentence resembles most,
+       * and a row it would otherwise have missed -- a mail described in words
+       * that are in neither its sender nor its subject -- lights when the one
+       * after it does, so every row has its blink, once, in the right order.
+       */
+      ordered?: boolean;
     }
   | {
       type: "chart";

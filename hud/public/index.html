@@ -363,9 +363,10 @@ main.showing #display{display:block}
 .dcard tr.flag td.v{color:hsl(var(--gold) 20% 96%)}
 
 /* The row he is talking about right now: out of a list of twelve mails, this
-   is the one the sentence is about. It lights when the words reach it, breathes five times and
-   goes out -- the same five as everything else that lights up, so a row still
-   glowing means he is still on it. */
+   is the one the sentence is about. It lights when the words reach it, blinks
+   once, and stays gold -- steadily, no longer breathing -- until the next row
+   takes it or its time is up. One blink is the arrival; the gold after it is
+   where he is. */
 @keyframes rowGlow{
   0%,100%{background:hsla(var(--gold),95%,55%,.10)}
   50%    {background:hsla(var(--gold),96%,60%,.28)}
@@ -374,15 +375,15 @@ main.showing #display{display:block}
 .dcard tr.hot td.k{color:hsl(var(--gold) 90% 72%);box-shadow:inset 3px 0 0 hsl(var(--gold) 95% 60%)}
 .dcard tr.hot td.v{text-shadow:0 0 14px hsla(var(--gold),100%,62%,.45)}
 .dcard tr.hot td.v small{color:hsla(var(--gold),55%,78%,.8)}
-.dcard tr.hot.pulsing td{animation:rowGlow 1.7s ease-in-out 5}
+.dcard tr.hot.pulsing td{animation:rowGlow 1.7s ease-in-out 1}
 .dcard tr.hot.fading td{background:transparent;color:var(--text);animation:none;
   transition:background var(--rowFade) linear,color var(--rowFade) linear}
 .dcard tr.hot.fading td.k{color:var(--muted);box-shadow:none;
   transition:color var(--rowFade) linear,box-shadow var(--rowFade) linear}
 .dcard tr.hot.fading td.v{text-shadow:0 0 0 transparent;transition:text-shadow var(--rowFade) linear}
 .dcard tr.hot.fading td.v small{color:var(--muted);transition:color var(--rowFade) linear}
-/* Handed the gold over before its five breaths were up: another row started
-   blinking and only one thing on the screen may blink at a time. It leaves in a
+/* Handed the gold over before its time was up: another row lit and only one
+   row on the screen holds the gold at a time. It leaves in a
    blink rather than over the full fade, so the two are never lit together. */
 .dcard tr.hot{--rowFade:2500ms}
 .dcard tr.hot.cut{--rowFade:380ms}
@@ -1074,7 +1075,7 @@ function lightRow(tr){
   tr.classList.remove('fading','cut');
   tr.classList.add('hot','pulsing');
   const timers=[
-    setTimeout(()=>tr.classList.remove('pulsing'), CTX_PULSE_MS),
+    setTimeout(()=>tr.classList.remove('pulsing'), ROW_PULSE_MS),
     setTimeout(()=>{
       litRow=null;                             // its turn is over; nothing to cut
       tr.classList.add('fading');
@@ -1093,7 +1094,7 @@ function renderPanel(p){
   // The rows travel back with the node: a list of twelve mails is only useful
   // if the one he is talking about can be picked out of it, and that needs the
   // row element next to the words it was built from.
-  const rows=[];
+  const rows=[], subjects=[];
   for(const row of p.rows||[]){
     const tr=document.createElement('tr');
     const k=document.createElement('td'); k.className='k'; k.textContent=row.label;
@@ -1107,9 +1108,11 @@ function renderPanel(p){
     // it is not news arriving halfway through a sentence, it is where you are
     // in the list. It counts the same five breaths as everything else.
     if(!quiet && isToday(row.label)) lightRow(tr);
-    if(!quiet) rows.push({tr, subject:[row.label,row.value].join(' ')});
+    const subject=[row.label,row.value].join(' ');
+    subjects.push(subject);                    // quiet or not: a word said about it is about it
+    if(!quiet) rows.push({tr, subject});
   }
-  return {node:table, title:p.title||'overview', rows};
+  return {node:table, title:p.title||'overview', rows, subjects, ordered:p.ordered===true};
 }
 
 function renderChart(p){
@@ -1465,6 +1468,11 @@ function makeCard(m, r){
   const dismiss=m.dismiss||{mode:'next-turn'};
   // What the sentence could be about. Empty for anything that is not a list.
   card._rows = r.rows || [];
+  // Every row's words, lit or not, quiet or not: what a sentence that names one
+  // of them is about, which is what keeps another window's word from counting.
+  card._subjects = r.subjects || card._rows.map(row=>row.subject);
+  // The rows are in the order they will be spoken about, so the gold walks.
+  card._ordered = r.ordered===true;
   card._d={
     id:m.id,
     type:m.payload.type,
@@ -1711,18 +1719,54 @@ function onDisplay(m){
 
 function startPump(){ if(!dispPump) dispPump=setInterval(pumpDisplays, 60); }
 
-function cueReached(cue, text, seen){
+/* The cued windows that went up this turn: where each one's word was looked
+   for from, and where it was found. The next window's word is looked for
+   after the last one's, because he speaks in order -- and a window that is
+   the same one again (the mail list, then the mails he picked out of it)
+   looks from where the first did rather than after it. */
+let released=[];
+
+function slotFrom(m){
+  const p=m.payload||{};
+  const title=String(p.title||'').trim().toLowerCase();
+  for(const r of released){
+    if(r.id===m.id || (title!=='' && r.type===p.type && r.title===title)) return r.from;
+  }
+  return released.length ? released[released.length-1].end : 0;
+}
+
+function cueReached(cue, text, seen, m){
   const anchors=String(cue.anchor||'').split('|').map(a=>a.trim().toLowerCase()).filter(Boolean);
   if(anchors.length){
     const lower=text.toLowerCase();
+    const from=m ? slotFrom(m) : 0;
     // Any one of them said releases it: "agenda" one morning, "calendar" the
     // next, depending on the language he is speaking. Not said yet: hold. If
     // none is ever said, the end of the turn releases it.
+    //
+    // Said in a sentence that has already named a row of a window on the
+    // desk -- "X mails that the build failed on a PR", with the mail window
+    // up -- it is that row's word and not this window's: skipped, and the
+    // next time it is said is looked at instead. Only what comes before it
+    // in the sentence counts: "your pull requests: one from X" is about the
+    // pull requests, however many mails X also sent.
+    let hit=-1;
     for(const anchor of anchors){
-      const at=anchorAt(lower, anchor);
-      if(at>=0 && seen>=at+anchor.length) return true;
+      let at=anchorAt(lower, anchor, from);
+      while(at>=0 && (hit<0 || at<hit)){
+        const end=at+anchor.length;
+        if(seen<end) break;                    // not said yet: hold
+        if(aboutARow(sentenceBefore(lower, at), m)){ at=anchorAt(lower, anchor, end); continue; }
+        hit=at; break;
+      }
     }
-    return false;
+    if(hit<0) return false;
+    if(m && m.id!==undefined){
+      const p=m.payload||{};
+      const ended=Math.max(...anchors.filter(a=>lower.startsWith(a, hit)).map(a=>hit+a.length), hit+1);
+      released.push({id:m.id, type:p.type, title:String(p.title||'').trim().toLowerCase(), from, end:ended});
+    }
+    return true;
   }
   // Nothing goes up on the opening line. A window cued by how far the answer
   // had got belongs in the answer, and "I am looking that up" is not it.
@@ -1733,11 +1777,42 @@ function cueReached(cue, text, seen){
 /* Where an anchor was said, or -1. A long one may start a word, so "mail" hears
    "mailtje"; a short one -- "PR" -- has to be a word of its own, because as a
    substring it is inside "problem" and "April". */
-function anchorAt(lower, anchor){
-  if(anchor.length>=4) return lower.indexOf(anchor);
+function anchorAt(lower, anchor, from){
+  from=from||0;
+  if(anchor.length>=4) return lower.indexOf(anchor, from);
   const safe=anchor.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  const m=new RegExp('(^|[^a-z0-9])'+safe+'(?![a-z0-9])').exec(lower);
+  const re=new RegExp('(^|[^a-z0-9])'+safe+'(?![a-z0-9])','g');
+  re.lastIndex=from>0 ? from-1 : 0;            // the boundary before it may be the last character looked past
+  const m=re.exec(lower);
   return m ? m.index+m[1].length : -1;
+}
+
+/* The sentence `at` falls in, up to `at`: from the end of the one before it. */
+const SENTENCE_STOPS=/[.!?…]["'’”)\]]*(?=\s|$)/g;
+function sentenceBefore(text, at){
+  let start=0, m;
+  SENTENCE_STOPS.lastIndex=0;
+  while((m=SENTENCE_STOPS.exec(text))!==null){
+    const stop=m.index+m[0].length;
+    if(stop>at) break;
+    start=stop;
+  }
+  return text.slice(start, at);
+}
+
+/* Does this much of a sentence name a row of a window already up -- one that
+   is not the window `m` is (or replaces)? Then what follows is about that row. */
+function aboutARow(sentence, m){
+  const p=(m && m.payload)||{};
+  const title=String(p.title||'').trim().toLowerCase();
+  for(const card of allCards()){
+    if(m && (card._d.id===m.id || (title!=='' && card._d.type===p.type && card._d.title===title))) continue;
+    const subjects=card._subjects||[];
+    if(!subjects.length) continue;
+    const count=rowWordCount(card);
+    for(const subject of subjects) if(mentionScore(sentence, subject, count)>0) return true;
+  }
+  return false;
 }
 
 /* Lighting the row he has reached. A row is lit once and never relit: `hot`
@@ -1751,6 +1826,7 @@ function markRows(said){
   const recent=recentSaid(said);
   for(const card of allCards()){
     const count=rowWordCount(card);
+    if(card._ordered){ if(walkRows(card, recent, count)) waiting=true; continue; }
     // One row per list per tick: the one the sentence names best. Two rows
     // that both fit -- a note from April and last night's, about the same
     // deployment -- would otherwise both light, and the wrong one may be
@@ -1770,6 +1846,32 @@ function markRows(said){
   }
   return waiting;
 }
+
+/* A list in the order it is spoken about -- the mails he chose -- is walked,
+   not searched: the next unlit row is the one the sentence is about, and it
+   lights when the sentence names it. Named a row further down instead, in
+   words the rows between shared nothing with, those rows light on the way, a
+   beat apart, so every row gets its one blink and in order. Returns whether a
+   row is still waiting. */
+function walkRows(card, recent, count){
+  const rows=card._rows||[];
+  const next=rows.findIndex(row=>!row.tr.dataset.lit);
+  if(next<0) return false;
+  let hit=-1, score=0;
+  for(let i=next;i<rows.length;i++){
+    const s=mentionScore(recent, rows[i].subject, count);
+    if(i===next && s>0){ hit=i; break; }       // the one he should be on, and is
+    if(s>score){ hit=i; score=s; }
+  }
+  if(hit<0) return true;
+  const run=rows.slice(next, hit+1);
+  run.forEach((row,i)=>{
+    row.tr.dataset.lit='1';                    // spoken for, even before its beat comes
+    setTimeout(()=>{ raiseRow(card, row.tr); lightRow(row.tr); }, i*ROW_WALK_MS);
+  });
+  return hit<rows.length-1;
+}
+const ROW_WALK_MS=700;                         // between two rows lit in one stride
 
 /* The last two sentences of what has been spoken: the one he is in and the one
    before it, because a subject is often named in one and described in the
@@ -1794,8 +1896,8 @@ function recentSaid(said){
 function rowWordCount(card){
   if(card._wordCount) return card._wordCount;
   const count=new Map();
-  for(const row of card._rows||[]){
-    for(const w of new Set(ctxWords(row.subject))) count.set(w,(count.get(w)||0)+1);
+  for(const subject of card._subjects||(card._rows||[]).map(row=>row.subject)){
+    for(const w of new Set(ctxWords(subject))) count.set(w,(count.get(w)||0)+1);
   }
   card._wordCount=count;
   return count;
@@ -1840,7 +1942,7 @@ function pumpDisplays(){
   const text=s.text||'', seen=s.revealed;
   const said=text.slice(0,seen);
   for(const m of dispQueue.slice()){
-    if(!cueReached(m.cue, text, seen)) continue;
+    if(!cueReached(m.cue, text, seen, m)) continue;
     dispQueue.splice(dispQueue.indexOf(m),1);
     showCard(m);
   }
@@ -1864,7 +1966,7 @@ function flushQueued(){
    turn without one. */
 const flushDisplays=flushQueued;
 
-function dropDisplays(){ dispQueue=[]; dropTiles(); stopPump(); }
+function dropDisplays(){ dispQueue=[]; released=[]; dropTiles(); stopPump(); }
 function stopPump(){ clearInterval(dispPump); dispPump=null; }
 
 /* ---- how big the windows are ----
@@ -2175,6 +2277,10 @@ const CTX_MAX=6;                 // blocks kept at all; the panel may show fewer
 const CTX_BREATH_MS=1700;        // one breath, as the keyframes are timed
 const CTX_BLINKS=5;              // how many of them a new thing gets
 const CTX_PULSE_MS=CTX_BREATH_MS*CTX_BLINKS;  // how long the arrival glow breathes
+/* A row in a list is the exception: it blinks once, as `rowGlow` on `tr.hot`
+   is repeated once, and then holds its gold. Five breaths on every mail of
+   four was a window that never stopped flickering. */
+const ROW_PULSE_MS=CTX_BREATH_MS;
 const CTX_GLOW_MS=CTX_PULSE_MS;  // the fifth breath is where being new ends
 const CTX_FADE_MS=2500;          // how long it takes to go out
 const CTX_CUT_MS=380;            // and how fast, when another row takes the gold

@@ -77,6 +77,15 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Fixed
 
+- A window no longer goes up on its word said about something else. The pull requests
+  waited for "pull request", "PR" or "review", and a mail about a build that failed on a PR
+  said "PR" while the mail window was up: the pull requests went up under the mail. Now a word
+  said in a sentence that has already named a row of a window on the desk is that row's word,
+  and the window waits for the next time it is said. Only what comes before the word in the
+  sentence counts, so "your pull requests: one from X" still puts the pull requests up however
+  many mails X sent. And a window's word is looked for after the previous window's, because
+  the briefing is spoken in order; a window that replaces one already up -- the mails he chose,
+  in place of the newest four -- looks from where that one did.
 - The row he names lights on the name, and no other row lights with it. Three faults in the
   matcher. It compared the row's words with the sentence as spoken, capitals and all, so a name
   ("Knijn") never lit anything: names are capitalised. It asked the whole answer so far, so by
@@ -132,6 +141,14 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Changed
 
+- A row lights with one blink and then holds its gold, rather than breathing five times. On a
+  list of four mails each spoken about in turn, five breaths apiece was a window that never
+  stopped flickering; one blink says "here", the steady gold after it says "still here".
+- A list may say its rows are in the order they will be spoken about (`ordered` on a panel).
+  The gold then walks down it: the next unlit row is the one the sentence is about, and it lights
+  when the sentence names it. Named a row further down instead, the rows between light on the
+  way, a beat apart, so every row gets its blink and in order. The mail window uses it (gmail
+  0.6.0).
 - `JARVIS_SPEECH_LANG` defaults to `en` and is now where a deployment starts rather than a
   fixed setting. A deployment that relied on the Dutch default sets `JARVIS_SPEECH_LANG=nl`,
   or switches once in the HUD.
