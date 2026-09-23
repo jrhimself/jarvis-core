@@ -1792,6 +1792,9 @@ function sameWindow(card, p){
 const DESK_KEY='jarvis.desk.v1';
 // Defaults until the brain sends kind:desk (core + packs). Packs append topics.
 let STICKY_ORDER=['weather','agenda','mail','work','notes'];
+// Set when the standing desk is rebuilt on load: the first-time tour card
+// would cover the orb we just opened, so offer() skips itself in that case.
+let deskRestoredAtBoot=false;
 const STICKY_LABEL={
   weather:'Weer', agenda:'Agenda', mail:'Mail',
   work:'Pull requests', notes:'Notities'
@@ -1977,6 +1980,7 @@ function restoreStickyDesk(){
     }
   }
   orderStickyStrip();
+  deskRestoredAtBoot=true;
   // Fresh page: desk is restored, then the orb takes the middle so talking is
   // ready without a click. Expand once to read the standing windows.
   if(mainEl.classList.contains('showing') && !mainEl.classList.contains('collapsed')){
@@ -4744,6 +4748,8 @@ function start(){
    works. */
 function offer(){
   if(seen()) return;
+  // Standing desk already filled the screen: do not cover the open orb.
+  if(typeof deskRestoredAtBoot!=='undefined' && deskRestoredAtBoot) return;
   if(!card) build();
   spot(null);
   eyebrow.textContent='J.A.R.V.I.S';
