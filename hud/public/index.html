@@ -333,6 +333,9 @@ main.showing #display{display:block}
 .dcard img{display:block;max-width:100%;max-height:min(62vh,34em);margin:0 auto;
   border-radius:8px;object-fit:contain}
 .dcard .cap{font-size:.87em;color:var(--muted);text-align:center}
+.dcard .agenda-date{font-size:.78em;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 .35em;padding:0 .15em .4em;border-bottom:1px solid hsla(var(--hue),80%,60%,.22);
+  text-shadow:0 0 12px hsla(var(--hue),100%,60%,.35)}
 .dcard .fallback{padding:28px;text-align:center;color:var(--muted);font-size:.87em;
   border:1px dashed var(--line);border-radius:8px}
 
@@ -1094,6 +1097,18 @@ function lightRow(tr){
   litRow={tr,timers};
 }
 
+function agendaDateHeading(p){
+  // Packs may send an explicit date; otherwise today's agenda rows are times
+  // only (the day is implied), so the window itself names the day.
+  if(p && typeof p.date==='string' && p.date.trim()) return p.date.trim();
+  const loc=(typeof speechLang==='string' && speechLang.startsWith('nl')) ? 'nl-NL' : 'en-GB';
+  try{
+    return new Intl.DateTimeFormat(loc,{weekday:'long',day:'numeric',month:'long'}).format(new Date());
+  }catch(e){
+    return new Date().toDateString();
+  }
+}
+
 function renderPanel(p){
   const table=document.createElement('table');
   // A quiet list is one where every row is being talked about, so lighting them
@@ -1121,7 +1136,18 @@ function renderPanel(p){
     subjects.push(subject);                    // quiet or not: a word said about it is about it
     if(!quiet) rows.push({tr, subject});
   }
-  return {node:table, title:p.title||'overview', rows, subjects, ordered:p.ordered===true};
+  const topic=stickyTopicOf(p) || windowTopic(p.title||'');
+  let node=table;
+  // Agenda rows for today are clock times with no day; name the day above them.
+  if(topic==='agenda'){
+    const wrap=document.createElement('div');
+    const heading=document.createElement('div');
+    heading.className='agenda-date';
+    heading.textContent=agendaDateHeading(p);
+    wrap.append(heading, table);
+    node=wrap;
+  }
+  return {node, title:p.title||'overview', rows, subjects, ordered:p.ordered===true};
 }
 
 function renderChart(p){
@@ -1422,9 +1448,10 @@ function renderNote(p){
    let go. `from` may be passed in for the one case where the move and the
    measurement cannot happen in that order: folding the windows away hides the
    stage, so where the card *was* has to be read before the class goes on. */
-function glide(card, into, from, replacing){
+function glide(card, into, from, replacing, before){
   from = from || card.getBoundingClientRect();
   if(replacing && replacing.parentElement===into) into.replaceChild(card, replacing);
+  else if(before && before.parentElement===into) into.insertBefore(card, before);
   else into.appendChild(card);
   if(REDUCED.matches) return Promise.resolve();
   const to=card.getBoundingClientRect();
@@ -1509,7 +1536,10 @@ function minimizeCard(card){
   const slot=card._slot; card._slot=null;
   if(slot && slot.parentElement===dispStrip) return glide(card, dispStrip, null, slot);
   makeRoom(1);
-  return glide(card, dispStrip);
+  // Sticky desk windows return to their STICKY_ORDER slot, not the end of the strip.
+  const topic=card._d && card._d.sticky ? card._d.stickyTopic : '';
+  const before=topic ? stickyInsertBefore(topic) : null;
+  return glide(card, dispStrip, null, null, before);
 }
 
 /** Bring a thumbnail back to full size; what was being read goes down onto the desk. */
@@ -1602,9 +1632,15 @@ function expandDisplay(){
   const from=docked ? docked.getBoundingClientRect() : null;
   mainEl.classList.remove('collapsed');
   if(docked){
-    const home=docked.dataset.fromStrip ? dispStrip : dispStage;
+    const toStrip=!!docked.dataset.fromStrip;
     delete docked.dataset.fromStrip;
-    glide(docked, home, from);
+    if(toStrip){
+      const topic=docked._d && docked._d.sticky ? docked._d.stickyTopic : '';
+      const before=topic ? stickyInsertBefore(topic) : null;
+      glide(docked, dispStrip, from, null, before);
+    }else{
+      glide(docked, dispStage, from);
+    }
   }
   setTimeout(sizeOrb, 520);
 }
@@ -1669,6 +1705,16 @@ async function placeCard(m, gen){
     if(m.id && connOk()) try{ ws.send(JSON.stringify({kind:'display_closed', id:m.id, reason:'next-turn'})); }catch(e){}
     return;
   }
+  // Standing desk windows refresh in their fixed slot. Staging them used to
+  // drop the old card and append a new one at the end, so an unchanged Mail
+  // window slid into Weather's place whenever the sky updated.
+  if(sticky){
+    placeStickyQuiet({ ...m, dismiss:{ mode:'manual' } });
+    bumpIdle();
+    if(turn) startPump();
+    setTimeout(sizeOrb, 520);
+    return;
+  }
   clearDisplay(m.id,'replaced');               // a replacement, not a second copy
   // The same window again under another id -- the mail list and then the mails
   // he picked out of it, both "Mail" -- is the newer one taking the older's
@@ -1679,7 +1725,11 @@ async function placeCard(m, gen){
   if(mainEl.classList.contains('collapsed')){
     const docked=dispDock.firstElementChild;
     mainEl.classList.remove('collapsed');
-    if(docked){ delete docked.dataset.fromStrip; makeRoom(1); dispStrip.appendChild(docked); }
+    if(docked){
+      delete docked.dataset.fromStrip;
+      makeRoom(1);
+      parkStickyOnStrip(docked);
+    }
   }
   mainEl.classList.add('showing');
   sizeStage();                                 // the frame first, then what is in it
@@ -1695,12 +1745,6 @@ async function placeCard(m, gen){
     minimizeCard(lead);
   }
   const card=makeCard({ ...m, dismiss }, RENDER[m.payload.type](m.payload));
-  if(sticky){
-    card._d.sticky=true;
-    card._d.stickyTopic=sticky;
-    card._d.untilNextTurn=false;
-    deskRemember(sticky, m.payload);
-  }
   dispStage.appendChild(card);
   bumpIdle();                                  // something to read: the minute starts over
   // A list that went up without waiting for a word still has rows to light as
@@ -1774,6 +1818,7 @@ function applyDeskSlots(slots){
     const payload=saved && saved.payload ? saved.payload : emptyStickyPayload(topic);
     placeStickyQuiet({ id:'sticky-'+topic, payload, dismiss:{ mode:'manual' } });
   }
+  orderStickyStrip();
 }
 
 function stickyTopicOf(p){
@@ -1824,24 +1869,84 @@ function isEmptyPlaceholder(p){
   return !!(p && p.rows && p.rows.length===1 && p.rows[0].value==='nog geen gegevens');
 }
 
+/** Strip child that a sticky topic should sit before, by STICKY_ORDER. */
+function stickyInsertBefore(topic){
+  if(!topic) return null;
+  const want=STICKY_ORDER.indexOf(topic);
+  if(want<0) return null;
+  for(const child of [...dispStrip.children]){
+    let t='';
+    if(child.classList.contains('dcard')) t=child._d && child._d.stickyTopic || '';
+    else if(child.classList.contains('dslot')) t=child._for && child._for._d && child._for._d.stickyTopic || '';
+    if(!t) continue;
+    const at=STICKY_ORDER.indexOf(t);
+    if(at>want) return child;
+  }
+  return null;
+}
+
+/** Park a card on the strip at its sticky slot (or append if it is not sticky). */
+function parkStickyOnStrip(card){
+  if(!card) return;
+  const topic=card._d && card._d.sticky ? card._d.stickyTopic : '';
+  const before=topic ? stickyInsertBefore(topic) : null;
+  if(before) dispStrip.insertBefore(card, before);
+  else dispStrip.appendChild(card);
+}
+
+/** Keep sticky thumbnails in STICKY_ORDER after a restore or slot change. */
+function orderStickyStrip(){
+  const byTopic=new Map();
+  for(const child of [...dispStrip.children]){
+    if(!child.classList.contains('dcard') || !child._d || !child._d.sticky) continue;
+    byTopic.set(child._d.stickyTopic, child);
+  }
+  for(const topic of STICKY_ORDER){
+    const card=byTopic.get(topic);
+    if(card) dispStrip.appendChild(card);
+  }
+}
+
 /** Put a sticky window on the desk without the arrival choreography. */
 function placeStickyQuiet(m){
   const p=m.payload; if(!p || !RENDER[p.type]) return;
   const topic=stickyTopicOf(p);
-  for(const card of allCards()) if(sameWindow(card, p)) dropCard(card,'replaced');
+  // Refresh in place when the slot is already filled: dropping and appending
+  // used to shuffle the whole desk whenever one subject updated.
+  const existing=topic
+    ? allCards().find(c=>c._d && c._d.sticky && c._d.stickyTopic===topic)
+    : null;
   let rendered;
   try { rendered = RENDER[p.type](p); }
   catch (err) {
     console.warn('sticky render failed', topic || p.type, err);
     return false;
   }
+  if(existing){
+    clearTimeout(existing._d.timer);
+    clearInterval(existing._d.refresh);
+    const body=existing.querySelector('.body');
+    const h=existing.querySelector('h3');
+    if(body) body.replaceChildren(rendered.node);
+    if(h) h.textContent=rendered.title;
+    existing._rows = rendered.rows || [];
+    existing._subjects = rendered.subjects || existing._rows.map(row=>row.subject);
+    existing._ordered = rendered.ordered===true;
+    existing._d.type=p.type;
+    existing._d.title=String(p.title||'').trim().toLowerCase();
+    existing._d.refresh = rendered.after ? rendered.after() : null;
+    existing._d.id=m.id || existing._d.id;
+    if(topic && !isEmptyPlaceholder(p)) deskRemember(topic, p);
+    return true;
+  }
+  for(const card of allCards()) if(sameWindow(card, p)) dropCard(card,'replaced');
   const card=makeCard({ ...m, dismiss:{ mode:'manual' } }, rendered);
   card._d.sticky=true;
   card._d.stickyTopic=topic;
   card._d.untilNextTurn=false;
   mainEl.classList.add('showing');
   makeRoom(1);
-  dispStrip.appendChild(card);
+  parkStickyOnStrip(card);
   if(topic && !isEmptyPlaceholder(p)) deskRemember(topic, p);
   return true;
 }
@@ -1871,6 +1976,13 @@ function restoreStickyDesk(){
       } catch (e) {}
     }
   }
+  orderStickyStrip();
+  // Fresh page: desk is restored, then the orb takes the middle so talking is
+  // ready without a click. Expand once to read the standing windows.
+  if(mainEl.classList.contains('showing') && !mainEl.classList.contains('collapsed')){
+    collapseDisplay();
+  }
+  sizeOrb();
   setTimeout(sizeOrb, 520);
 }
 
