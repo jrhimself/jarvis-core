@@ -116,7 +116,7 @@ export function looksGated(value: unknown): boolean {
  */
 export function askedInstruction(): string {
   return (
-    "[Joey asked for the briefing in so many words. Give it, in full, now. Call " +
+    "[The user asked for the briefing in so many words. Give it, in full, now. Call " +
     "briefing_again first: say its text if it hands one over, otherwise fetch everything " +
     "the way a morning briefing goes, with again=true beside briefing=true. Any tool that " +
     "says the briefing was already given today is not about this request; \"already " +

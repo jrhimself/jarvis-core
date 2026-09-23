@@ -211,7 +211,7 @@ test("a window said again goes up where it went up the first time", async () => 
     lang: "en",
     text: "Rain today. Four things on the agenda. Last night's note pass read four notes.",
     windows: [
-      { payload: { type: "text", title: "Note-ingest", text: "17 facts" }, dismiss: { mode: "next-turn" }, at: 41 },
+      { payload: { type: "text", title: "Note-ingest", body: "17 facts" }, dismiss: { mode: "next-turn" }, at: 41 },
     ],
   });
   const { shown } = await callAgain(cache, 2 * HOUR);
