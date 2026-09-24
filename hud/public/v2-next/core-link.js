@@ -379,7 +379,7 @@ registerProcessor('mic-tap', MicTap);
       firstTimer: null, stallTimer: null, levelIv: null,
       lastSeq: null,
       /* {at: context time, n: characters spoken}, from the audio's alignment */
-      timeline: [], charCursor: 0, spokenN: 0,
+      timeline: [], charCursor: 0, spokenN: 0, aligned: false, estChars: 0,
       /* what the turn's end waits for: run once the last chunk has played */
       after: null, afterTimer: null,
     };
@@ -1141,6 +1141,14 @@ registerProcessor('mic-tap', MicTap);
     function pushVoiceTimeline(start, duration, alignment) {
       const chars = alignment && Array.isArray(alignment.chars) ? alignment.chars : null;
       if (chars && chars.length) {
+        /* A turn that has alignment is counted by it alone. Estimates made
+           before the first one are taken back, or they would stay ahead. */
+        if (!voice.aligned) {
+          voice.aligned = true;
+          voice.charCursor -= voice.estChars;
+          voice.estChars = 0;
+          voice.timeline = voice.timeline.filter((e) => !e.est);
+        }
         const st = Array.isArray(alignment.startMs) ? alignment.startMs : [];
         const du = Array.isArray(alignment.durMs) ? alignment.durMs : [];
         for (let i = 0; i < chars.length; i++) {
@@ -1150,11 +1158,17 @@ registerProcessor('mic-tap', MicTap);
         voice.charCursor += chars.length;
         return;
       }
+      /* The brain sends alignment on some chunks only, and each one's timings
+         run on over the chunks after it that carry none: those are not more
+         characters. Counting them at a speaking rate put the gate a sentence
+         or more ahead of the voice by the middle of a briefing. */
+      if (voice.aligned) return;
       const total = Math.max(1, Math.round(duration * VOICE_CPS));
       for (let i = 1; i <= total; i++) {
-        voice.timeline.push({ at: start + duration * (i / total), n: voice.charCursor + i });
+        voice.timeline.push({ at: start + duration * (i / total), n: voice.charCursor + i, est: true });
       }
       voice.charCursor += total;
+      voice.estChars += total;
     }
 
     /* What has been said so far moves the cue gate, so a panel opens on the
@@ -1245,6 +1259,7 @@ registerProcessor('mic-tap', MicTap);
       voice.turnId = null; voice.ok = false; voice.done = false; voice.gapWarned = false;
       voice.nextStart = 0; voice.playing = false; voice.lastSeq = null; voice.armed = false;
       voice.timeline.length = 0; voice.charCursor = 0; voice.spokenN = 0;
+      voice.aligned = false; voice.estChars = 0;
       voice.after = null; clearTimeout(voice.afterTimer); voice.afterTimer = null;
       bus.emit('audioLevel', 0);
     }
@@ -1381,6 +1396,8 @@ registerProcessor('mic-tap', MicTap);
       Normalizers,
       /** Test hook: inject a server message without a socket. */
       _inject: route,
+      /** Test hook: what the cue gate counts as said so far. */
+      get _spoken() { return spokenText; },
       /** Mark briefing for interim focus derivation (tests / until desk arrives). */
       _setBriefing(v) { inBriefing = !!v; },
     };
