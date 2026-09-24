@@ -34,11 +34,15 @@ function seeded(seed) {
 
 /* Voice / demo state — drives energy, ring speed, sweep, bloom */
 let voiceState = 'idle'; /* idle | listening | thinking | speaking */
-let waveAmp = 0.55; /* waveform amplitude multiplier */
-let liveAudioLevel = 0; /* 0..1 from CoreLink playback/mic */
+let waveAmp = 0.55; /* waveform amplitude multiplier, eased each frame (advanceMotion) */
+let presetWave = 0.55; /* the voice state's amplitude when there is no live level */
+let liveAudioLevel = 0; /* 0..1 from CoreLink playback */
+let liveAudioAt = -Infinity; /* when the last level arrived, performance.now() */
+let audioEnv = 0; /* liveAudioLevel smoothed: quick to rise, slower to fall */
+let audioPeak = 0.15; /* recent loudest level, falling slowly: the scale for audioEnv */
 function setLiveAudioLevel(n) {
   liveAudioLevel = Math.max(0, Math.min(1, Number(n) || 0));
-  if (liveAudioLevel > 0.02) waveAmp = Math.max(waveAmp, 0.35 + liveAudioLevel * 1.4);
+  liveAudioAt = performance.now();
 }
 
 let ringSpeedMul = 1;
@@ -65,7 +69,7 @@ function applyVoicePreset(state) {
   ringSpeedMul = p.ring;
   sweepMul = p.sweep;
   bloomMul = p.bloom;
-  waveAmp = p.wave;
+  presetWave = p.wave;
   document.documentElement.setAttribute('data-voice', state);
 
   const copy = STATUS_COPY[state] || STATUS_COPY.idle;
@@ -429,8 +433,10 @@ function drawThroughWaveform(ctx, cx, cy, R, coreR, hue, energy, t) {
     const env = Math.exp(-xNorm * xNorm * 0.85) * (0.65 + 0.35 * (1 - Math.abs(xNorm) * 0.25));
     const insideBoost = Math.abs(xNorm) < (coreR / halfW) ? 1.35 : 1.0;
     return (
-      Math.sin(u * Math.PI * (7 + layer * 3) + t * (3.4 + amp * 1.8 + layer)) * baseAmp * env * insideBoost +
-      Math.sin(u * Math.PI * (17 + layer * 5) + t * (6.2 + amp * 2.5)) * baseAmp * 0.32 * env +
+      /* Phase speeds are fixed: with the amplitude in them, a wave whose
+         amplitude follows the voice would jump sideways on every syllable. */
+      Math.sin(u * Math.PI * (7 + layer * 3) + t * (6.2 + layer)) * baseAmp * env * insideBoost +
+      Math.sin(u * Math.PI * (17 + layer * 5) + t * 10.3) * baseAmp * 0.32 * env +
       Math.sin(u * Math.PI * 31 + t * 9.5 + layer) * baseAmp * 0.12 * env * amp
     );
   }
@@ -519,7 +525,7 @@ function drawStatusWave(canvas, t) {
     const u = x / w;
     const y =
       mid +
-      Math.sin(u * Math.PI * 7 + t * (3.5 + amp)) * (h * 0.32) * amp +
+      Math.sin(u * Math.PI * 7 + t * 4.6) * (h * 0.32) * amp +
       Math.sin(u * Math.PI * 15 + t * 6.2) * (h * 0.12 * amp);
     if (x === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
@@ -641,57 +647,6 @@ function drawSpark(canvas, seed, t) {
 }
 
 /* ---------- Waveform (pin-style oscilloscope) ---------- */
-function drawWaveform(canvas, t) {
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = canvas.clientWidth || 220;
-  const h = canvas.clientHeight || 36;
-  const tw = Math.round(w * dpr),
-    th = Math.round(h * dpr);
-  if (canvas.width !== tw || canvas.height !== th) {
-    canvas.width = tw;
-    canvas.height = th;
-  }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  ctx.strokeStyle = `hsla(${HUE},40%,40%,0.25)`;
-  ctx.lineWidth = 0.5;
-  for (let i = 1; i < 4; i++) {
-    const y = (h / 4) * i;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
-    ctx.stroke();
-  }
-
-  ctx.beginPath();
-  const mid = h / 2;
-  for (let x = 0; x < w; x++) {
-    const u = x / w;
-    const amp = waveAmp;
-    const y =
-      mid +
-      Math.sin(u * Math.PI * 8 + t * (3.2 + amp)) * (h * 0.28) * amp * (0.55 + 0.45 * Math.sin(t * 1.1 + u * 4)) +
-      Math.sin(u * Math.PI * 19 + t * (5.5 + amp * 2)) * (h * 0.1 * amp);
-    if (x === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  const speaking = voiceState === 'speaking';
-  const hue = speaking ? 355 : HUE;
-  ctx.strokeStyle = speaking
-    ? `hsla(${hue},95%,65%,0.9)`
-    : `hsla(${hue},100%,72%,0.85)`;
-  ctx.lineWidth = 1.4;
-  ctx.shadowColor = speaking
-    ? `hsla(${hue},100%,55%,0.55)`
-    : `hsla(${hue},100%,70%,0.55)`;
-  ctx.shadowBlur = 6;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-}
-
 /* ---------- Plan usage gauges (session / week) ----------
    Shape matches jarvis-core HUD: message { kind:'usage', usage: PlanUsage }
    PlanUsage = { status, binding, session, week, at }
@@ -1080,6 +1035,20 @@ function advanceMotion(t) {
   motion.sweepMul += (sweepTarget - motion.sweepMul) * k;
   motion.ring += dt * motion.ringMul;
   motion.sweep += dt * motion.sweepMul;
+
+  /* The wave follows the voice: while Jarvis speaks, its amplitude is the
+     playback level -- up on a syllable within a frame or two, down over a
+     tenth of a second -- so it pulses with the words and drops in the pauses.
+     Without a live level (demo keys, other states) it is the preset. */
+  const live = voiceState === 'speaking' && performance.now() - liveAudioAt < 400;
+  /* The level is raw RMS, and how loud a voice is mixed differs per voice and
+     per line: measure it against the loudest of the last few seconds. */
+  audioPeak = Math.max(liveAudioLevel, 0.02, audioPeak * Math.exp(-dt * 0.35));
+  const level = Math.min(1, liveAudioLevel / audioPeak);
+  const up = level > audioEnv;
+  audioEnv += (level - audioEnv) * (1 - Math.exp(-dt * (up ? 28 : 9)));
+  const waveTarget = live ? 0.12 + audioEnv * 1.9 : presetWave;
+  waveAmp += (waveTarget - waveAmp) * (1 - Math.exp(-dt * (live ? 30 : 4)));
 }
 
 function paintFrame(t) {

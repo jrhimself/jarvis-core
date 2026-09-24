@@ -1208,17 +1208,15 @@ registerProcessor('mic-tap', MicTap);
           bus.emit('audioLevel', 0);
           return;
         }
-        voice.an.getByteFrequencyData(voice.freq);
-        let sum = 0;
-        const N = voice.freq.length;
-        for (let i = 0; i < 64; i++) {
-          const lo = Math.floor(Math.pow(i / 64, 1.7) * N * 0.7);
-          const hi = Math.max(lo + 1, Math.floor(Math.pow((i + 1) / 64, 1.7) * N * 0.7));
-          let mx = 0;
-          for (let j = lo; j < hi; j++) mx = Math.max(mx, voice.freq[j]);
-          sum += mx / 255;
-        }
-        const level = clamp((sum / 64) * 2.4, 0, 1);
+        /* RMS of what is playing right now. The smoothed spectrum this used to
+           sum, times 2.4, sat at 1 through most of a sentence, so the orb's
+           wave stood at full height instead of moving with the syllables.
+           The raw level goes out; the HUD scales it to the voice's loudness. */
+        if (!voice.td) voice.td = new Float32Array(voice.an.fftSize);
+        voice.an.getFloatTimeDomainData(voice.td);
+        let sq = 0;
+        for (let i = 0; i < voice.td.length; i++) sq += voice.td[i] * voice.td[i];
+        const level = clamp(Math.sqrt(sq / voice.td.length), 0, 1);
         bus.emit('audioLevel', level);
         if (voice.ctx && voice.ctx.currentTime > voice.nextStart + 0.05) {
           voice.playing = false;
