@@ -348,7 +348,12 @@ registerProcessor('mic-tap', MicTap);
     let inBriefing = false;
     let focusedPanel = null;
     let coreFocusSeen = false; /* true once Core sends focus/unfocus — disables interim derive */
-    let pendingFocus = null;   /* {panel, cue} waiting for cue */
+    /* Panels raised during a turn, each waiting for the words that name it:
+       {panel, anchors, chars}. A briefing raises five at once -- one per tool,
+       before a word is said -- and they must open one by one as he gets to
+       them, not all at once and not only the last. */
+    let focusQueue = [];
+    let spokenCursor = 0;      /* how far into spokenText a queued panel has been found */
     let spokenText = '';       /* cumulative answer text for cue gating */
     let metrics = null;
     let health = [];
@@ -420,23 +425,89 @@ registerProcessor('mic-tap', MicTap);
       return spoken.length >= (cue.chars || 0);
     }
 
+    /* Words that say a desk topic is being talked about. Core raises a panel
+       for every tool a turn calls, without a cue, and a briefing says "rain,
+       16 to 18 degrees" rather than "the weather": the topic's own vocabulary
+       is what can tell when he has got to it. Four letters or more match the
+       start of a word ("degree" hears "degrees"), shorter ones a whole word. */
+    const TOPIC_WORDS = {
+      weather: ['weather', 'weer', 'forecast', 'verwachting', 'degree', 'graden', 'rain', 'regen',
+        'shower', 'bui', 'buien', 'wind', 'cloud', 'bewolk', 'sunny', 'zonnig', 'temperat', 'dry', 'droog'],
+      agenda: ['agenda', 'calendar', 'kalender', 'meeting', 'vergader', 'afspra', 'appointment', 'schedule'],
+      mail: ['mail', 'inbox', 'bericht', 'message'],
+      work: ['pull request', 'pr', 'prs', 'review', 'merge', 'pipeline'],
+      notes: ['note', 'notitie', 'ingest'],
+    };
+
+    function anchorsFor(panel, cue) {
+      const out = new Set();
+      String((cue && cue.anchor) || '').split('|').forEach((a) => {
+        a = a.trim().toLowerCase();
+        if (a) out.add(a);
+      });
+      /* A core panel's words are chosen above; its label ("Work · PRs") would
+         add "work", which is in "workflow" in the middle of a mail. A pack
+         topic has only its id and label to go on. */
+      if (TOPIC_WORDS[panel]) {
+        TOPIC_WORDS[panel].forEach((a) => out.add(a));
+        return Array.from(out);
+      }
+      out.add(String(panel).toLowerCase());
+      const label = topics.STICKY_LABEL[panel];
+      if (label) String(label).toLowerCase().split(/[^\p{L}\p{N}]+/u).forEach((w) => { if (w.length >= 3) out.add(w); });
+      return Array.from(out);
+    }
+
+    /* Where an anchor is first said at or after `from`, or -1. */
+    function anchorAt(lower, anchor, from) {
+      if (anchor.length >= 4) return lower.indexOf(anchor, from);
+      const safe = anchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp('(^|[^\\p{L}\\p{N}])' + safe + '(?![\\p{L}\\p{N}])', 'gu');
+      re.lastIndex = from > 0 ? from - 1 : 0;
+      const m = re.exec(lower);
+      return m ? m.index + m[1].length : -1;
+    }
+
     function queueOrApplyFocus(panel, cue) {
       if (!panel) return;
-      if (!cue || cueReached(cue, spokenText)) {
-        pendingFocus = null;
-        setFocus(String(panel));
-      } else {
-        pendingFocus = { panel: String(panel), cue: cue };
+      panel = String(panel);
+      /* Outside a turn there is nothing to wait for. */
+      if (!turn) { setFocus(panel); return; }
+      const anchors = anchorsFor(panel, cue);
+      const known = focusQueue.find((q) => q.panel === panel);
+      if (known) anchors.forEach((a) => { if (known.anchors.indexOf(a) < 0) known.anchors.push(a); });
+      else focusQueue.push({ panel, anchors, chars: (cue && cue.chars) || 0 });
+      flushPendingFocus(false);
+    }
+
+    /* Open the queued panels whose words have now been said, in the order they
+       were said. `force` is the end of the turn: a panel never talked about is
+       dropped rather than opened as he stops talking. */
+    function flushPendingFocus(force) {
+      if (force) { focusQueue = []; return; }
+      /* Nothing goes up on the opening line ("let me review your day" is not
+         the pull requests), as in v1: search from where the answer starts. */
+      if (turn && turn.openingLen > spokenCursor) spokenCursor = turn.openingLen;
+      const lower = spokenText.toLowerCase();
+      for (;;) {
+        let best = -1, at = Infinity, end = 0;
+        focusQueue.forEach((q, i) => {
+          for (const a of q.anchors) {
+            const pos = anchorAt(lower, a, spokenCursor);
+            if (pos >= 0 && pos < at) { best = i; at = pos; end = pos + a.length; }
+          }
+        });
+        if (best < 0) return;
+        const q = focusQueue.splice(best, 1)[0];
+        spokenCursor = end;
+        setFocus(q.panel);
       }
     }
 
-    function flushPendingFocus(force) {
-      if (!pendingFocus) return;
-      if (force || cueReached(pendingFocus.cue, spokenText)) {
-        const p = pendingFocus.panel;
-        pendingFocus = null;
-        setFocus(p);
-      }
+    function resetCueGate() {
+      focusQueue = [];
+      spokenCursor = 0;
+      spokenText = '';
     }
 
     let deferredUnfocus = false;
@@ -452,7 +523,7 @@ registerProcessor('mic-tap', MicTap);
     }
 
     function clearFocus(reason) {
-      pendingFocus = null;
+      focusQueue = [];
       setFocus(null);
     }
 
@@ -472,7 +543,7 @@ registerProcessor('mic-tap', MicTap);
       try { sock = new WebSocket(url); }
       catch (e) { scheduleReconnect(); return; }
       ws = sock;
-      sock.onopen = () => { wsRetry = 0; wsWasOpen = true; coreFocusSeen = false; pendingFocus = null; spokenText = ''; setConn('online', 'online'); };
+      sock.onopen = () => { wsRetry = 0; wsWasOpen = true; coreFocusSeen = false; resetCueGate(); setConn('online', 'online'); };
       sock.onmessage = (ev) => {
         let m;
         try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -676,6 +747,7 @@ registerProcessor('mic-tap', MicTap);
         setMode('speaking');
       }
       if (turn) {
+        if (m.opening === true && !turn.answering) turn.openingLen = (turn.openingLen || 0) + m.text.length;
         turn.text = (turn.text || '') + m.text;
         /* With the brain's voice, cues wait for the audio (see voiceTick):
            the text of a briefing is in long before it has been said. */
@@ -763,6 +835,7 @@ registerProcessor('mic-tap', MicTap);
       followUntil = 0; clearTimeout(followTimer);
       const id = uuid();
       turn = { id, t0: performance.now(), answering: false, text: '', voiceOk: false };
+      resetCueGate();
       setMode('thinking');
       send({ kind: 'utterance', text, turnId: id });
       bus.emit('utterance', { text, turnId: id });
@@ -778,6 +851,7 @@ registerProcessor('mic-tap', MicTap);
       followUntil = 0; clearTimeout(followTimer);
       const id = uuid();
       turn = { id, t0: performance.now(), answering: false, text: '', voiceOk: false };
+      resetCueGate();
       setMode('speaking');
       const msg = { kind: 'say', text, turnId: id, lang: lang === 'en' ? 'en' : (lang === 'nl' ? 'nl' : speechLang) };
       send(msg);
