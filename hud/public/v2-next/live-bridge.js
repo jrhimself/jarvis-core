@@ -286,7 +286,7 @@
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
-    ctx.strokeStyle = 'hsla(200,100%,70%,0.75)';
+    ctx.strokeStyle = 'hsla(' + ((window.JarvisV2 && JarvisV2.hue && JarvisV2.hue()) || 200) + ',100%,70%,0.75)';
     ctx.lineWidth = 1.2;
     ctx.stroke();
   }

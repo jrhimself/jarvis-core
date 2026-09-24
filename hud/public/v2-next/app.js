@@ -20,7 +20,10 @@
          B boot · W/A/N/M/P/S focus · Esc unfocus.
 */
 
-const HUE = 200;
+/* The orb's hue follows the voice state like the desk's --hue does (styles.css),
+   eased along the shorter way round the colour wheel. */
+const STATE_HUE = { idle: 200, listening: 160, thinking: 38, speaking: 355 };
+let HUE = 200;
 const ACCENT = 22; /* orange/amber accents like the pin */
 
 function seeded(seed) {
@@ -156,8 +159,8 @@ function drawSoftCore(ctx, cx, cy, R, hue, energy, t) {
 
   /* Filled disk body — deep navy center → luminous cyan rim */
   g = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
-  g.addColorStop(0.0, `hsla(215, 72%, 7%, 0.97)`);          /* deep navy heart */
-  g.addColorStop(0.18, `hsla(212, 78%, 11%, 0.94)`);
+  g.addColorStop(0.0, `hsla(${HUE + 15}, 72%, 7%, 0.97)`);          /* deep navy heart */
+  g.addColorStop(0.18, `hsla(${HUE + 12}, 78%, 11%, 0.94)`);
   g.addColorStop(0.40, `hsla(${hue}, 88%, 18%, 0.90)`);
   g.addColorStop(0.62, `hsla(${hue}, 95%, 36%, ${0.58 + energy * 0.18})`);
   g.addColorStop(0.82, `hsla(${hue}, 100%, 58%, ${0.78 + energy * 0.15})`);
@@ -1041,6 +1044,7 @@ function advanceMotion(t) {
     motion.ring = t * ringSpeedMul;
     motion.sweep = t * sweepTarget;
     waveAmp = presetWave;
+    HUE = STATE_HUE[voiceState] ?? 200;
     return;
   }
   const dt = motion.last === null ? 0 : Math.min(0.1, Math.max(0, t - motion.last));
@@ -1050,6 +1054,10 @@ function advanceMotion(t) {
   motion.sweepMul += (sweepTarget - motion.sweepMul) * k;
   motion.ring += dt * motion.ringMul;
   motion.sweep += dt * motion.sweepMul;
+
+  const hueTarget = STATE_HUE[voiceState] ?? 200;
+  const dh = ((hueTarget - HUE + 540) % 360) - 180;
+  HUE = (HUE + dh * (1 - Math.exp(-dt * 6)) + 360) % 360;
 
   /* The wave follows the voice: while Jarvis speaks, its amplitude is the
      playback level -- up on a syllable within a frame or two, down over a
@@ -1980,6 +1988,7 @@ window.JarvisV2 = {
   applyVoicePreset, paintFrame, freezeT, animate, applyUsage, usageView,
   Panels, focusPanel, unfocusPanel, runBootSequence, orbBoot,
   setLiveAudioLevel,
+  hue: () => HUE,
   /* aliases used by live-bridge */
   applyVoicePreset,
   focusPanel,
