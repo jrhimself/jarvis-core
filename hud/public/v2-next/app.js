@@ -828,10 +828,24 @@ function drawAccentRing(canvas, winKey) {
     pct == null
       ? `hsla(${HUE},30%,55%,0.55)`
       : `hsla(${hue},90%,${tone === 'ok' ? 72 : 68}%,0.95)`;
-  ctx.font = `600 ${Math.round(size * 0.22)}px ui-sans-serif, system-ui, sans-serif`;
+  /* No percentage but a known reset: say when the window opens again. Some
+     tokens get no utilization at all, only the reset from the rate-limit
+     event, and a dash told nothing a clock can. */
+  const reset = pct == null ? shortReset(winKey, w.resetsAt) : '';
+  ctx.font = `600 ${Math.round(size * (reset ? 0.17 : 0.22))}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(pct == null ? '—' : String(Math.round(pct)), cx, cy + 0.5);
+  ctx.fillText(pct != null ? String(Math.round(pct)) : reset || '—', cx, cy + 0.5);
+}
+
+/* The reset as it fits inside a gauge: a time for the session, a weekday for the week. */
+function shortReset(winKey, iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return '';
+  return winKey === 'session'
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { weekday: 'short' });
 }
 
 function showGaugeTip(winKey, anchor) {
@@ -1026,6 +1040,7 @@ function advanceMotion(t) {
   if (!animate) {
     motion.ring = t * ringSpeedMul;
     motion.sweep = t * sweepTarget;
+    waveAmp = presetWave;
     return;
   }
   const dt = motion.last === null ? 0 : Math.min(0.1, Math.max(0, t - motion.last));

@@ -70,7 +70,9 @@ import {
   limitSentence,
   notePlanEvent,
   notePlanReport,
+  notePlanReportAsked,
   planContextBlock,
+  planReportDue,
   planUsage,
 } from "./plan.js";
 import { createSetupServer, SETUP_SERVER_NAME, SETUP_TOOLS } from "./setup-tools.js";
@@ -232,8 +234,6 @@ export class AgentSession {
   #stream: ReturnType<typeof query> | null = null;
   #pump: Promise<void> | null = null;
   #broken = false;
-  /** Whether the SDK will answer for the plan's windows on this session. */
-  #planAvailable = true;
   /**
    * Which model this conversation's turns run on.
    *
@@ -702,25 +702,27 @@ ${asked}`;
 
   /**
    * Asks the SDK for both windows of the plan, after a turn. The method is
-   * experimental and the token is not always allowed to ask; the first refusal
-   * is remembered for the session, since every turn after it would be refused
-   * the same way. The events keep the pill honest in the meantime.
+   * experimental and the token is not always allowed to ask. How often it is
+   * asked is decided for the whole process (see `planReportDue`), not per
+   * session. The events keep the pill honest in the meantime.
    */
   async #refreshPlan(): Promise<void> {
     const stream = this.#stream;
-    if (stream === null || !this.#planAvailable) return;
+    if (stream === null || !planReportDue()) return;
     const ask = (stream as unknown as Record<string, unknown>)[
       "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET"
     ];
     if (typeof ask !== "function") {
-      this.#planAvailable = false;
+      notePlanReportAsked(false);
       return;
     }
+    // Claimed before the await, so two turns ending together ask once.
+    notePlanReportAsked(false);
     try {
       const report: unknown = await (ask as () => Promise<unknown>).call(stream);
-      if (notePlanReport(report) === null) this.#planAvailable = false;
+      notePlanReportAsked(notePlanReport(report) !== null);
     } catch {
-      // The pill keeps what the events said.
+      // The pill keeps what the events said; the backoff stands.
     }
   }
 

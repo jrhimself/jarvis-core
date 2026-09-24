@@ -13,7 +13,11 @@ import {
   limitSentence,
   notePlanEvent,
   notePlanReport,
+  notePlanReportAsked,
   onPlanUsage,
+  PLAN_REPORT_BACKOFF_MS,
+  PLAN_REPORT_INTERVAL_MS,
+  planReportDue,
   planContextBlock,
   planUsage,
   spokenHour,
@@ -132,4 +136,21 @@ test("the deployment's sentence gets the reset time, or loses the sentence that 
   );
   assert.equal(limitSentence(template, null, NOW), "Je zit aan je limiet. Ik kan nu even niets opzoeken.");
   forgetPlanUsage();
+});
+
+test("the plan report is asked for once per interval, and not for an hour after a refusal", () => {
+  forgetPlanUsage();
+  const t0 = NOW.getTime();
+  assert.equal(planReportDue(t0), true);
+
+  notePlanReportAsked(true, t0);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_INTERVAL_MS - 1), false);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_INTERVAL_MS), true);
+
+  notePlanReportAsked(false, t0);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_INTERVAL_MS), false);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_BACKOFF_MS), true);
+
+  forgetPlanUsage();
+  assert.equal(planReportDue(t0), true);
 });

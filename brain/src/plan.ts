@@ -150,10 +150,34 @@ export function onPlanUsage(listener: Listener): () => void {
   };
 }
 
+/**
+ * When the SDK may next be asked for the plan report. Kept for the process, not
+ * per session: a refusal remembered by one conversation was forgotten by the
+ * next, so every page that connected asked again, and the usage endpoint
+ * answers a token that asks that often with an hour of 429s.
+ */
+let reportDueAt = 0;
+
+/** Between two reports that were answered: the windows move slowly. */
+export const PLAN_REPORT_INTERVAL_MS = 10 * 60 * 1000;
+/** After a refusal or an error: the endpoint's own retry-after is an hour. */
+export const PLAN_REPORT_BACKOFF_MS = 60 * 60 * 1000;
+
+/** Whether it is time to ask for the plan report again. */
+export function planReportDue(now = Date.now()): boolean {
+  return now >= reportDueAt;
+}
+
+/** Record an ask: answered waits the interval, refused waits the backoff. */
+export function notePlanReportAsked(answered: boolean, now = Date.now()): void {
+  reportDueAt = now + (answered ? PLAN_REPORT_INTERVAL_MS : PLAN_REPORT_BACKOFF_MS);
+}
+
 /** Back to knowing nothing. For the tests, which share this module. */
 export function forgetPlanUsage(): void {
   current = null;
   storePath = "";
+  reportDueAt = 0;
 }
 
 function publish(next: PlanUsage): PlanUsage {
