@@ -141,6 +141,15 @@ export type DisplayPayload =
        * after it does, so every row has its blink, once, in the right order.
        */
       ordered?: boolean;
+      /**
+       * The figure the window opens with, when it is not the number of rows.
+       *
+       * A mail window after "nothing new since the last briefing" holds the
+       * older mails that still want an answer: the figure is 0, what was said
+       * about new mail, and `label` says what the rows are ("3 require your
+       * attention"). Without it the HUD counts the rows.
+       */
+      figure?: { value: number; label?: string };
     }
   | {
       type: "chart";

@@ -1594,3 +1594,66 @@ html.is-focusing .footer {
   }
   .pack-card { max-width: none; }
 }
+
+/* ===== Desk lists: the figure beside its words, one line per item =====
+   A list panel reads at a glance: the count and what it counts on one row,
+   then one line per item in a shared time/name column (subgrid, so every row
+   of a panel lines up). What does not fit falls off the end (live-bridge
+   fitPanel); the enlarged window grows to hold the rest, with the details. */
+.hero-metric.hero-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.hero-row .value { font-size: 34px; }
+.hero-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hero-row .label { margin-top: 0; font-size: 9px; }
+.hero-row .aside {
+  font-size: 11px;
+  color: var(--cyan-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hero-row .aside .k {
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: 3px;
+}
+.list.compact {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 3px;
+}
+.list.compact.mail-list { grid-template-columns: fit-content(7.5em) minmax(0, 1fr); }
+.list.compact li {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.list.compact .t {
+  font-size: 9.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.list.compact .sub { display: none; }
+.list.compact li.mark .body { color: #fff; }
+.fit-item.fit-hidden { display: none; }
+.panel.is-focused .list.compact { row-gap: 6px; }
+.panel.is-focused .list.compact .body { white-space: normal; }
+.panel.is-focused .list.compact .sub {
+  display: block;
+  margin-top: 1px;
+  white-space: normal;
+}

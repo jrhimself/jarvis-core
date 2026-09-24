@@ -1582,6 +1582,17 @@ function _focusPanelNow(id) {
   });
 }
 
+const FOCUS_EASE = '560ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+const FOCUS_GROW = 'transform ' + FOCUS_EASE + ', height ' + FOCUS_EASE + ', margin-bottom ' + FOCUS_EASE;
+
+/** Back to the desk size, and the rows that do not fit there off again. */
+function settlePanelSize(el, id) {
+  el.style.height = '';
+  el.style.marginBottom = '';
+  delete el.dataset.baseH;
+  if (window.LiveBridge && LiveBridge.fitPanel) LiveBridge.fitPanel(id);
+}
+
 function _focusPanelApply(id, done) {
   const el = Panels.el(id);
   if (!el) {
@@ -1617,9 +1628,18 @@ function _focusPanelApply(id, done) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const margin = 48;
-  const scale = Math.min(1.7, (vw - margin * 2) / first.width, (vh - margin * 2) / first.height);
+  /* Enlarged is more than bigger: the rows that fell off the desk panel come
+     back, with their details, and the panel grows to hold them. The negative
+     margin keeps the column where it was while this one is lifted out. */
+  if (window.LiveBridge && LiveBridge.fitPanel) LiveBridge.fitPanel(id);
+  const body = el.querySelector('.panel-body');
+  const baseH = el.offsetHeight;
+  let extra = body ? Math.max(0, body.scrollHeight - body.clientHeight) : 0;
+  extra = Math.min(extra, Math.max(0, (vh - margin * 2) / 1.25 - baseH));
+  const fullH = first.height * (baseH + extra) / Math.max(1, baseH);
+  const scale = Math.min(1.7, (vw - margin * 2) / first.width, (vh - margin * 2) / fullH);
   const targetW = first.width * scale;
-  const targetH = first.height * scale;
+  const targetH = fullH * scale;
   const targetLeft = (vw - targetW) / 2;
   const targetTop = (vh - targetH) / 2;
   const dx = targetLeft - first.left;
@@ -1629,9 +1649,18 @@ function _focusPanelApply(id, done) {
   el.style.transformOrigin = 'top left';
   el.style.transition = 'none';
   el.style.transform = 'translate(0px,0px) scale(1)';
+  if (extra > 0) {
+    el.dataset.baseH = String(baseH);
+    el.style.height = baseH + 'px';
+    el.style.marginBottom = '0px';
+  }
   void el.offsetWidth;
-  el.style.transition = 'transform 560ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+  el.style.transition = FOCUS_GROW;
   el.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
+  if (extra > 0) {
+    el.style.height = baseH + extra + 'px';
+    el.style.marginBottom = -extra + 'px';
+  }
 
   const finish = () => {
     el.removeEventListener('transitionend', finish);
@@ -1679,6 +1708,7 @@ function _unfocusPanelNow(/* silent */) {
       el.classList.remove('is-focused', 'focus-animating');
       el.style.transform = '';
       el.style.transition = '';
+      settlePanelSize(el, id);
       setVeil(false);
       dimOthers(null, false);
       resolve();
@@ -1686,14 +1716,23 @@ function _unfocusPanelNow(/* silent */) {
     }
 
     /* Animate back to identity transform (slot) */
-    el.style.transition = 'transform 520ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+    el.style.transition = FOCUS_GROW.replace(/560ms/g, '520ms');
     el.style.transform = 'translate(0px,0px) scale(1)';
-    const finish = () => {
+    if (el.dataset.baseH) {
+      el.style.height = el.dataset.baseH + 'px';
+      el.style.marginBottom = '0px';
+    }
+    let finished = false;
+    const finish = (e) => {
+      if (e && e.propertyName && e.propertyName !== 'transform') return;
+      if (finished) return;
+      finished = true;
       el.removeEventListener('transitionend', finish);
       el.classList.remove('is-focused', 'focus-animating');
       el.style.transform = '';
       el.style.transition = '';
       el.style.transformOrigin = '';
+      settlePanelSize(el, id);
       setVeil(false);
       dimOthers(null, false);
       resolve();

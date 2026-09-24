@@ -100,12 +100,64 @@
     setBody('weather', html);
   }
 
-  /* Every list panel opens the same way: how many, big, then the items. A
-     panel with data and nothing in it says 0; only a panel that has heard
-     nothing yet waits for Core. The count lives here and not in the title,
-     where it said the same thing a second time. */
-  function heroHtml(value, label) {
-    return '<div class="hero-metric"><div class="value">' + esc(value) + '</div><div class="label">' + esc(label) + '</div></div>';
+  /* Every list panel opens the same way: how many, big, and beside it what
+     that number is -- plus, where there is one, the line that matters most
+     (the agenda's next appointment, the mail that wants an answer). A panel
+     with data and nothing in it says 0; only a panel that has heard nothing
+     yet waits for Core. */
+  function heroHtml(value, label, aside) {
+    return (
+      '<div class="hero-metric hero-row"><div class="value">' + esc(value) + '</div>' +
+      '<div class="hero-text"><div class="label">' + esc(label) + '</div>' +
+      (aside ? '<div class="aside">' + aside + '</div>' : '') +
+      '</div></div>'
+    );
+  }
+
+  /* One line per item on the desk; the enlarged window shows the rest of it.
+     Rows that do not fit fall off the end rather than scroll out of sight. */
+  function rowHtml(cls, t, body, sub) {
+    return (
+      '<li class="fit-item' + (cls ? ' ' + cls : '') + '"><span class="t">' + esc(t) + '</span>' +
+      '<span class="body">' + esc(body) + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') +
+      '</span></li>'
+    );
+  }
+
+  const FIT_PANELS = ['agenda', 'notes', 'mail', 'work', 'system'];
+
+  /** Hide the rows that would overflow the panel, last first. */
+  function fitPanel(id) {
+    const body = document.querySelector('[data-body="' + id + '"]');
+    if (!body) return;
+    const rows = Array.prototype.slice.call(body.querySelectorAll('.fit-item'));
+    rows.forEach(function (r) { r.classList.remove('fit-hidden'); });
+    const panel = body.closest('.panel');
+    if (!panel || panel.classList.contains('is-focused')) return;
+    if (getComputedStyle(body).overflowY === 'visible') return;   /* narrow layout: panels grow */
+    for (let i = rows.length - 1; i >= 0 && body.scrollHeight > body.clientHeight + 1; i--) {
+      rows[i].classList.add('fit-hidden');
+    }
+  }
+
+  function fitAll() {
+    FIT_PANELS.forEach(fitPanel);
+  }
+
+  function setList(id, html) {
+    setBody(id, html);
+    fitPanel(id);
+  }
+
+  /* The next timed item still to come, when the tiles have not said. */
+  function nextFromItems(items) {
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    for (const it of items) {
+      const m = String(it.time || '').match(/^(\d{1,2}):(\d{2})/);
+      if (m && parseInt(m[1], 10) * 60 + parseInt(m[2], 10) >= mins) return it.time + ' ' + it.title;
+    }
+    return null;
   }
 
   function renderAgenda(vm) {
@@ -119,17 +171,19 @@
       return;
     }
     const items = vm.items || [];
-    let html = heroHtml(items.length, items.length === 1 ? 'Item today' : 'Items today');
-    html += '<ul class="list">';
-    items.slice(0, 6).forEach(function (it) {
-      html += '<li' + (it.mark ? ' class="mark"' : '') + '>';
-      html += '<span class="t">' + esc(it.time) + '</span>';
-      html += '<span class="body">' + esc(it.title);
-      if (it.sub) html += '<span class="sub">' + esc(it.sub) + '</span>';
-      html += '</span></li>';
+    const count = vm.count != null ? vm.count : items.length;
+    const next = vm.nextUp || nextFromItems(items);
+    let html = heroHtml(
+      count,
+      count === 1 ? 'Item today' : 'Items today',
+      next ? '<span class="k">Next up</span> ' + esc(next) : ''
+    );
+    html += '<ul class="list compact">';
+    items.forEach(function (it) {
+      html += rowHtml(it.mark ? 'mark' : '', it.time, it.title, it.sub);
     });
     html += '</ul>';
-    setBody('agenda', html);
+    setList('agenda', html);
   }
 
   function renderNotes(vm) {
@@ -140,14 +194,17 @@
     }
     const items = vm.items || [];
     let html = heroHtml(items.length, items.length === 1 ? 'Note' : 'Notes');
-    items.slice(0, 6).forEach(function (it) {
-      html += '<div class="note-item">';
-      if (it.tag) html += '<div class="tag">' + esc(it.tag) + '</div>';
-      html += '<div class="text">' + esc(it.text) + '</div></div>';
+    html += '<ul class="list compact">';
+    items.forEach(function (it) {
+      html += rowHtml('', it.tag, it.text);
     });
-    setBody('notes', html);
+    html += '</ul>';
+    setList('notes', html);
   }
 
+  /* The figure is what he says about new mail (0 for "nothing new"); beside
+     it how many want something from you, and under it which ones. Windows
+     from before the pack sent a figure fall back to the unread count. */
   function renderMail(vm) {
     setMeta('mail', 'inbox');
     if (!vm) {
@@ -155,14 +212,22 @@
       return;
     }
     const items = vm.items || [];
-    const count = vm.unread != null ? vm.unread : items.length;
-    let html = heroHtml(count, vm.unread != null ? 'Unread' : 'New');
-    items.slice(0, 5).forEach(function (it) {
-      html += '<div class="mail-item' + (it.mark ? ' mark' : '') + '">';
-      html += '<span class="from">' + esc(it.from) + '</span>';
-      html += '<span class="subj">' + esc(it.subject) + '</span></div>';
+    let value, label, aside = '';
+    if (vm.figure) {
+      value = vm.figure.value;
+      label = 'New';
+      if (vm.figure.label) aside = esc(vm.figure.label);
+    } else {
+      value = vm.unread != null ? vm.unread : items.length;
+      label = vm.unread != null ? 'Unread' : 'Recent';
+    }
+    let html = heroHtml(value, label, aside);
+    html += '<ul class="list compact mail-list">';
+    items.forEach(function (it) {
+      html += rowHtml(it.mark ? 'mark' : '', it.from, it.subject, it.hint);
     });
-    setBody('mail', html);
+    html += '</ul>';
+    setList('mail', html);
   }
 
   function renderWork(vm) {
@@ -174,14 +239,12 @@
     const items = vm.items || [];
     const count = vm.openCount != null ? vm.openCount : items.length;
     let html = heroHtml(count, count === 1 ? 'Open pull request' : 'Open pull requests');
-    items.slice(0, 5).forEach(function (it) {
-      html += '<div class="pr-item' + (it.mark ? ' mark' : '') + '">';
-      html += '<span class="badge">' + esc(it.id) + '</span>';
-      html += '<div><div class="title">' + esc(it.title) + '</div>';
-      if (it.state) html += '<div class="repo">' + esc(it.state) + '</div>';
-      html += '</div></div>';
+    html += '<ul class="list compact">';
+    items.forEach(function (it) {
+      html += rowHtml(it.mark ? 'mark' : '', it.id, it.title, it.state);
     });
-    setBody('work', html);
+    html += '</ul>';
+    setList('work', html);
   }
 
   function renderSystem(vm) {
@@ -193,11 +256,11 @@
     /* CPU, memory and disk are in the footer already; this panel is uptime and
        the health of what the brain depends on. */
     let html = '<ul class="list">';
-    if (vm.uptime != null) html += '<li><span class="t">UP</span><span class="body">' + esc(vm.uptime) + '</span></li>';
+    if (vm.uptime != null) html += '<li class="fit-item"><span class="t">UP</span><span class="body">' + esc(vm.uptime) + '</span></li>';
     if (vm.health && vm.health.length) {
       vm.health.slice(0, 5).forEach(function (h) {
         html +=
-          '<li><span class="t">' +
+          '<li class="fit-item"><span class="t">' +
           esc(String(h.server || '').toUpperCase()) +
           '</span><span class="body">' +
           esc(h.state || '') +
@@ -206,7 +269,7 @@
       });
     }
     html += '</ul>';
-    setBody('system', html);
+    setList('system', html);
 
     pushSpark('cpu', vm.cpu);
     pushSpark('mem', vm.mem != null ? Math.min(100, vm.mem * 10) : null);
@@ -511,6 +574,10 @@
   }
 
   function onPanelData(id, vm) {
+    if (vm && vm.partial && RENDERERS[id]) {
+      const had = loadCache(id);
+      if (had && had.items) vm = Object.assign({}, vm, { items: had.items, figure: vm.figure || had.figure || null });
+    }
     if (RENDERERS[id]) {
       RENDERERS[id](vm);
       cachePanel(id, vm);
@@ -521,19 +588,9 @@
   }
 
   function onDisplay(panelId, payload, meta) {
-    if (panelId && FIXED.indexOf(panelId) >= 0) {
-      let vm = null;
-      if (window.CoreLink && CoreLink.Normalizers) {
-        const N = CoreLink.Normalizers;
-        if (panelId === 'weather') vm = N.weather(payload, null);
-        else if (panelId === 'agenda') vm = N.agenda(payload, null);
-        else if (panelId === 'mail') vm = N.mail(payload, null);
-        else if (panelId === 'work') vm = N.work(payload, null);
-        else if (panelId === 'notes') vm = N.notes(payload, null);
-      }
-      if (vm) onPanelData(panelId, vm);
-      return;
-    }
+    /* A desk display has been drawn already, through panelData and with the
+       tiles beside it; drawing it again here without them lost the figures. */
+    if (panelId && FIXED.indexOf(panelId) >= 0) return;
     if (panelId && FIXED.indexOf(panelId) < 0 && panelId !== 'display') {
       /* Pack topic display — update mini-card */
       renderPackCard({
@@ -727,7 +784,15 @@
     dismissFreeCard: dismissFreeCard,
     FIXED: FIXED,
     RENDERERS: RENDERERS,
+    fitAll: fitAll,
+    fitPanel: fitPanel,
   };
+
+  let fitTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(fitAll, 120);
+  });
 
   function start() {
     if (window.__liveBridgeStarted) return;

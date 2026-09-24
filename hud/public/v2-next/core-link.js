@@ -210,6 +210,11 @@ registerProcessor('mic-tap', MicTap);
       };
     },
 
+    /* The desk lists (agenda, mail, work) take their rows from the window a
+       tool put up and their figures from the tiles that tick in beside it.
+       Tiles alone are never rows: the agenda's two readings ("6 today",
+       "Next up") were drawn as a two-item agenda over the six it had. A vm
+       without a payload is `partial`; the page keeps the rows it has. */
     agenda(payload, tiles) {
       const items = [];
       if (payload && payload.type === 'panel' && Array.isArray(payload.rows)) {
@@ -217,15 +222,20 @@ registerProcessor('mic-tap', MicTap);
           items.push({ time: r.label || '', title: r.value || '', sub: r.hint || '', mark: !!r.mark });
         }
       }
-      const tilesArr = (tiles && tiles.tiles) || [];
-      if (!items.length) {
-        for (const t of tilesArr) items.push({ time: t.label, title: t.value, sub: '', mark: !!t.on });
+      let count = null, nextUp = null;
+      for (const t of (tiles && tiles.tiles) || []) {
+        if (/^next/i.test(t.label || '')) nextUp = String(t.value || '');
+        else {
+          const n = String(t.value || '').match(/^(\d+)\b/);
+          if (n && count == null) count = parseInt(n[1], 10);
+        }
       }
       return {
-        date: null, // Core does not send a dedicated date field
         title: (payload && payload.title) || (tiles && tiles.topicLabel) || 'Agenda',
         items,
-        gap: 'No dedicated date field from Core; UI may use local clock.',
+        count,
+        nextUp,
+        partial: !payload,
       };
     },
 
@@ -237,50 +247,60 @@ registerProcessor('mic-tap', MicTap);
           items.push({ from: r.label || '', subject: r.value || '', hint: r.hint || '', mark: !!r.mark });
         }
       }
-      const tilesArr = (tiles && tiles.tiles) || [];
-      for (const t of tilesArr) {
+      for (const t of (tiles && tiles.tiles) || []) {
         if (/unread|ongelezen/i.test(t.label)) {
           const n = parseInt(String(t.value).replace(/\D/g, ''), 10);
           if (Number.isFinite(n)) unread = n;
-        } else if (!items.length) {
-          items.push({ from: t.label, subject: t.value, hint: '', mark: !!t.on });
         }
       }
+      const figure = payload && payload.figure && Number.isFinite(Number(payload.figure.value))
+        ? { value: Number(payload.figure.value), label: String(payload.figure.label || '') }
+        : null;
       return {
         unread,
+        figure,
         items,
         title: (payload && payload.title) || (tiles && tiles.topicLabel) || 'Mail',
+        partial: !payload,
       };
     },
 
     work(payload, tiles) {
       const items = [];
-      let openCount = null;
+      let more = 0;
       if (payload && payload.type === 'panel' && Array.isArray(payload.rows)) {
         for (const r of payload.rows) {
-          const idMatch = String(r.label || '').match(/#?\d+/);
+          const label = String(r.label || '');
+          const hint = String(r.hint || '');
+          if (label === '…') {                       /* "3 more" / "nog 3" */
+            const n = String(r.value || '').match(/\d+/);
+            if (n) more += parseInt(n[0], 10);
+            continue;
+          }
+          if (label === '—') continue;              /* "none" */
+          const id = hint.match(/#\d+/);
+          const rest = hint.replace(/#\d+\s*(·\s*)?/, '').trim();
           items.push({
-            id: idMatch ? idMatch[0] : (r.label || ''),
+            id: id ? id[0] : '',
             title: r.value || '',
-            state: r.hint || '',
+            state: [label, rest].filter(Boolean).join(' · '),
             mark: !!r.mark,
           });
         }
       }
-      const tilesArr = (tiles && tiles.tiles) || [];
-      for (const t of tilesArr) {
+      let openCount = null;
+      for (const t of (tiles && tiles.tiles) || []) {
         if (/open|pr|pull/i.test(t.label) && /\d/.test(t.value)) {
           const n = parseInt(String(t.value).replace(/\D/g, ''), 10);
           if (Number.isFinite(n)) openCount = n;
-        } else if (!items.length) {
-          items.push({ id: t.label, title: t.value, state: '', mark: !!t.on });
         }
       }
-      if (openCount == null && items.length) openCount = items.length;
+      if (openCount == null && payload) openCount = items.length + more;
       return {
         openCount,
         items,
         title: (payload && payload.title) || (tiles && tiles.topicLabel) || 'Work',
+        partial: !payload,
       };
     },
 
@@ -359,6 +379,7 @@ registerProcessor('mic-tap', MicTap);
     let metrics = null;
     let health = [];
     let tileCache = Object.create(null); // topic → last tiles msg
+    let payloadCache = Object.create(null); // topic → last display payload
     let followUntil = 0, followTimer = null;
     let pending = '', silenceTimer = null;
     let t0 = 0;
@@ -799,6 +820,8 @@ registerProcessor('mic-tap', MicTap);
     }
 
     function emitPanel(topic, payload) {
+      if (payload) payloadCache[topic] = payload;
+      else payload = payloadCache[topic] || null;
       const panelId = topics.panelIdOfTopic(topic) || topic;
       const tiles = tileCache[topic] || null;
       let vm;
