@@ -379,6 +379,26 @@ html[data-live="0"] .pill .dot { animation: none; }
 .col-left { align-items: stretch; }
 .col-right { align-items: stretch; }
 
+/* On the wide desk a panel's height comes from the viewport, not from its
+   content. The columns are centred, so a panel that grew when its data came
+   in -- System gains its health rows just as the boot ends -- moved every
+   other panel and, through the stage row, the orb. Overflow scrolls inside. */
+@media (min-width: 1101px) {
+  .col > .panel {
+    height: clamp(130px, 22vh, 240px);
+    flex: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .col > .panel > .panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .col > .panel > .panel-body::-webkit-scrollbar { display: none; }
+}
+
 .orb-wrap {
   position: relative;
   display: flex;
