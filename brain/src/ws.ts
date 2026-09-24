@@ -20,6 +20,7 @@ import { runHealthChecks, specsFor } from "./health.js";
 import { screenGone } from "./screens.js";
 import { addLiveSession } from "./live.js";
 import { memory } from "./memory/store.js";
+import { FocusGate, panelOfDisplay } from "./focus.js";
 import { onPlanUsage, planUsage } from "./plan.js";
 import { METRICS_INTERVAL_MS, readMetrics } from "./metrics.js";
 import { tileFeed } from "./tiles.js";
@@ -56,19 +57,33 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     // The context panel, fed by the figures the packs put on their own answers.
     // Nothing is asked of any pack and nothing is asked of the model: the tiles
     // ride along on results this process already sees.
+    // Lights the matching standing desk panel when a turn talks about it.
+    // Briefing and ordinary answers both raise focus; the gate de-dupes.
+    const focus = new FocusGate(send);
+
+    // Declared before the tile sink so the sink can ask whether a turn is open
+    // without reading a binding that does not exist yet.
+    let conversation!: Conversation;
+
     const noteFacts = tileFeed((source, topic, tiles) => {
       send({ kind: "tiles", source, topic: topic.id, topicLabel: topic.label, tiles });
+      // Standing watchers also flow through here; only light a panel while a
+      // turn is actually being answered, not on the once-a-minute refresh.
+      if (conversation.busy) focus.focus(topic.id);
     });
 
-    const conversation = new Conversation(
+    conversation = new Conversation(
       {
         onText: (turnId, text, opening) =>
           send({ kind: "text", turnId, text, ...(opening === true ? { opening: true } : {}) }),
         onActivity: (turnId, label) =>
           send({ kind: "activity", turnId, label, stage: stageFor(label) }),
         onToolResult: noteFacts,
-        onDisplay: (turnId, id, payload, dismiss, cue) =>
-          send({ kind: "display", turnId, id, payload, dismiss, cue }),
+        onDisplay: (turnId, id, payload, dismiss, cue) => {
+          send({ kind: "display", turnId, id, payload, dismiss, cue });
+          const panel = panelOfDisplay(payload);
+          if (panel !== null) focus.focus(panel, cue);
+        },
         onVoice: (turnId, available, reason, lang, fx) =>
           send({
             kind: "voice",
@@ -83,9 +98,14 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             ? { kind: "audio", turnId, seq, data }
             : { kind: "audio", turnId, seq, data, alignment }),
         onAudioDone: (turnId) => send({ kind: "audio_done", turnId }),
-        onDone: (turnId, durationMs, expectsReply, briefing) =>
-          send({ kind: "done", turnId, durationMs, expectsReply, ...(briefing === true ? { briefing: true } : {}) }),
-        onError: (turnId, message) => send({ kind: "error", turnId, message }),
+        onDone: (turnId, durationMs, expectsReply, briefing) => {
+          send({ kind: "done", turnId, durationMs, expectsReply, ...(briefing === true ? { briefing: true } : {}) });
+          focus.unfocus();
+        },
+        onError: (turnId, message) => {
+          send({ kind: "error", turnId, message });
+          focus.unfocus();
+        },
       },
       { idleMs: config.sessionIdleMs, maxTurns: config.sessionMaxTurns },
     );
@@ -206,6 +226,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
 
       if (message.kind === "cancel") {
         conversation.cancel(message.turnId);
+        focus.unfocus();
         return;
       }
 

@@ -30,6 +30,7 @@ import { packSummary } from "./agent.js";
 import { serveRunnerReport } from "./dev/report-endpoint.js";
 import { handleRunnerPress, supervise } from "./dev/runners.js";
 import { warmRecordedLines } from "./conversation.js";
+import { configurePlanStore, loadPlanUsage } from "./plan.js";
 import { attachWebsocket } from "./ws.js";
 import { runHealthChecks, specsFor } from "./health.js";
 
@@ -38,6 +39,11 @@ const HEALTH_INTERVAL_MS = 5 * 60 * 1000;
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // Last known plan usage, so a cold websocket still has numbers for the pill
+  // before any turn has refreshed them this process.
+  configurePlanStore(config.dataDir);
+  loadPlanUsage();
 
   let cert: Buffer;
   let key: Buffer;

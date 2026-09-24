@@ -423,6 +423,34 @@ export type ServerMessage =
        * microphone open longer than it would after a plain statement.
        */
       expectsReply: boolean;
+      /**
+       * True when this turn was the morning briefing (a tool was called with
+       * `briefing: true`). The HUD folds the stage back to the standing desk.
+       * Already sent at runtime; declared here so clients can rely on it.
+       */
+      briefing?: boolean;
+    }
+  | {
+      /**
+       * Which standing desk panel the spoken answer is about right now.
+       *
+       * Emitted when a display or tool-tiles push maps to a desk topic, so an
+       * always-visible /v2 desk can light the right panel without guessing from
+       * prose. `panel` is a desk topic id: the core five (`weather`, `agenda`,
+       * `mail`, `work`, `notes`) plus any pack topic declared on `desk`. Optional
+       * `cue` mirrors the display cue when focus was driven by a cued display,
+       * so the HUD can wait for the same spoken word before lighting up.
+       */
+      kind: "focus";
+      panel: string;
+      cue?: DisplayCue;
+    }
+  | {
+      /**
+       * Clear panel focus. Sent when the turn that raised focus ends (done,
+       * error, or cancel), so a lit panel does not stay lit into the next one.
+       */
+      kind: "unfocus";
     }
   | {
       kind: "error";

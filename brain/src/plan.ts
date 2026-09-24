@@ -23,12 +23,119 @@
 
 import { USAGE_LIMIT_ERROR_PREFIXES } from "@anthropic-ai/claude-agent-sdk";
 
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { formatLocal, locale, type PlanUsage, type PlanWindow, type SpeechLang } from "@jarvis/shared";
 
 type Listener = (usage: PlanUsage) => void;
 
 let current: PlanUsage | null = null;
 const listeners = new Set<Listener>();
+
+/** Where the last known usage is kept across restarts. Empty until configured. */
+let storePath = "";
+
+/** File name under the configured data directory. */
+export const PLAN_USAGE_FILE = "plan-usage.json";
+
+/**
+ * Point plan usage at a data directory. Called once at process start so a
+ * cold websocket still has last session's numbers to hand. Not a pack path
+ * and not tracked: the directory is deployment state.
+ */
+export function configurePlanStore(dataDir: string): void {
+  storePath = join(dataDir, PLAN_USAGE_FILE);
+}
+
+/**
+ * Zero a window whose reset has passed. Keeps `resetsAt` so the HUD can still
+ * say when it last rolled; utilization goes to 0 because the window is open
+ * again and we have not yet heard a fresh reading.
+ */
+export function freshenPlanUsage(usage: PlanUsage, now = new Date()): PlanUsage {
+  const freshenWindow = (window: PlanWindow | null): PlanWindow | null => {
+    if (window === null) return null;
+    if (window.resetsAt === null) return window;
+    const resetMs = Date.parse(window.resetsAt);
+    if (!Number.isFinite(resetMs) || resetMs > now.getTime()) return window;
+    return { utilization: 0, resetsAt: window.resetsAt };
+  };
+  const session = freshenWindow(usage.session);
+  const week = freshenWindow(usage.week);
+  const top = Math.max(session?.utilization ?? 0, week?.utilization ?? 0);
+  const status: PlanUsage["status"] =
+    usage.status === "rejected" && top >= 100
+      ? "rejected"
+      : top >= 80
+        ? "warning"
+        : "ok";
+  const binding: PlanUsage["binding"] =
+    (session?.utilization ?? -1) >= (week?.utilization ?? -1) ? "session" : "week";
+  return {
+    status,
+    binding: session === null && week === null ? null : binding,
+    session,
+    week,
+    at: usage.at,
+  };
+}
+
+function writeStore(usage: PlanUsage): void {
+  if (storePath === "") return;
+  try {
+    mkdirSync(join(storePath, ".."), { recursive: true });
+    writeFileSync(storePath, `${JSON.stringify(usage)}\n`, "utf8");
+  } catch (error) {
+    console.error("plan: could not persist usage:", error);
+  }
+}
+
+/**
+ * Load the last persisted usage into memory. Safe to call when the file is
+ * missing or unreadable: the process simply starts not knowing, as before.
+ */
+export function loadPlanUsage(now = new Date()): PlanUsage | null {
+  if (storePath === "") return null;
+  let raw: string;
+  try {
+    raw = readFileSync(storePath, "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const value = parsed as Record<string, unknown>;
+  if (value["status"] !== "ok" && value["status"] !== "warning" && value["status"] !== "rejected") {
+    return null;
+  }
+  const readWindow = (key: string): PlanWindow | null => {
+    const window = value[key];
+    if (typeof window !== "object" || window === null) return null;
+    const w = window as Record<string, unknown>;
+    const utilization =
+      typeof w["utilization"] === "number" && Number.isFinite(w["utilization"])
+        ? Math.min(100, Math.max(0, w["utilization"]))
+        : null;
+    const resetsAt = typeof w["resetsAt"] === "string" ? w["resetsAt"] : null;
+    return { utilization, resetsAt };
+  };
+  const loaded: PlanUsage = {
+    status: value["status"],
+    binding:
+      value["binding"] === "session" || value["binding"] === "week" ? value["binding"] : null,
+    session: readWindow("session"),
+    week: readWindow("week"),
+    at: typeof value["at"] === "string" ? value["at"] : now.toISOString(),
+  };
+  current = freshenPlanUsage(loaded, now);
+  return current;
+}
 
 /** The latest word on the plan, or null before anything has been heard. */
 export function planUsage(): PlanUsage | null {
@@ -46,10 +153,12 @@ export function onPlanUsage(listener: Listener): () => void {
 /** Back to knowing nothing. For the tests, which share this module. */
 export function forgetPlanUsage(): void {
   current = null;
+  storePath = "";
 }
 
 function publish(next: PlanUsage): PlanUsage {
   current = next;
+  writeStore(next);
   for (const listener of listeners) listener(next);
   return next;
 }
