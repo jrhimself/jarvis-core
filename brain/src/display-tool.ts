@@ -17,7 +17,7 @@ import type { DisplayDismiss, DisplayPayload, HomeProvider, PackDisplay } from "
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
-import { fetchAndStore, MediaFetchError } from "./media.js";
+import { fetchAndStore, MediaFetchError, putStream } from "./media.js";
 import { describeScreen, recentScreens, screenById, screenTitle } from "./screens.js";
 
 export type DisplaySink = (
@@ -326,11 +326,11 @@ export function createDisplayServer(sink: DisplaySink, home: HomeProvider | null
         .string()
         .regex(/^camera\.[a-z0-9_]+$/, "must be a camera entity id, like camera.voordeur")
         .describe("Entity id of the camera"),
-      alt: z.string().min(3).describe("Which camera this is, in Dutch, e.g. 'de voordeur'"),
+      alt: z.string().min(3).describe("Which camera this is, in English, as a title: e.g. 'Front door'"),
       live: z
         .boolean()
-        .default(false)
-        .describe("True to keep refreshing the image, false for a single snapshot"),
+        .default(true)
+        .describe("True (the default) for the moving picture; false only when a single snapshot is asked for"),
       anchor: anchorField,
     },
     async (args) => {
@@ -338,12 +338,14 @@ export function createDisplayServer(sink: DisplaySink, home: HomeProvider | null
       if (still === undefined) return failed("There is no camera to show here.");
       try {
         const stored = await fetchAndStore(still.url, still.headers);
+        const moving = args.live ? home?.cameraStream?.(args.entity_id) : undefined;
         show(
           {
             type: "image",
             url: stored.url,
             alt: args.alt,
             ...(args.live ? { refreshMs: 2000 } : {}),
+            ...(moving === undefined ? {} : { stream: putStream(moving.url, moving.headers) }),
           },
           undefined,
           args.anchor,

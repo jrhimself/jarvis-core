@@ -534,15 +534,16 @@
       });
       return html + '</div>';
     }
+    /* A camera with a stream is the moving picture; the still is what shows
+       if the stream cannot be had (see wireMedia). */
     if (p.type === 'image') {
       return (
-        '<h3>' +
-        esc(p.caption || p.alt || 'Image') +
-        '</h3><img class="free-img" src="' +
-        esc(p.url) +
-        '" alt="' +
-        esc(p.alt || '') +
-        '">'
+        '<h3>' + esc(p.caption || p.alt || 'Image') +
+        (p.stream ? '<span class="live-tag">Live</span>' : '') +
+        '</h3><div class="free-media"><img class="free-img" src="' +
+        esc(p.stream || p.url) +
+        '" data-still="' + esc(p.url) +
+        '" alt="' + esc(p.alt || '') + '"></div>'
       );
     }
     if (p.type === 'text') {
@@ -551,19 +552,46 @@
     return '<h3>Display</h3><pre class="free-text">' + esc(JSON.stringify(p).slice(0, 400)) + '</pre>';
   }
 
+  /* A stream that fails (camera gone, brain restarted, link expired) drops
+     back to the still it came with, and says it is no longer live. */
+  function wireMedia(card) {
+    card.querySelectorAll('img[data-still]').forEach(function (img) {
+      img.addEventListener('error', function () {
+        const still = img.dataset.still;
+        if (!still || img.getAttribute('src') === still) return;
+        img.src = still;
+        const tag = card.querySelector('.live-tag');
+        if (tag) tag.remove();
+      });
+    });
+  }
+
+  /* Letting go of a stream is closing its image: blank the source first, so
+     the connection ends now rather than whenever the element is collected. */
+  function releaseMedia(card) {
+    card.querySelectorAll('img').forEach(function (img) {
+      img.removeAttribute('src');
+    });
+  }
+
   function showFreeCard(id, payload, meta) {
     const layer = document.getElementById('free-card-layer');
     if (!layer) return;
     layer.hidden = false;
+    layer.classList.remove('free-leaving');
     let card = freeCards[id];
     if (!card) {
       card = document.createElement('article');
-      card.className = 'free-card';
+      card.className = 'free-card free-in';
       card.dataset.displayId = id;
       freeCards[id] = card;
       layer.appendChild(card);
+      card.addEventListener('animationend', function () { card.classList.remove('free-in'); }, { once: true });
     }
+    releaseMedia(card);
+    card.classList.toggle('media', !!(payload && payload.type === 'image'));
     card.innerHTML = renderDisplayPayload(payload);
+    wireMedia(card);
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'free-card-close';
@@ -589,10 +617,20 @@
     const card = freeCards[id];
     if (!card) return;
     if (card._timer) clearTimeout(card._timer);
-    card.remove();
     delete freeCards[id];
+    releaseMedia(card);
     const layer = document.getElementById('free-card-layer');
-    if (layer && !Object.keys(freeCards).length) layer.hidden = true;
+    const last = !Object.keys(freeCards).length;
+    card.classList.remove('free-in');
+    card.classList.add('free-out');
+    if (last && layer) layer.classList.add('free-leaving');
+    setTimeout(function () {
+      card.remove();
+      if (layer && !Object.keys(freeCards).length) {
+        layer.hidden = true;
+        layer.classList.remove('free-leaving');
+      }
+    }, 320);
   }
 
   function clearNextTurnFreeCards() {

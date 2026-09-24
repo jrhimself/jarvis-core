@@ -101,6 +101,12 @@ export type DisplayPayload =
       caption?: string;
       /** Set for a camera: re-fetch this often, in milliseconds. */
       refreshMs?: number;
+      /**
+       * A live camera: a path on the brain that streams the moving picture
+       * (MJPEG), for as long as the page keeps it open. `url` stays the still
+       * to show until the first frame arrives, and if the stream cannot be had.
+       */
+      stream?: string;
     }
   | {
       type: "panel";

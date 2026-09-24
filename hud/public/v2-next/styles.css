@@ -1583,6 +1583,68 @@ html.is-focusing .footer {
   cursor: pointer;
 }
 .free-img { max-width: 100%; border-radius: 2px; }
+
+/* A camera is looked at, not glanced at: the card takes most of the screen,
+   and the picture keeps its own proportions inside it. */
+.free-card.media {
+  width: min(1180px, calc(100vw - 96px));
+  max-height: calc(100vh - 96px);
+  overflow: hidden;
+  padding: 14px 16px 16px;
+}
+.free-card.media .free-media {
+  display: flex;
+  justify-content: center;
+  background: #000;
+  border: 1px solid hsla(var(--hue), 70%, 60%, 0.18);
+}
+.free-card.media .free-img {
+  display: block;
+  width: 100%;
+  max-height: calc(100vh - 180px);
+  object-fit: contain;
+}
+.free-card h3 .live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: #ff6b6b;
+  vertical-align: 2px;
+}
+.free-card h3 .live-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff4d4d;
+  box-shadow: 0 0 8px #ff4d4d;
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* In and out like a window being put up: the veil fades, the card rises out
+   of a slight blur and scale, and goes back the way it came. */
+.free-card-layer:not([hidden]) { animation: free-veil-in 380ms ease-out; }
+.free-card-layer.free-leaving { animation: free-veil-out 320ms ease-in forwards; }
+.free-card.free-in { animation: free-card-in 560ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+.free-card.free-out { animation: free-card-out 320ms ease-in forwards; pointer-events: none; }
+@keyframes free-veil-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes free-veil-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes free-card-in {
+  0% { opacity: 0; transform: translateY(18px) scale(0.9); filter: blur(6px) brightness(1.6); }
+  60% { opacity: 1; filter: blur(0) brightness(1.15); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+@keyframes free-card-out {
+  to { opacity: 0; transform: translateY(10px) scale(0.94); filter: blur(4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .free-card-layer:not([hidden]), .free-card-layer.free-leaving,
+  .free-card.free-in, .free-card.free-out { animation-duration: 0.01ms !important; }
+}
 .free-text { white-space: pre-wrap; font-size: 13px; line-height: 1.45; }
 .free-weather b { font-size: 28px; color: hsla(calc(var(--hue) - 15), 95%, 75%, 0.95); }
 
