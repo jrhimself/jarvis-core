@@ -116,6 +116,18 @@ export class FocusGate {
     });
   }
 
+  /**
+   * A part of the answer about `panel` begins at `chars`. Always sent, even for
+   * the panel already lit: the display that lit it came before a word was
+   * said, and this is the moment it is actually talked about.
+   */
+  section(panel: string, chars: number): void {
+    const id = panel.trim();
+    if (id === "") return;
+    this.#current = id;
+    this.send({ kind: "focus", panel: id, cue: { chars }, section: true });
+  }
+
   unfocus(): void {
     if (this.#current === null) return;
     this.#current = null;

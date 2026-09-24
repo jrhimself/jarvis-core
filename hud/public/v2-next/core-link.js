@@ -353,6 +353,7 @@ registerProcessor('mic-tap', MicTap);
        before a word is said -- and they must open one by one as he gets to
        them, not all at once and not only the last. */
     let focusQueue = [];
+    let sectionTurn = false;   /* this turn's answer carries section markers */
     let spokenCursor = 0;      /* how far into spokenText a queued panel has been found */
     let spokenText = '';       /* cumulative answer text for cue gating */
     let metrics = null;
@@ -425,37 +426,16 @@ registerProcessor('mic-tap', MicTap);
       return spoken.length >= (cue.chars || 0);
     }
 
-    /* Words that say a desk topic is being talked about. Core raises a panel
-       for every tool a turn calls, without a cue, and a briefing says "rain,
-       16 to 18 degrees" rather than "the weather": the topic's own vocabulary
-       is what can tell when he has got to it. Four letters or more match the
-       start of a word ("degree" hears "degrees"), shorter ones a whole word. */
-    const TOPIC_WORDS = {
-      weather: ['weather', 'weer', 'forecast', 'verwachting', 'degree', 'graden', 'rain', 'regen',
-        'shower', 'bui', 'buien', 'wind', 'cloud', 'bewolk', 'sunny', 'zonnig', 'temperat', 'dry', 'droog'],
-      agenda: ['agenda', 'calendar', 'kalender', 'meeting', 'vergader', 'afspra', 'appointment', 'schedule'],
-      mail: ['mail', 'inbox', 'bericht', 'message'],
-      work: ['pull request', 'pr', 'prs', 'review', 'merge', 'pipeline'],
-      notes: ['note', 'notitie', 'ingest'],
-    };
-
+    /* The words Core's cue names, and nothing guessed: a vocabulary per topic
+       opened the notes panel on a pull request called "notes". A cue without
+       an anchor (a tool's tiles) has nothing to wait for and never opens. */
     function anchorsFor(panel, cue) {
-      const out = new Set();
+      const out = [];
       String((cue && cue.anchor) || '').split('|').forEach((a) => {
         a = a.trim().toLowerCase();
-        if (a) out.add(a);
+        if (a && out.indexOf(a) < 0) out.push(a);
       });
-      /* A core panel's words are chosen above; its label ("Work · PRs") would
-         add "work", which is in "workflow" in the middle of a mail. A pack
-         topic has only its id and label to go on. */
-      if (TOPIC_WORDS[panel]) {
-        TOPIC_WORDS[panel].forEach((a) => out.add(a));
-        return Array.from(out);
-      }
-      out.add(String(panel).toLowerCase());
-      const label = topics.STICKY_LABEL[panel];
-      if (label) String(label).toLowerCase().split(/[^\p{L}\p{N}]+/u).forEach((w) => { if (w.length >= 3) out.add(w); });
-      return Array.from(out);
+      return out;
     }
 
     /* Where an anchor is first said at or after `from`, or -1. */
@@ -468,11 +448,24 @@ registerProcessor('mic-tap', MicTap);
       return m ? m.index + m[1].length : -1;
     }
 
+    /* A section marker in the answer (focus.section): exact, no words to wait
+       for. The first one says this turn is marked, and focus from anything
+       else in it -- tiles, displays with their anchors -- is dropped. */
+    function queueSection(panel, chars) {
+      if (!panel) return;
+      if (!turn) { setFocus(String(panel)); return; }
+      sectionTurn = true;
+      focusQueue = focusQueue.filter((q) => q.section);
+      focusQueue.push({ panel: String(panel), anchors: [], chars: Number(chars) || 0, section: true });
+      flushPendingFocus(false);
+    }
+
     function queueOrApplyFocus(panel, cue) {
       if (!panel) return;
       panel = String(panel);
       /* Outside a turn there is nothing to wait for. */
       if (!turn) { setFocus(panel); return; }
+      if (sectionTurn) return;
       const anchors = anchorsFor(panel, cue);
       const known = focusQueue.find((q) => q.panel === panel);
       if (known) anchors.forEach((a) => { if (known.anchors.indexOf(a) < 0) known.anchors.push(a); });
@@ -490,8 +483,18 @@ registerProcessor('mic-tap', MicTap);
       if (turn && turn.openingLen > spokenCursor) spokenCursor = turn.openingLen;
       const lower = spokenText.toLowerCase();
       for (;;) {
+        /* Sections first: open when the voice reaches where the part begins. */
+        let due = -1;
+        focusQueue.forEach((q, i) => {
+          if (q.section && spokenText.length >= q.chars && (due < 0 || q.chars < focusQueue[due].chars)) due = i;
+        });
+        if (due >= 0) {
+          setFocus(focusQueue.splice(due, 1)[0].panel);
+          continue;
+        }
         let best = -1, at = Infinity, end = 0;
         focusQueue.forEach((q, i) => {
+          if (q.section) return;
           for (const a of q.anchors) {
             const pos = anchorAt(lower, a, spokenCursor);
             if (pos >= 0 && pos < at) { best = i; at = pos; end = pos + a.length; }
@@ -506,6 +509,7 @@ registerProcessor('mic-tap', MicTap);
 
     function resetCueGate() {
       focusQueue = [];
+      sectionTurn = false;
       spokenCursor = 0;
       spokenText = '';
     }
@@ -580,7 +584,8 @@ registerProcessor('mic-tap', MicTap);
       /* FINAL Core focus contract (PR #11) — source of truth when present */
       if (m.kind === 'focus' && m.panel) {
         coreFocusSeen = true;
-        queueOrApplyFocus(String(m.panel), m.cue || null);
+        if (m.section === true) queueSection(String(m.panel), m.cue ? m.cue.chars : 0);
+        else queueOrApplyFocus(String(m.panel), m.cue || null);
         return;
       }
       if (m.kind === 'unfocus') {

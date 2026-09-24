@@ -444,6 +444,13 @@ export type ServerMessage =
       kind: "focus";
       panel: string;
       cue?: DisplayCue;
+      /**
+       * Raised by a section marker in the answer rather than by a tool or a
+       * display: `cue.chars` is exactly where the part about `panel` begins,
+       * with no anchor to wait for. Once a turn has one, it has them for every
+       * part, and focus from anything else in that turn is noise.
+       */
+      section?: true;
     }
   | {
       /**

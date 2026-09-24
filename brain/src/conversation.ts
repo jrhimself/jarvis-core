@@ -21,6 +21,7 @@ import { loadConfig } from "./config.js";
 import { AgentSession } from "./agent.js";
 import { language } from "./language.js";
 import { Opening } from "./opening.js";
+import { SectionMarks, type SectionPass } from "./sections.js";
 import { SpokenText } from "./spoken.js";
 import { RecordedLines } from "./voice/lines.js";
 import { pcmDurationMs, spreadAlignment } from "./voice/pace.js";
@@ -163,6 +164,12 @@ export interface ConversationCallbacks {
   ) => void;
   onAudio: (turnId: string, seq: number, data: string, alignment?: Alignment) => void;
   onAudioDone: (turnId: string) => void;
+  /**
+   * The answer reached a part about a desk topic: the model's marker stood at
+   * `chars`, counted in the text sent through `onText` for this turn (the
+   * opening line included). The marker itself is not in that text.
+   */
+  onSection?: (turnId: string, topic: string, chars: number) => void;
   onDone: (turnId: string, durationMs: number, expectsReply: boolean, briefing?: boolean) => void;
   onError: (turnId: string | undefined, message: string) => void;
 }
@@ -267,6 +274,12 @@ export class Conversation {
     // transcript. Everything the model writes goes through it; the opening
     // lines below do not, being ours.
     const spoken = new SpokenText();
+    // After the dash filter, so what is counted is what is shown and said.
+    const sections = new SectionMarks();
+    const place = (pass: SectionPass): string => {
+      for (const mark of pass.marks) this.callbacks.onSection?.(turnId, mark.topic, written + mark.at);
+      return pass.text;
+    };
 
     const stopThinking = (): void => {
       if (thinking === null) return;
@@ -322,7 +335,7 @@ export class Conversation {
             // it for good.
             if (opening.said()) armThinking();
             else stopThinking();
-            const text = spoken.push(chunk);
+            const text = place(sections.push(spoken.push(chunk)));
             if (text === "") return;
             written += text.length;
             show(text);
@@ -363,7 +376,12 @@ export class Conversation {
         abort.signal,
       );
 
-      const rest = spoken.flush();
+      const flushed = place(sections.push(spoken.flush()));
+      const held = sections.flush();
+      for (const mark of held.marks) {
+        this.callbacks.onSection?.(turnId, mark.topic, written + flushed.length + mark.at);
+      }
+      const rest = flushed + held.text;
       if (rest !== "" && !abort.signal.aborted) {
         written += rest.length;
         show(rest);

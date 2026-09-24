@@ -98,6 +98,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             ? { kind: "audio", turnId, seq, data }
             : { kind: "audio", turnId, seq, data, alignment }),
         onAudioDone: (turnId) => send({ kind: "audio_done", turnId }),
+        onSection: (_turnId, topic, chars) => focus.section(topic, chars),
         onDone: (turnId, durationMs, expectsReply, briefing) => {
           send({ kind: "done", turnId, durationMs, expectsReply, ...(briefing === true ? { briefing: true } : {}) });
           focus.unfocus();

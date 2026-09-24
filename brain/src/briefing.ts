@@ -243,7 +243,8 @@ export function repeatInstruction(cached: CachedBriefing, lang: SpeechLang, now 
   return (
     `The briefing from ${clock(cached.at)} (${minutesAgo(cached.at, now)} minutes ago). ` +
     "Its windows are back on screen; say nothing about that. Say the briefing again now, " +
-    "this text, word for word except where the clock has moved on since. Do not fetch " +
+    "this text, word for word except where the clock has moved on since, keeping its " +
+    "desk markers where they stand. Do not fetch " +
     `anything.${translate}\n\n${cached.text}`
   );
 }

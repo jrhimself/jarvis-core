@@ -63,3 +63,18 @@ test("empty panel ids are ignored", () => {
   gate.focus("  ");
   assert.equal(sent.length, 0);
 });
+
+test("FocusGate.section always sends, with the exact place and the section flag", () => {
+  const sent: unknown[] = [];
+  const gate = new FocusGate((m) => sent.push(m));
+  gate.focus("weather", { chars: 0, anchor: "rain" });
+  gate.section("weather", 14);
+  gate.section("agenda", 80);
+  gate.unfocus();
+  assert.deepEqual(sent, [
+    { kind: "focus", panel: "weather", cue: { chars: 0, anchor: "rain" } },
+    { kind: "focus", panel: "weather", cue: { chars: 14 }, section: true },
+    { kind: "focus", panel: "agenda", cue: { chars: 80 }, section: true },
+    { kind: "unfocus" },
+  ]);
+});

@@ -32,6 +32,7 @@ import {
   type ShownWindow,
 } from "./briefing.js";
 import { deskBriefingBlock, mergeDeskSlots } from "./desk.js";
+import { sectionMarkBlock } from "./sections.js";
 import { createDisplayServer, DISPLAY_TOOLS, showVia, type DisplaySink } from "./display-tool.js";
 import { recordScreen } from "./screens.js";
 import { runHealthChecks, specsFor } from "./health.js";
@@ -356,6 +357,7 @@ export class AgentSession {
       deploymentBlock(deployment),
       ...packs.persona,
       deskBriefingBlock(mergeDeskSlots(packs.desk)),
+      sectionMarkBlock(mergeDeskSlots(packs.desk).map((slot) => slot.topic)),
       coreBlock(store),
       ...computed,
       recipesBlock(store),
