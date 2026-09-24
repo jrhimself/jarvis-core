@@ -27,6 +27,8 @@
   const VOICE_LEAD = 0.12;
   const VOICE_FIRST_MS = 9000;
   const VOICE_STALL_MS = 20000;
+  /* spoken characters per second, for audio that arrives without alignment */
+  const VOICE_CPS = 15;
   const FOLLOWUP_MS = 7000;
   const REPLY_MS = 15000;
   const HEARD_MS = 8000;
@@ -371,6 +373,10 @@ registerProcessor('mic-tap', MicTap);
       sources: new Set(), nextStart: 0, playing: false,
       firstTimer: null, stallTimer: null, levelIv: null,
       lastSeq: null,
+      /* {at: context time, n: characters spoken}, from the audio's alignment */
+      timeline: [], charCursor: 0, spokenN: 0,
+      /* what the turn's end waits for: run once the last chunk has played */
+      after: null, afterTimer: null,
     };
 
     let mode = 'idle'; // idle|listening|thinking|speaking|error
@@ -431,6 +437,18 @@ registerProcessor('mic-tap', MicTap);
         pendingFocus = null;
         setFocus(p);
       }
+    }
+
+    let deferredUnfocus = false;
+
+    /** Whether the brain's own voice is speaking the current turn. */
+    function voiceSpeaksTurn() {
+      return !!turn && voice.ok && voice.turnId === turn.id;
+    }
+
+    /** Whether some of this turn's voice is still to be played. */
+    function voicePending() {
+      return voiceSpeaksTurn() && (voice.sources.size > 0 || !voice.done);
     }
 
     function clearFocus(reason) {
@@ -496,6 +514,11 @@ registerProcessor('mic-tap', MicTap);
       }
       if (m.kind === 'unfocus') {
         coreFocusSeen = true;
+        /* Core unfocuses when the turn ends, which is before the voice does. */
+        if (voicePending()) {
+          deferredUnfocus = true;
+          return;
+        }
         clearFocus('core-unfocus');
         return;
       }
@@ -654,7 +677,9 @@ registerProcessor('mic-tap', MicTap);
       }
       if (turn) {
         turn.text = (turn.text || '') + m.text;
-        if (m.opening !== true) spokenText = turn.text;
+        /* With the brain's voice, cues wait for the audio (see voiceTick):
+           the text of a briefing is in long before it has been said. */
+        if (m.opening !== true && !voiceSpeaksTurn()) spokenText = turn.text;
         bus.emit('text', { turnId: turn.id, text: m.text, full: turn.text, opening: !!m.opening });
         flushPendingFocus(false);
       }
@@ -662,10 +687,30 @@ registerProcessor('mic-tap', MicTap);
     }
 
     function onDone(m) {
-      const t = turn;
+      /* The brain is done long before the voice is: every chunk of a briefing
+         has arrived while most of it is still to be played. Stopping the voice
+         here cut the briefing off, and settling the desk here put it away while
+         it was still being talked about. Both wait for the last chunk, as in v1. */
+      if (voicePending()) {
+        const t = turn;
+        voice.after = () => { if (turn === t) finishDone(m); };
+        clearTimeout(voice.afterTimer);
+        const left = voice.ctx ? Math.max(0, voice.nextStart - voice.ctx.currentTime) : 0;
+        /* a suspended audio context never reaches the end; do not wait for ever */
+        voice.afterTimer = setTimeout(voiceFinish, (left + 10) * 1000);
+        return;
+      }
+      finishDone(m);
+    }
+
+    function finishDone(m) {
       /* Typed done.briefing (PR #11). Core also sends unfocus; clearFocus is idempotent.
          Flush any cue-held focus before settling so mid-cue content still lands. */
       flushPendingFocus(true);
+      if (deferredUnfocus) {
+        deferredUnfocus = false;
+        clearFocus('core-unfocus');
+      }
       if (m.briefing === true || inBriefing) {
         inBriefing = false;
         bus.emit('settleDesk');
@@ -702,8 +747,10 @@ registerProcessor('mic-tap', MicTap);
       turn = null;
       spokenText = '';
       flushPendingFocus(true);
-      /* Core sends unfocus on cancel; fallback if not */
-      if (!coreFocusSeen) clearFocus('cancel-fallback');
+      /* Core sends unfocus on cancel; fallback if not. A turn cancelled while
+         its voice was still playing already had its unfocus, held back. */
+      if (!coreFocusSeen || deferredUnfocus) clearFocus('cancel-fallback');
+      deferredUnfocus = false;
       setMode('idle');
     }
 
@@ -1015,7 +1062,43 @@ registerProcessor('mic-tap', MicTap);
       return out;
     }
 
-    function voiceEnqueue(pcm) {
+    /* Character timings onto the clock the audio is scheduled on (v1). Without
+       alignment the characters are spread over the chunk at a spoken rate. */
+    function pushVoiceTimeline(start, duration, alignment) {
+      const chars = alignment && Array.isArray(alignment.chars) ? alignment.chars : null;
+      if (chars && chars.length) {
+        const st = Array.isArray(alignment.startMs) ? alignment.startMs : [];
+        const du = Array.isArray(alignment.durMs) ? alignment.durMs : [];
+        for (let i = 0; i < chars.length; i++) {
+          const a = Number(st[i]) || 0, d = Number(du[i]) || 0;
+          voice.timeline.push({ at: start + (a + d) / 1000, n: voice.charCursor + i + 1 });
+        }
+        voice.charCursor += chars.length;
+        return;
+      }
+      const total = Math.max(1, Math.round(duration * VOICE_CPS));
+      for (let i = 1; i <= total; i++) {
+        voice.timeline.push({ at: start + duration * (i / total), n: voice.charCursor + i });
+      }
+      voice.charCursor += total;
+    }
+
+    /* What has been said so far moves the cue gate, so a panel opens on the
+       word that names it rather than when the text happened to arrive. */
+    function voiceTick() {
+      const ctx = voice.ctx;
+      if (!ctx || !voiceSpeaksTurn()) return;
+      const t = ctx.currentTime;
+      let n = -1;
+      while (voice.timeline.length && voice.timeline[0].at <= t) n = voice.timeline.shift().n;
+      if (n > voice.spokenN) {
+        voice.spokenN = n;
+        spokenText = String(turn.text || '').slice(0, n);
+        flushPendingFocus(false);
+      }
+    }
+
+    function voiceEnqueue(pcm, alignment) {
       const ctx = ensureVoiceCtx();
       if (!ctx) return;
       resumeVoiceCtx();
@@ -1034,12 +1117,19 @@ registerProcessor('mic-tap', MicTap);
       src.onended = () => { voice.sources.delete(src); try { src.disconnect(); } catch (e) {} };
       voice.nextStart = start + buf.duration;
       voice.playing = true;
+      pushVoiceTimeline(start, buf.duration, alignment);
       startLevelTicker();
     }
 
     function startLevelTicker() {
       if (voice.levelIv) return;
       voice.levelIv = setInterval(() => {
+        voiceTick();
+        if (voice.done && voice.ctx && voice.ctx.currentTime > voice.nextStart + 0.05) {
+          voice.playing = false;
+          voiceFinish();
+          return;
+        }
         if (!voice.playing || !voice.an || !voice.freq) {
           bus.emit('audioLevel', 0);
           return;
@@ -1063,8 +1153,12 @@ registerProcessor('mic-tap', MicTap);
       }, 40);
     }
 
+    /* Everything played (or the voice gave out): stop, then let the turn end. */
     function voiceFinish() {
+      const after = voice.after;
+      voice.after = null;
       voiceStop();
+      if (after) after();
     }
 
     function voiceStop() {
@@ -1078,6 +1172,8 @@ registerProcessor('mic-tap', MicTap);
       voice.sources.clear();
       voice.turnId = null; voice.ok = false; voice.done = false; voice.gapWarned = false;
       voice.nextStart = 0; voice.playing = false; voice.lastSeq = null; voice.armed = false;
+      voice.timeline.length = 0; voice.charCursor = 0; voice.spokenN = 0;
+      voice.after = null; clearTimeout(voice.afterTimer); voice.afterTimer = null;
       bus.emit('audioLevel', 0);
     }
 
@@ -1115,7 +1211,7 @@ registerProcessor('mic-tap', MicTap);
       voice.armed = true;
       clearTimeout(voice.firstTimer);
       voice.firstTimer = setTimeout(() => {
-        voiceStop();
+        voiceFinish();
         bus.emit('log', 'no audio from the brain — local voice takes over');
       }, VOICE_FIRST_MS);
     }
@@ -1136,7 +1232,7 @@ registerProcessor('mic-tap', MicTap);
       try { pcm = pcm16ToFloat32(m.data); } catch (e) { return; }
       if (!pcm.length) return;
       if (mode !== 'speaking') setMode('speaking');
-      voiceEnqueue(pcm);
+      voiceEnqueue(pcm, m.alignment);
       armVoiceStall();
     }
 
