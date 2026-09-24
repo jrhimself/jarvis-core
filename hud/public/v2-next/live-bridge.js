@@ -100,18 +100,28 @@
     setBody('weather', html);
   }
 
+  /* Every list panel opens the same way: how many, big, then the items. A
+     panel with data and nothing in it says 0; only a panel that has heard
+     nothing yet waits for Core. The count lives here and not in the title,
+     where it said the same thing a second time. */
+  function heroHtml(value, label) {
+    return '<div class="hero-metric"><div class="value">' + esc(value) + '</div><div class="label">' + esc(label) + '</div></div>';
+  }
+
   function renderAgenda(vm) {
     const now = new Date();
     setMeta(
       'agenda',
       now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
     );
-    if (!vm || !vm.items || !vm.items.length) {
+    if (!vm) {
       setBody('agenda', emptyHtml());
       return;
     }
-    let html = '<ul class="list">';
-    vm.items.slice(0, 6).forEach(function (it) {
+    const items = vm.items || [];
+    let html = heroHtml(items.length, items.length === 1 ? 'Item today' : 'Items today');
+    html += '<ul class="list">';
+    items.slice(0, 6).forEach(function (it) {
       html += '<li' + (it.mark ? ' class="mark"' : '') + '>';
       html += '<span class="t">' + esc(it.time) + '</span>';
       html += '<span class="body">' + esc(it.title);
@@ -123,13 +133,14 @@
   }
 
   function renderNotes(vm) {
-    setMeta('notes', vm && vm.items && vm.items.length ? vm.items.length + ' items' : '');
-    if (!vm || !vm.items || !vm.items.length) {
+    setMeta('notes', '');
+    if (!vm) {
       setBody('notes', emptyHtml());
       return;
     }
-    let html = '';
-    vm.items.slice(0, 6).forEach(function (it) {
+    const items = vm.items || [];
+    let html = heroHtml(items.length, items.length === 1 ? 'Note' : 'Notes');
+    items.slice(0, 6).forEach(function (it) {
       html += '<div class="note-item">';
       if (it.tag) html += '<div class="tag">' + esc(it.tag) + '</div>';
       html += '<div class="text">' + esc(it.text) + '</div></div>';
@@ -138,50 +149,39 @@
   }
 
   function renderMail(vm) {
-    const unread = vm && vm.unread != null ? vm.unread : null;
-    setMeta('mail', unread != null ? unread + ' unread' : 'inbox');
-    if (!vm || ((!vm.items || !vm.items.length) && unread == null)) {
+    setMeta('mail', 'inbox');
+    if (!vm) {
       setBody('mail', emptyHtml());
       return;
     }
-    let html = '';
-    if (unread != null) {
-      html +=
-        '<div class="hero-metric"><div class="value">' +
-        esc(unread) +
-        '</div><div class="label">Unread</div></div>';
-    }
-    (vm.items || []).slice(0, 5).forEach(function (it) {
+    const items = vm.items || [];
+    const count = vm.unread != null ? vm.unread : items.length;
+    let html = heroHtml(count, vm.unread != null ? 'Unread' : 'New');
+    items.slice(0, 5).forEach(function (it) {
       html += '<div class="mail-item' + (it.mark ? ' mark' : '') + '">';
       html += '<span class="from">' + esc(it.from) + '</span>';
       html += '<span class="subj">' + esc(it.subject) + '</span></div>';
     });
-    setBody('mail', html || emptyHtml());
+    setBody('mail', html);
   }
 
   function renderWork(vm) {
-    const n = vm && (vm.openCount != null ? vm.openCount : vm.openCount);
-    const count = vm && (vm.openCount != null ? vm.openCount : null);
-    setMeta('work', count != null ? count + ' open' : '');
-    if (!vm || ((!vm.items || !vm.items.length) && count == null)) {
+    setMeta('work', '');
+    if (!vm) {
       setBody('work', emptyHtml());
       return;
     }
-    let html = '';
-    if (count != null) {
-      html +=
-        '<div class="hero-metric"><div class="value">' +
-        esc(count) +
-        '</div><div class="label">Open pull requests</div></div>';
-    }
-    (vm.items || []).slice(0, 5).forEach(function (it) {
+    const items = vm.items || [];
+    const count = vm.openCount != null ? vm.openCount : items.length;
+    let html = heroHtml(count, count === 1 ? 'Open pull request' : 'Open pull requests');
+    items.slice(0, 5).forEach(function (it) {
       html += '<div class="pr-item' + (it.mark ? ' mark' : '') + '">';
       html += '<span class="badge">' + esc(it.id) + '</span>';
       html += '<div><div class="title">' + esc(it.title) + '</div>';
       if (it.state) html += '<div class="repo">' + esc(it.state) + '</div>';
       html += '</div></div>';
     });
-    setBody('work', html || emptyHtml());
+    setBody('work', html);
   }
 
   function renderSystem(vm) {
@@ -190,13 +190,12 @@
       setBody('system', emptyHtml());
       return;
     }
+    /* CPU, memory and disk are in the footer already; this panel is uptime and
+       the health of what the brain depends on. */
     let html = '<ul class="list">';
-    if (vm.cpu != null) html += '<li><span class="t">CPU</span><span class="body">' + esc(vm.cpu) + '%</span></li>';
-    if (vm.mem != null) html += '<li><span class="t">MEM</span><span class="body">' + esc(vm.mem) + ' GB</span></li>';
-    if (vm.disk != null) html += '<li><span class="t">DISK</span><span class="body">' + esc(vm.disk) + '%</span></li>';
     if (vm.uptime != null) html += '<li><span class="t">UP</span><span class="body">' + esc(vm.uptime) + '</span></li>';
     if (vm.health && vm.health.length) {
-      vm.health.slice(0, 3).forEach(function (h) {
+      vm.health.slice(0, 5).forEach(function (h) {
         html +=
           '<li><span class="t">' +
           esc(String(h.server || '').toUpperCase()) +
