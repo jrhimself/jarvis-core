@@ -1794,7 +1794,7 @@ async function runBootSequence() {
   document.documentElement.removeAttribute('data-ready');
 
   /* Reset chrome visibility for replay */
-  document.querySelectorAll('.panel, .header, .footer, .orb-gauges').forEach((el) => {
+  document.querySelectorAll('.panel, .header, .footer, .orb-gauges, .orb-label').forEach((el) => {
     el.classList.remove('fui-in', 'fui-enter');
     el.style.opacity = '';
   });
@@ -1804,7 +1804,7 @@ async function runBootSequence() {
     setOrbBootFull();
     document.documentElement.classList.remove('boot-pending');
     document.documentElement.classList.add('boot-skip');
-    document.querySelectorAll('.panel, .header, .footer, .orb-gauges').forEach((el) => {
+    document.querySelectorAll('.panel, .header, .footer, .orb-gauges, .orb-label').forEach((el) => {
       el.classList.add('fui-in');
     });
     await waitMs(200);
@@ -1839,17 +1839,16 @@ async function runBootSequence() {
 
   /* Gauges right after orb */
   document.documentElement.classList.remove('boot-pending');
-  /* keep panels/header/footer hidden via inline until entered */
-  document.querySelectorAll('.panel, .header, .footer').forEach((el) => {
+  /* keep panels/header/footer and the line under the orb hidden until entered */
+  document.querySelectorAll('.panel, .header, .footer, .orb-label').forEach((el) => {
     el.style.opacity = '0';
     el.style.pointerEvents = 'none';
   });
   revealChrome('.orb-gauges', 'fui-in');
   await waitMs(200);
 
-  /* Header / footer with or just before panels */
+  /* Header just before panels */
   revealChrome('.header', 'fui-in');
-  revealChrome('.footer', 'fui-in');
   await waitMs(160);
 
   /* Panels: L weather→agenda→notes, then R mail→work→system */
@@ -1858,6 +1857,13 @@ async function runBootSequence() {
     await waitMs(170);
   }
   await waitMs(420);
+
+  /* Last: everything below the orb, its state line and then the footer with
+     the command field, so the desk is complete before it asks for input. */
+  revealChrome('.orb-label', 'fui-in');
+  await waitMs(180);
+  revealChrome('.footer', 'fui-in');
+  await waitMs(380);
 
   document.querySelectorAll('.panel').forEach((el) => {
     el.style.opacity = '';
@@ -1874,7 +1880,7 @@ function skipToRestingState() {
   setOrbBootFull();
   document.documentElement.classList.remove('boot-pending');
   document.documentElement.classList.add('boot-skip');
-  document.querySelectorAll('.panel, .header, .footer, .orb-gauges').forEach((el) => {
+  document.querySelectorAll('.panel, .header, .footer, .orb-gauges, .orb-label').forEach((el) => {
     el.style.opacity = '';
     el.style.pointerEvents = '';
     el.classList.remove('fui-enter');

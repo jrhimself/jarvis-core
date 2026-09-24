@@ -1237,7 +1237,8 @@ html[data-live="0"] .orb-label .state-dot { animation: none !important; }
 html.boot-pending .panel,
 html.boot-pending .header,
 html.boot-pending .footer,
-html.boot-pending .orb-gauges {
+html.boot-pending .orb-gauges,
+html.boot-pending .orb-label {
   opacity: 0;
   pointer-events: none;
 }
@@ -1248,14 +1249,16 @@ html.boot-pending .orb-wrap {
 html.boot-skip .panel,
 html.boot-skip .header,
 html.boot-skip .footer,
-html.boot-skip .orb-gauges {
+html.boot-skip .orb-gauges,
+html.boot-skip .orb-label {
   opacity: 1;
   pointer-events: auto;
 }
 
 .header.fui-in,
 .footer.fui-in,
-.orb-gauges.fui-in {
+.orb-gauges.fui-in,
+.orb-label.fui-in {
   animation: fui-chrome-in 380ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 @keyframes fui-chrome-in {
@@ -1398,7 +1401,8 @@ html.is-focusing .footer {
   .panel.fui-enter::after,
   .header.fui-in,
   .footer.fui-in,
-  .orb-gauges.fui-in {
+  .orb-gauges.fui-in,
+  .orb-label.fui-in {
     animation-duration: 0.01ms !important;
   }
   .panel.focus-animating {
