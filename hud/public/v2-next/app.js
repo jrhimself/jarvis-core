@@ -22,7 +22,7 @@
 
 /* The orb's hue follows the voice state like the desk's --hue does (styles.css),
    eased along the shorter way round the colour wheel. */
-const STATE_HUE = { idle: 200, listening: 160, thinking: 38, speaking: 355 };
+const STATE_HUE = { idle: 200, listening: 268, thinking: 38, speaking: 145 };
 let HUE = 200;
 const ACCENT = 22; /* orange/amber accents like the pin */
 

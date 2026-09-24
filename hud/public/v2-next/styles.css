@@ -1,7 +1,7 @@
 /* Jarvis FUI v2 — holographic desk. Prototype only. Production HUD untouched. */
 
-/* The desk takes the colour of what Jarvis is doing: cyan at rest, green while
-   listening, amber while thinking, red while speaking. Every blue of the desk
+/* The desk takes the colour of what Jarvis is doing: cyan at rest, violet while
+   listening, amber while thinking, green while speaking (red is for alerts). Every blue of the desk
    is written against --hue, and --hue is registered so the change is a 0.6s
    sweep rather than a jump. Orange (usage warnings) and red (errors) stay put. */
 @property --hue {
@@ -10,9 +10,9 @@
   initial-value: 200;
 }
 html { --hue: 200; transition: --hue 0.6s ease; }
-html[data-voice="listening"] { --hue: 160; }
+html[data-voice="listening"] { --hue: 268; }
 html[data-voice="thinking"] { --hue: 38; }
-html[data-voice="speaking"] { --hue: 355; }
+html[data-voice="speaking"] { --hue: 145; }
 :root {
   --bg: #070e1a;
   --bg-deep: #0a1628;
