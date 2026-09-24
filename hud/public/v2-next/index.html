@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS FUI — live</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+(function () {
+  var p = new URLSearchParams(location.search);
+  var skip = p.has('t') || p.get('live') === '0';
+  document.documentElement.classList.add(skip ? 'boot-skip' : 'boot-pending');
+})();
+</script>
+</head>
+<body>
+<div class="floor-grid" aria-hidden="true"></div>
+<div class="grid-scan" aria-hidden="true"></div>
+<div class="horizon-glow" aria-hidden="true"></div>
+<div class="side-beam side-beam-left" aria-hidden="true"></div>
+<div class="side-beam side-beam-right" aria-hidden="true"></div>
+<div class="accent-rail" aria-hidden="true">
+  <span></span><span></span><span></span><span></span><span></span><span></span>
+</div>
+
+<div id="voice-chip" class="voice-chip" hidden>
+  <span class="chip-label">You</span>
+  <span class="chip-text" id="voice-chip-text"></span>
+</div>
+<div id="mic-error" class="mic-error" hidden></div>
+
+<div class="hud">
+  <header class="header">
+    <div class="brand">
+      <span class="name">J.A.R.V.I.S</span>
+      <span class="tag">FUI · live</span>
+    </div>
+    <div class="status-pills">
+      <span class="pill" id="pill-brain" data-state="connecting"><span class="dot" id="dot-brain"></span><span id="pill-brain-text">BRAIN …</span></span>
+      <span class="pill" id="pill-desk"><span class="dot"></span><span id="pill-desk-text">DESK IDLE</span></span>
+      <span class="pill pill-voice" id="voice-pill" hidden><span class="dot"></span><span id="voice-pill-text">STANDBY</span></span>
+    </div>
+    <div class="clock-block">
+      <div class="time" id="clock-time">—:—</div>
+      <div class="date" id="clock-date">—</div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="col col-left">
+      <section class="panel" data-slot="weather" data-panel="weather">
+        <div class="panel-title"><h2>Weather</h2><span class="meta" data-meta="weather"></span></div>
+        <div class="panel-body" data-body="weather">
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+        </div>
+      </section>
+      <section class="panel" data-slot="agenda" data-panel="agenda">
+        <div class="panel-title"><h2>Agenda</h2><span class="meta" data-meta="agenda"></span></div>
+        <div class="panel-body" data-body="agenda">
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+        </div>
+      </section>
+      <section class="panel" data-slot="notes" data-panel="notes">
+        <div class="panel-title"><h2>Notes</h2><span class="meta" data-meta="notes"></span></div>
+        <div class="panel-body" data-body="notes">
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="orb-wrap">
+      <div class="orb-gauges" id="orb-gauges">
+        <div class="gauge" id="gauge-session" data-window="session" tabindex="0" role="img" aria-label="Session plan usage">
+          <canvas id="ring-a" width="56" height="56"></canvas>
+          <span class="gauge-label">SESSION</span>
+        </div>
+        <div class="gauge" id="gauge-week" data-window="week" tabindex="0" role="img" aria-label="Weekly plan usage">
+          <canvas id="ring-b" width="56" height="56"></canvas>
+          <span class="gauge-label">WEEK</span>
+        </div>
+        <div class="gauge-tip" id="gauge-tip" hidden></div>
+      </div>
+      <canvas id="orb" width="600" height="600" aria-label="Jarvis soft energy orb"></canvas>
+      <div class="orb-label">
+        <div class="state-row">
+          <span class="state-dot" id="orb-dot" aria-hidden="true"></span>
+          <div class="state" id="orb-state">STANDBY</div>
+          <canvas id="status-wave" width="100" height="18" aria-hidden="true"></canvas>
+        </div>
+        <div class="sub" id="orb-sub">Neural core · idle breathe</div>
+      </div>
+      <div id="pack-strip" class="pack-strip" hidden aria-label="Pack topics"></div>
+    </div>
+
+    <div class="col col-right">
+      <section class="panel" data-slot="mail" data-panel="mail">
+        <div class="panel-title"><h2>Mail</h2><span class="meta" data-meta="mail"></span></div>
+        <div class="panel-body" data-body="mail">
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+        </div>
+      </section>
+      <section class="panel" data-slot="work" data-panel="work">
+        <div class="panel-title"><h2>Work · PRs</h2><span class="meta" data-meta="work"></span></div>
+        <div class="panel-body" data-body="work">
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+        </div>
+      </section>
+      <section class="panel" data-slot="system" data-panel="system">
+        <div class="panel-title"><h2>System</h2><span class="meta" data-meta="system"></span></div>
+        <div class="panel-body" data-body="system">
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="pack-overflow" class="pack-overflow" hidden></div>
+
+  <footer class="footer">
+    <div class="metrics">
+      <div class="metric">
+        <div class="m-label">CPU <span id="spark-cpu-val">—</span></div>
+        <canvas class="spark" id="spark-cpu" width="120" height="24"></canvas>
+      </div>
+      <div class="metric">
+        <div class="m-label">MEM <span id="spark-mem-val">—</span></div>
+        <canvas class="spark" id="spark-net" width="120" height="24"></canvas>
+      </div>
+      <div class="metric">
+        <div class="m-label">DISK <span id="spark-disk-val">—</span></div>
+        <div class="bar-track"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="footer-center">
+      <div class="standby" id="footer-standby">STANDBY</div>
+      <div class="hint" id="footer-hint">live · Core over /ws</div>
+    </div>
+    <div class="footer-wave">
+      <div class="m-label">Signal</div>
+      <canvas id="wave-footer" width="220" height="36"></canvas>
+    </div>
+  </footer>
+</div>
+
+<div id="focus-veil" class="focus-veil" hidden aria-hidden="true"></div>
+<div id="free-card-layer" class="free-card-layer" hidden></div>
+
+<script src="core-link.js"></script>
+<script src="app.js"></script>
+<script src="live-bridge.js"></script>
+</body>
+</html>
