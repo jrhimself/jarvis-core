@@ -516,6 +516,123 @@ registerProcessor('mic-tap', MicTap);
 
     let deferredUnfocus = false;
 
+    /* ---- local voice: the browser's own, when the brain has none ----
+       The brain says so when its voice is off or out of credits, and then the
+       page speaks. /v2-next had no such fallback: it stayed silent and took
+       the whole text as said the moment it arrived, so every window of a
+       briefing opened one after another in a few seconds. Ported from v1:
+       sentence by sentence as the text streams, with the word boundaries of
+       the browser voice moving the cue gate the way audio alignment does. */
+    const LOCAL_TAGS = { en: 'en-GB', nl: 'nl-NL' };
+    const LOCAL_MAX = 180;          /* Chrome stops an utterance after ~15s */
+    const LOCAL_CPS = 15;           /* until a boundary event says otherwise */
+    const LOCAL_END = /[.!?\u2026]["'\u2019\u201d)\]]*(?=\s|$)/g;
+    const local = { on: false, handed: 0, queue: [], speaking: false, reached: 0, after: null, afterTimer: null, tick: null, closed: false };
+
+    function localAvailable() {
+      return typeof window !== 'undefined' && !!window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined';
+    }
+
+    function localSpeaksTurn() { return !!turn && local.on; }
+
+    function localPending() {
+      return localSpeaksTurn() && (local.speaking || local.queue.length > 0 || local.handed < String(turn.text || '').length);
+    }
+
+    function startLocal() {
+      if (!localAvailable() || !turn) return false;
+      localStop();
+      local.on = true;
+      return true;
+    }
+
+    function localStop() {
+      const was = local.on || local.speaking;
+      local.on = false; local.handed = 0; local.queue = []; local.speaking = false;
+      local.reached = 0; local.after = null; local.closed = false;
+      clearTimeout(local.afterTimer); local.afterTimer = null;
+      clearInterval(local.tick); local.tick = null;
+      if (was && localAvailable()) { try { speechSynthesis.cancel(); } catch (e) {} }
+    }
+
+    function localVoice() {
+      const vs = speechSynthesis.getVoices();
+      const tag = LOCAL_TAGS[speechLang] || 'en-GB';
+      const short = tag.split('-')[0];
+      return vs.find((v) => v.lang === tag && v.localService) || vs.find((v) => v.lang.startsWith(short)) || null;
+    }
+
+    /* Hand complete sentences (or, when `final`, everything) to the queue. */
+    function localFeed(final) {
+      if (!localSpeaksTurn()) return;
+      const text = String(turn.text || '');
+      let upto = local.handed;
+      LOCAL_END.lastIndex = local.handed;
+      for (let m = LOCAL_END.exec(text); m !== null; m = LOCAL_END.exec(text)) upto = m.index + m[0].length;
+      if (final) upto = text.length;
+      while (local.handed < upto) {
+        let piece = text.slice(local.handed, upto);
+        if (piece.length > LOCAL_MAX) {
+          let cut = piece.lastIndexOf(',', LOCAL_MAX);
+          if (cut < 40) cut = piece.lastIndexOf(' ', LOCAL_MAX);
+          if (cut < 40) cut = LOCAL_MAX;
+          piece = piece.slice(0, cut + 1);
+        }
+        if (piece.trim()) local.queue.push({ text: piece, base: local.handed });
+        local.handed += piece.length;
+      }
+      localNext();
+    }
+
+    function localReach(n) {
+      if (!turn || n <= local.reached) return;
+      local.reached = n;
+      spokenText = String(turn.text || '').slice(0, n);
+      flushPendingFocus(false);
+    }
+
+    function localNext() {
+      if (local.speaking || !local.on) return;
+      const seg = local.queue.shift();
+      if (!seg) {
+        if (local.after && local.handed >= String((turn && turn.text) || '').length) {
+          const after = local.after;
+          local.after = null;
+          clearTimeout(local.afterTimer); local.afterTimer = null;
+          after();
+        }
+        return;
+      }
+      local.speaking = true;
+      if (mode !== 'speaking') setMode('speaking');
+      const u = new SpeechSynthesisUtterance(seg.text);
+      u.lang = LOCAL_TAGS[speechLang] || 'en-GB';
+      u.rate = 1.03; u.pitch = 0.92;
+      const v = localVoice();
+      if (v) u.voice = v;
+      const done = () => {
+        clearInterval(local.tick); local.tick = null;
+        if (!local.speaking) return;
+        local.speaking = false;
+        localReach(seg.base + seg.text.length);
+        localNext();
+      };
+      u.onstart = () => {
+        const t = performance.now();
+        clearInterval(local.tick);
+        local.tick = setInterval(() => {
+          localReach(seg.base + Math.min(seg.text.length, Math.floor((performance.now() - t) / 1000 * LOCAL_CPS * u.rate)));
+        }, 60);
+      };
+      u.onboundary = (e) => {
+        clearInterval(local.tick); local.tick = null;
+        localReach(seg.base + (e.charIndex || 0));
+      };
+      u.onend = done;
+      u.onerror = done;
+      try { speechSynthesis.speak(u); } catch (e) { done(); }
+    }
+
     /** Whether the brain's own voice is speaking the current turn. */
     function voiceSpeaksTurn() {
       return !!turn && voice.ok && voice.turnId === turn.id;
@@ -524,6 +641,11 @@ registerProcessor('mic-tap', MicTap);
     /** Whether some of this turn's voice is still to be played. */
     function voicePending() {
       return voiceSpeaksTurn() && (voice.sources.size > 0 || !voice.done);
+    }
+
+    /** Either voice, brain or browser, still has some of this turn to say. */
+    function speechPending() {
+      return voicePending() || localPending();
     }
 
     function clearFocus(reason) {
@@ -591,7 +713,7 @@ registerProcessor('mic-tap', MicTap);
       if (m.kind === 'unfocus') {
         coreFocusSeen = true;
         /* Core unfocuses when the turn ends, which is before the voice does. */
-        if (voicePending()) {
+        if (speechPending()) {
           deferredUnfocus = true;
           return;
         }
@@ -756,7 +878,8 @@ registerProcessor('mic-tap', MicTap);
         turn.text = (turn.text || '') + m.text;
         /* With the brain's voice, cues wait for the audio (see voiceTick):
            the text of a briefing is in long before it has been said. */
-        if (m.opening !== true && !voiceSpeaksTurn()) spokenText = turn.text;
+        if (m.opening !== true && !voiceSpeaksTurn() && !localSpeaksTurn()) spokenText = turn.text;
+        if (localSpeaksTurn()) localFeed(false);
         bus.emit('text', { turnId: turn.id, text: m.text, full: turn.text, opening: !!m.opening });
         flushPendingFocus(false);
       }
@@ -775,6 +898,16 @@ registerProcessor('mic-tap', MicTap);
         const left = voice.ctx ? Math.max(0, voice.nextStart - voice.ctx.currentTime) : 0;
         /* a suspended audio context never reaches the end; do not wait for ever */
         voice.afterTimer = setTimeout(voiceFinish, (left + 10) * 1000);
+        return;
+      }
+      if (localPending()) {
+        const t = turn;
+        local.after = () => { if (turn === t) finishDone(m); };
+        const left = String(turn.text || '').length - local.reached;
+        clearTimeout(local.afterTimer);
+        /* a browser voice that never ends (no voices, blocked) is not waited on for ever */
+        local.afterTimer = setTimeout(() => { const a = local.after; local.after = null; if (a) a(); }, (left / 8 + 10) * 1000);
+        localFeed(true);
         return;
       }
       finishDone(m);
@@ -1253,6 +1386,7 @@ registerProcessor('mic-tap', MicTap);
     }
 
     function voiceStop() {
+      localStop();
       clearTimeout(voice.firstTimer); voice.firstTimer = null;
       clearTimeout(voice.stallTimer); voice.stallTimer = null;
       clearInterval(voice.levelIv); voice.levelIv = null;
@@ -1286,7 +1420,8 @@ registerProcessor('mic-tap', MicTap);
       voiceStop();
       if (turn) turn.voiceOk = m.available === true;
       if (m.available !== true) {
-        bus.emit('voice', { available: false, reason: m.reason });
+        startLocal();
+        bus.emit('voice', { available: false, reason: m.reason, local: local.on });
         return;
       }
       voice.turnId = turn && turn.id;
@@ -1303,7 +1438,13 @@ registerProcessor('mic-tap', MicTap);
       voice.armed = true;
       clearTimeout(voice.firstTimer);
       voice.firstTimer = setTimeout(() => {
-        voiceFinish();
+        const after = voice.after;
+        voice.after = null;
+        voiceStop();
+        if (startLocal()) {
+          local.after = after;
+          localFeed(after !== null);
+        } else if (after) after();
         bus.emit('log', 'no audio from the brain — local voice takes over');
       }, VOICE_FIRST_MS);
     }
