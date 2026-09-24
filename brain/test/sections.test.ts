@@ -87,3 +87,7 @@ test("the prompt names every valid topic as its marker", () => {
   assert.doesNotMatch(block, /Bad Topic/);
   assert.equal(sectionMarkBlock([]), "");
 });
+
+test("the prompt asks for a spoken lead-in after each marker", () => {
+  assert.match(sectionMarkBlock(["weather"]), /"On the agenda:"/);
+});

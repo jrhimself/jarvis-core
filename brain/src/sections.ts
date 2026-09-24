@@ -100,7 +100,10 @@ export class SectionMarks {
  * The prompt paragraph that asks for the markers, naming every desk topic.
  *
  * Asked for every answer about a desk subject, not only the briefing: "what is
- * on my agenda" opens the agenda on its first word the same way.
+ * on my agenda" opens the agenda on its first word the same way. Each part also
+ * opens by naming its subject: without that a briefing ran from "Rain today" to
+ * a meeting at half past eight with nothing said in between, and the window was
+ * the only sign the subject had changed.
  */
 export function sectionMarkBlock(topics: readonly string[]): string {
   const valid = topics.filter((t) => TOPIC.test(t));
@@ -110,7 +113,10 @@ export function sectionMarkBlock(topics: readonly string[]): string {
     "Desk markers. When an answer talks about one of the desk subjects -- the briefing above " +
     `all -- begin the part about each subject with its marker: ${list}. Put it directly ` +
     "before the first word of that part, once per part, and only there: never inside a " +
-    "sentence, never for a subject only mentioned in passing. The markers are taken out " +
-    "before anything is said, shown or sent, so never mention or explain them."
+    "sentence, never for a subject only mentioned in passing. Right after the marker, name " +
+    "the subject in a short lead-in before its first item -- \"The weather:\", \"On the " +
+    "agenda:\", \"On mail:\", \"On the pull requests:\", \"From your notes:\", in the language " +
+    "of the answer -- so which part this is can be heard, not only seen. The markers are " +
+    "taken out before anything is said, shown or sent, so never mention or explain them."
   );
 }
