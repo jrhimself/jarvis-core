@@ -131,7 +131,7 @@ export function coreSpecs(config: Config, store: MemoryStore): ServerSpec[] {
       // Not a ping: `all(1)` runs a real query through the open SQLite handle.
       probe: async () => {
         store.all(1);
-        return "database antwoordt";
+        return "database answers";
       },
     },
     ...(proactiveAtLeast(config.proactive, "observe")
@@ -140,7 +140,7 @@ export function coreSpecs(config: Config, store: MemoryStore): ServerSpec[] {
             server: "insight",
             probe: async () => {
               const counts = store.proactiveCounts();
-              return `${counts.observations} observaties`;
+              return `${counts.observations} observations`;
             },
           },
         ]
@@ -201,7 +201,7 @@ export async function runHealthChecks(specs: readonly ServerSpec[]): Promise<Hea
     const verdict = verdicts.get(spec.probe);
     // Unreachable while the set above is built from these same specs.
     if (verdict === undefined)
-      return { server: spec.server, state: "down" as const, detail: "geen uitslag", ...from };
+      return { server: spec.server, state: "down" as const, detail: "no result", ...from };
     return {
       server: spec.server,
       state: verdict.state,
