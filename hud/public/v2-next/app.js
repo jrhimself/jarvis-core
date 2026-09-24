@@ -1856,12 +1856,13 @@ async function runBootSequence() {
     enterPanel(PANEL_ORDER[i]); /* fire; stagger */
     await waitMs(170);
   }
-  await waitMs(420);
+  await waitMs(150);
 
   /* Last: everything below the orb, its state line and then the footer with
-     the command field, so the desk is complete before it asks for input. */
+     the command field, so the desk is complete before it asks for input.
+     Close behind the last panel: any longer and the footer reads as late. */
   revealChrome('.orb-label', 'fui-in');
-  await waitMs(180);
+  await waitMs(80);
   revealChrome('.footer', 'fui-in');
   await waitMs(380);
 
