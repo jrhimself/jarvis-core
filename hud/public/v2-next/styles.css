@@ -871,43 +871,24 @@ html[data-live="0"] .panel { animation: none; }
   transition: width 0.35s ease;
 }
 
-.footer-center { text-align: center; }
-.footer-center .standby {
-  font-size: 11px;
-  letter-spacing: 0.4em;
-  color: hsla(200, 90%, 72%, 0.7);
-  text-transform: uppercase;
-  animation: standby-glow 3s ease-in-out infinite;
+/* Typed command, as in the first HUD: Enter sends it as an utterance. */
+.ask { display: flex; justify-content: center; }
+.ask input {
+  width: min(460px, 100%);
+  padding: 9px 14px;
+  font: 12px/1.3 var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--text);
+  background: hsla(210, 45%, 8%, 0.55);
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-html[data-live="0"] .footer-center .standby { animation: none; }
-
-@keyframes standby-glow {
-  0%, 100% { text-shadow: 0 0 8px hsla(200, 100%, 60%, 0.2); opacity: 0.75; }
-  50% { text-shadow: 0 0 16px hsla(200, 100%, 70%, 0.45); opacity: 1; }
-}
-.footer-center .hint {
-  margin-top: 4px;
-  font-size: 9px;
-  letter-spacing: 0.16em;
-  color: var(--text-muted);
-}
-
-.footer-wave {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-.footer-wave .m-label {
-  font-size: 8px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-#wave-footer {
-  width: 220px;
-  height: 36px;
-  display: block;
+.ask input::placeholder { color: var(--text-muted); }
+.ask input:focus {
+  border-color: var(--panel-border-hot);
+  box-shadow: 0 0 12px hsla(200, 100%, 70%, 0.18);
 }
 
 .footer-right {
@@ -936,7 +917,6 @@ html[data-live="0"] .footer-center .standby { animation: none; }
   .weather-temp .deg { font-size: 40px; }
   .panel { padding: 12px 13px; }
   .orb-wrap { min-height: 340px; }
-  #wave-footer { width: 160px; height: 30px; }
   .orb-gauges canvas { width: 44px; height: 44px; }
 }
 
@@ -956,7 +936,6 @@ html[data-live="0"] .footer-center .standby { animation: none; }
   .orb-gauges { left: 2%; top: 8%; }
   .orb-gauges canvas { width: 40px; height: 40px; }
   .footer { grid-template-columns: 1fr; gap: 10px; }
-  .footer-wave { align-items: flex-start; }
 }
 
 /* Tablet + phone: single full-width column, scrollable, no footer bleed */
@@ -1023,12 +1002,10 @@ html[data-live="0"] .footer-center .standby { animation: none; }
     background: transparent;
   }
   .footer .metrics,
-  .footer-wave,
   .footer .proto,
-  #wave-footer,
+  .footer-spacer,
   .spark { display: none !important; }
-  .footer-center { order: 0; }
-  .footer-center .hint { font-size: 8px; }
+  .ask { width: 100%; }
   .footer-right {
     display: flex;
     flex-wrap: wrap;
@@ -1160,31 +1137,6 @@ html[data-live="0"] .footer-center .standby { animation: none; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.pill-voice {
-  border-color: hsla(200, 100%, 70%, 0.5) !important;
-  background: hsla(200, 60%, 25%, 0.35) !important;
-}
-.pill-voice[data-state="listening"] {
-  border-color: hsla(160, 100%, 55%, 0.55) !important;
-  color: hsla(160, 90%, 75%, 0.95);
-}
-.pill-voice[data-state="listening"] .dot { background: #3dffb5; box-shadow: 0 0 10px hsla(160,100%,55%,0.8); }
-.pill-voice[data-state="thinking"] {
-  border-color: hsla(200, 100%, 65%, 0.55) !important;
-  color: hsla(200, 95%, 78%, 0.95);
-}
-.pill-voice[data-state="thinking"] .dot { background: #9adbff; box-shadow: 0 0 10px hsla(200,100%,70%,0.85); }
-.pill-voice[data-state="speaking"] {
-  border-color: hsla(355, 90%, 55%, 0.65) !important;
-  color: var(--red);
-  background: hsla(355, 60%, 20%, 0.35) !important;
-}
-.pill-voice[data-state="speaking"] .dot {
-  background: var(--red);
-  box-shadow: 0 0 12px hsla(355,100%,55%,0.9);
-  animation: pill-pulse 0.75s ease-in-out infinite;
-}
-
 /* Voice-state driven bloom / beams — cyan-only (orange reserved for micro gauges) */
 html[data-voice="listening"] .orb-wrap::before {
   animation: core-bloom 1.4s ease-in-out infinite;
@@ -1212,9 +1164,6 @@ html[data-voice="thinking"] .panel::before,
 html[data-voice="thinking"] .panel::after {
   opacity: 1;
   border-color: hsla(200, 100%, 70%, 0.7);
-}
-html[data-voice="speaking"] #wave-footer {
-  filter: drop-shadow(0 0 8px hsla(355,100%,55%,0.45));
 }
 
 /* Status label colors — red ONLY for SPEAKING */
@@ -1244,9 +1193,6 @@ html[data-voice="listening"] #status-wave { opacity: 0.7; }
 html[data-voice="thinking"] #status-wave { opacity: 0.55; }
 html[data-live="0"] .orb-label .state-dot { animation: none !important; }
 
-html[data-voice="listening"] .footer-center .standby { color: hsla(160, 90%, 70%, 0.9); }
-html[data-voice="thinking"] .footer-center .standby { color: hsla(200, 95%, 75%, 0.9); }
-html[data-voice="speaking"] .footer-center .standby { color: var(--red); }
 
 
 [hidden] { display: none !important; }
@@ -1358,14 +1304,24 @@ html.boot-reduced .orb-gauges {
   opacity: 1;
   pointer-events: auto;
 }
-html.is-focusing .orb-wrap {
-  filter: brightness(0.55) saturate(0.85);
+/* The veil dims the room behind the desk. The desk itself is lifted above the
+   veil while a panel is focused -- under it, the focused panel was dimmed with
+   everything else -- so the rest of the desk dims itself. The pack strip is
+   left out of the orb's filter because a focused pack card lives in it. */
+html.is-focusing .hud { z-index: 41; }
+.col.has-focus { z-index: 4; }
+html.is-focusing .orb-wrap > :not(.pack-strip),
+html.is-focusing .header,
+html.is-focusing .footer {
+  filter: brightness(0.55) saturate(0.85) !important;
   transition: filter 480ms ease;
 }
-html:not(.is-focusing) .orb-wrap {
-  filter: none;
+.orb-wrap > *,
+.header,
+.footer {
   transition: filter 480ms ease;
 }
+.panel[data-panel]:not(.is-focused):not(.focus-dim) { cursor: pointer; }
 .panel.focus-dim {
   opacity: 0.35 !important;
   filter: blur(1.2px) saturate(0.7);

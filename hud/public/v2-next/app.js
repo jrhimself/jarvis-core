@@ -71,21 +71,8 @@ function applyVoicePreset(state) {
   const copy = STATUS_COPY[state] || STATUS_COPY.idle;
   const orbState = document.getElementById('orb-state');
   const orbSub = document.getElementById('orb-sub');
-  const footer = document.getElementById('footer-standby');
-  const pill = document.getElementById('voice-pill');
-  const pillText = document.getElementById('voice-pill-text');
   if (orbState) orbState.textContent = copy.label;
   if (orbSub) orbSub.textContent = copy.sub;
-  if (footer) footer.textContent = copy.label;
-  if (pill && pillText) {
-    if (state === 'idle') {
-      pill.hidden = true;
-    } else {
-      pill.hidden = false;
-      pill.dataset.state = state;
-      pillText.textContent = copy.label;
-    }
-  }
 }
 
 
@@ -272,7 +259,7 @@ function drawRings(ctx, cx, cy, R, hue, energy, t) {
   RING_LAYERS.forEach((ring, ri) => {
     if (ri >= orbBoot.rings) return;
     const radius = RR * ring.r;
-    const rot = (ring.speed || 0) * t * ringSpeedMul + ri * 0.15;
+    const rot = (ring.speed || 0) * motion.ring + ri * 0.15;
     const pulse = 0.8 + 0.2 * Math.sin(t * 1.25 + ri * 0.7);
     const alpha = ring.alpha * pulse * (0.55 + energy * 0.65);
     ctx.lineCap = 'butt';
@@ -298,7 +285,7 @@ function drawRings(ctx, cx, cy, R, hue, energy, t) {
       }
     } else if (ring.style === 'dash') {
       ctx.setLineDash(ring.dash);
-      ctx.lineDashOffset = -t * Math.abs(ring.speed) * 36 * ringSpeedMul * Math.sign(ring.speed || 1);
+      ctx.lineDashOffset = -motion.ring * Math.abs(ring.speed) * 36 * Math.sign(ring.speed || 1);
       ctx.beginPath();
       ctx.arc(cx, cy, radius, rot, rot + Math.PI * 2 * drawFrac);
       ctx.stroke();
@@ -359,7 +346,7 @@ function drawCrosshairs(ctx, cx, cy, R, hue, energy, t) {
 
   /* rotating micro ticks near core rim */
   const n = 20;
-  const rot = t * 0.08 * ringSpeedMul;
+  const rot = motion.ring * 0.08;
   for (let i = 0; i < n; i++) {
     const ang = rot + (i / n) * Math.PI * 2;
     const r0 = R * 0.32;
@@ -380,7 +367,7 @@ function drawCrosshairs(ctx, cx, cy, R, hue, energy, t) {
    No energy gating, no speaking skip, no alpha pulsing to zero. */
 function drawSweep(ctx, cx, cy, R, hue, energy, t) {
   if (!orbBoot.sweep) return;
-  const ang = t * 0.45 * Math.max(0.85, sweepMul || 1);
+  const ang = motion.sweep * 0.45;
   const wedge = 0.48;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -1073,7 +1060,30 @@ function sizeOrb() {
   return { tw, th };
 }
 
+/* Rotation is integrated rather than t × speed: with t × speed, a voice state
+   that changes the speed moves every ring and the sweep to a new angle at once.
+   The multipliers also ease towards their target, so the sweep speeds up
+   instead of switching speed. */
+const motion = { last: null, ringMul: 1, sweepMul: 0.9, ring: 0, sweep: 0 };
+
+function advanceMotion(t) {
+  const sweepTarget = Math.max(0.85, sweepMul || 1);
+  if (!animate) {
+    motion.ring = t * ringSpeedMul;
+    motion.sweep = t * sweepTarget;
+    return;
+  }
+  const dt = motion.last === null ? 0 : Math.min(0.1, Math.max(0, t - motion.last));
+  motion.last = t;
+  const k = 1 - Math.exp(-dt * 2.5);
+  motion.ringMul += (ringSpeedMul - motion.ringMul) * k;
+  motion.sweepMul += (sweepTarget - motion.sweepMul) * k;
+  motion.ring += dt * motion.ringMul;
+  motion.sweep += dt * motion.sweepMul;
+}
+
 function paintFrame(t) {
+  advanceMotion(t);
   sizeOrb();
   const ctx = canvas.getContext('2d');
   drawOrb(ctx, canvas.width, canvas.height, t);
@@ -1081,7 +1091,6 @@ function paintFrame(t) {
     const el = document.getElementById(id);
     if (el) drawSpark(el, 900 + i * 17, t);
   });
-  drawWaveform(document.getElementById('wave-footer'), t);
   drawStatusWave(document.getElementById('status-wave'), t);
   easeUsageDisplays();
   drawAccentRing(document.getElementById('ring-a'), 'session');
@@ -1287,6 +1296,10 @@ const bootParams = {
 let inBriefing = false;
 let focusedPanelId = null;
 let focusHandOff = null; /* promise chain for smooth handoff */
+/* 'user' when the panel was opened by a click or a key. Core's unfocus and the
+   stale guards then leave it alone: a turn ending is no reason to close what
+   was opened by hand. Core focusing another panel still takes over. */
+let focusSource = null;
 let idleUnfocusTimer = null;
 let bootDone = false;
 let bootRunning = false;
@@ -1535,16 +1548,26 @@ function dimOthers(exceptId, on) {
     if (on && id !== exceptId) el.classList.add('focus-dim');
     else el.classList.remove('focus-dim');
   });
+  /* Columns share a z-index; lift the one holding the focused panel so its
+     enlarged panel is not drawn under the other column. */
+  document.querySelectorAll('.col').forEach((col) => col.classList.remove('has-focus'));
+  const held = on && exceptId ? Panels.el(exceptId) : null;
+  const col = held && held.closest('.col');
+  if (col) col.classList.add('has-focus');
   document.documentElement.classList.toggle('is-focusing', !!on);
 }
 
-function focusPanel(id) {
+function focusPanel(id, opts) {
   if (!id || typeof id !== 'string') return;
+  const source = opts && opts.user ? 'user' : 'auto';
   /* Fixed panels + pack topics (Core focus.panel = desk topic). system = client-only. */
   const fixed = ['weather', 'agenda', 'notes', 'mail', 'work', 'system'];
   const el = document.querySelector('[data-panel="' + id + '"]');
   if (!fixed.includes(id) && !el) return;
-  const run = () => _focusPanelNow(id);
+  const run = () => {
+    if (!(source === 'auto' && focusedPanelId === id)) focusSource = source;
+    return _focusPanelNow(id);
+  };
   if (focusHandOff) {
     focusHandOff = focusHandOff.then(run);
   } else {
@@ -1626,8 +1649,13 @@ function _focusPanelApply(id, done) {
   setTimeout(finish, 600);
 }
 
-function unfocusPanel() {
-  const run = () => _unfocusPanelNow(false);
+function unfocusPanel(opts) {
+  const user = !!(opts && opts.user);
+  const run = () => {
+    if (!user && focusSource === 'user') return undefined;
+    focusSource = null;
+    return _unfocusPanelNow(false);
+  };
   if (focusHandOff) {
     focusHandOff = focusHandOff.then(run);
   } else {
@@ -1897,7 +1925,7 @@ function boot() {
     const allowVoiceTest = params.get('dev') === '1' || params.get('live') === '0';
     if (voiceMap[e.key] && allowVoiceTest) { applyVoicePreset(voiceMap[e.key]); return; }
     if (e.key === 'b' || e.key === 'B') { runBootSequence().then(afterBootHooks); return; }
-    if (e.key === 'Escape') { unfocusPanel(); return; }
+    if (e.key === 'Escape') { unfocusPanel({ user: true }); return; }
     const focusMap = {
       w: 'weather', W: 'weather',
       a: 'agenda', A: 'agenda',
@@ -1906,7 +1934,23 @@ function boot() {
       p: 'work', P: 'work',
       s: 'system', S: 'system',
     };
-    if (focusMap[e.key]) { focusPanel(focusMap[e.key]); return; }
+    if (focusMap[e.key]) { focusPanel(focusMap[e.key], { user: true }); return; }
+  });
+
+  /* A click on a panel enlarges it; a click anywhere outside the enlarged
+     panel puts it back. Buttons inside a panel keep their own meaning. */
+  document.addEventListener('click', (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target || target.closest('button, a')) return;
+    if (focusedPanelId) {
+      const held = Panels.el(focusedPanelId);
+      if (held && held.contains(target)) return;
+      unfocusPanel({ user: true });
+      return;
+    }
+    if (target.closest('input, form')) return;
+    const panel = target.closest('.panel[data-panel], .pack-card[data-panel]');
+    if (panel) focusPanel(panel.getAttribute('data-panel'), { user: true });
   });
 
   if (demoBriefing) runBriefingDemo();

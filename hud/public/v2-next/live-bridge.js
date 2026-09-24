@@ -327,7 +327,7 @@
     strip.innerHTML = html;
     strip.querySelectorAll('.pack-card').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        if (window.JarvisV2 && JarvisV2.focusPanel) JarvisV2.focusPanel(btn.dataset.topic);
+        if (window.JarvisV2 && JarvisV2.focusPanel) JarvisV2.focusPanel(btn.dataset.topic, { user: true });
       });
     });
     const more = document.getElementById('pack-more');
@@ -349,7 +349,7 @@
         overflow.querySelectorAll('button').forEach(function (b) {
           b.addEventListener('click', function () {
             overflow.hidden = true;
-            if (window.JarvisV2 && JarvisV2.focusPanel) JarvisV2.focusPanel(b.dataset.topic);
+            if (window.JarvisV2 && JarvisV2.focusPanel) JarvisV2.focusPanel(b.dataset.topic, { user: true });
           });
         });
       });
@@ -474,9 +474,6 @@
     if (state === 'online') text.textContent = 'BRAIN ONLINE';
     else if (state === 'connecting') text.textContent = 'BRAIN CONNECTING';
     else text.textContent = 'BRAIN OFFLINE';
-    const hint = document.getElementById('footer-hint');
-    if (hint && detail && state !== 'online') hint.textContent = detail;
-    if (hint && state === 'online') hint.textContent = 'live · Core over /ws';
   }
 
   function setTranscript(text, final) {
@@ -645,9 +642,14 @@
     l.on('utterance', function (m) {
       setTranscript(m && m.text, true);
     });
+    /* The footer line that used to carry these is gone; the command field is
+       where the eye already is when a typed command could not be sent. */
     l.on('log', function (msg) {
-      const hint = document.getElementById('footer-hint');
-      if (hint && msg) hint.textContent = String(msg);
+      const input = document.getElementById('ask');
+      if (!input || !msg) return;
+      input.placeholder = String(msg);
+      clearTimeout(askHintTimer);
+      askHintTimer = setTimeout(function () { input.placeholder = ASK_PLACEHOLDER; }, 4000);
     });
     l.on('micError', function (err) {
       const el = document.getElementById('mic-error');
@@ -672,6 +674,28 @@
     });
   }
 
+  const ASK_PLACEHOLDER = 'Type a command…';
+  let askHintTimer = null;
+
+  /* Enter sends the field as an utterance, the same turn a spoken one starts.
+     Escape leaves the field so Space talks again. */
+  function wireAsk(l) {
+    const form = document.getElementById('ask-form');
+    const input = document.getElementById('ask');
+    if (!form || !input) return;
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const text = input.value;
+      if (!text.trim()) return;
+      input.value = '';
+      l.stopListen();
+      l.sendUtterance(text);
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') input.blur();
+    });
+  }
+
   function init() {
     hydrateFromCache();
 
@@ -691,6 +715,7 @@
       bindVoiceTestKeys: false,
     });
     wire(l);
+    wireAsk(l);
     window.JarvisCoreLink = l;
     l.connect();
     return l;

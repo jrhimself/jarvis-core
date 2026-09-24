@@ -38,7 +38,6 @@
     <div class="status-pills">
       <span class="pill" id="pill-brain" data-state="connecting"><span class="dot" id="dot-brain"></span><span id="pill-brain-text">BRAIN …</span></span>
       <span class="pill" id="pill-desk"><span class="dot"></span><span id="pill-desk-text">DESK IDLE</span></span>
-      <span class="pill pill-voice" id="voice-pill" hidden><span class="dot"></span><span id="voice-pill-text">STANDBY</span></span>
     </div>
     <div class="clock-block">
       <div class="time" id="clock-time">—:—</div>
@@ -131,14 +130,10 @@
         <div class="bar-track"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div>
       </div>
     </div>
-    <div class="footer-center">
-      <div class="standby" id="footer-standby">STANDBY</div>
-      <div class="hint" id="footer-hint">live · Core over /ws</div>
-    </div>
-    <div class="footer-wave">
-      <div class="m-label">Signal</div>
-      <canvas id="wave-footer" width="220" height="36"></canvas>
-    </div>
+    <form class="ask" id="ask-form" autocomplete="off">
+      <input id="ask" type="text" placeholder="Type a command…" spellcheck="false" aria-label="Type a command">
+    </form>
+    <div class="footer-spacer" aria-hidden="true"></div>
   </footer>
 </div>
 
