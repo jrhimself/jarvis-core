@@ -180,6 +180,7 @@ registerProcessor('mic-tap', MicTap);
         const condition = now.summary || today.summary || now.condition || today.condition || '';
         return {
           title: payload.title || 'Weather',
+          icon: now.condition || today.condition || '',
           temp,
           unit,
           condition,

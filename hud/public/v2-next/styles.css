@@ -1657,3 +1657,51 @@ html.is-focusing .footer {
   margin-top: 1px;
   white-space: normal;
 }
+
+/* ===== Weather icon: a line drawing that moves like the weather ===== */
+.wx-icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  margin-top: 2px;
+  fill: none;
+  stroke: var(--cyan-bright);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px hsla(var(--hue), 100%, 70%, 0.45));
+  overflow: visible;
+}
+.wx-icon .wi-cloud.wi-front { fill: var(--bg); }
+.wx-icon .wi-sun { transform-box: fill-box; transform-origin: center; animation: wi-spin 24s linear infinite; }
+.wx-icon .wi-drift { animation: wi-drift 6s ease-in-out infinite alternate; }
+.wx-icon .wi-rain line { animation: wi-rain 1.1s linear infinite; opacity: 0; }
+.wx-icon .wi-rain.fast line { animation-duration: 0.7s; }
+.wx-icon .wi-snow circle { animation: wi-snow 2.4s linear infinite; opacity: 0; fill: var(--cyan-bright); }
+.wx-icon .wi-snow.fast circle { animation-duration: 1.2s; }
+.wx-icon .wi-bolt { animation: wi-flash 3.2s steps(1) infinite; }
+.wx-icon .wi-stars path { animation: wi-twinkle 2.6s ease-in-out infinite; }
+.wx-icon .wi-moon { animation: wi-drift 8s ease-in-out infinite alternate; }
+.wx-icon .wi-fog path, .wx-icon .wi-wind path { animation: wi-slide 2.4s ease-in-out infinite alternate; }
+@keyframes wi-spin { to { transform: rotate(360deg); } }
+@keyframes wi-drift { from { transform: translateX(-1.5px); } to { transform: translateX(1.5px); } }
+@keyframes wi-rain {
+  0% { transform: translateY(-3px); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(7px); opacity: 0; }
+}
+@keyframes wi-snow {
+  0% { transform: translate(0, -3px); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translate(1.5px, 8px); opacity: 0; }
+}
+@keyframes wi-flash {
+  0%, 100% { opacity: 0.25; }
+  8%, 14% { opacity: 1; }
+  11% { opacity: 0.4; }
+}
+@keyframes wi-twinkle { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes wi-slide { from { transform: translateX(-2.5px); opacity: 0.55; } to { transform: translateX(2.5px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .wx-icon * { animation: none !important; opacity: 1 !important; }
+}

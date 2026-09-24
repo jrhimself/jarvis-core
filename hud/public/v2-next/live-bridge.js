@@ -58,6 +58,80 @@
     }
   }
 
+  /* ---------- Weather icon ----------
+     A small line drawing in the desk's own colour, moving the way the weather
+     does: the sun turns, clouds drift, rain and snow fall, lightning flickers.
+     Keyed on Home Assistant's condition enum; the words are the fallback for
+     a condition that came in as text only. */
+  const WI_CLOUD = '<path class="wi-cloud" d="M15 33h19a7 7 0 0 0 .8-13.95A10 10 0 0 0 15.4 17 8 8 0 0 0 15 33z"/>';
+  function wiSun(cx, cy, r) {
+    let rays = '';
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      const x1 = cx + Math.cos(a) * (r + 3), y1 = cy + Math.sin(a) * (r + 3);
+      const x2 = cx + Math.cos(a) * (r + 6), y2 = cy + Math.sin(a) * (r + 6);
+      rays += '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '"/>';
+    }
+    return '<g class="wi-sun"><circle cx="' + cx + '" cy="' + cy + '" r="' + r + '"/><g class="wi-rays">' + rays + '</g></g>';
+  }
+  function wiFall(kind, n) {
+    let out = '<g class="wi-' + kind + '">';
+    for (let i = 0; i < n; i++) {
+      const x = 17 + i * (15 / Math.max(1, n - 1));
+      out += kind === 'snow'
+        ? '<circle cx="' + x.toFixed(1) + '" cy="37" r="1.3" style="animation-delay:' + (i * 0.45).toFixed(2) + 's"/>'
+        : '<line x1="' + x.toFixed(1) + '" y1="36" x2="' + (x - 1.5).toFixed(1) + '" y2="40" style="animation-delay:' + (i * 0.27).toFixed(2) + 's"/>';
+    }
+    return out + '</g>';
+  }
+  const WI = {
+    sunny: function () { return wiSun(24, 24, 7); },
+    'clear-night': function () {
+      return '<path class="wi-moon" d="M27 11a13 13 0 1 0 10 21 10.5 10.5 0 0 1-10-21z"/>' +
+        '<g class="wi-stars"><path d="M36 12v4M34 14h4"/><path d="M40 22v3M38.5 23.5h3" style="animation-delay:1.1s"/></g>';
+    },
+    partlycloudy: function () { return wiSun(18, 18, 5) + '<g class="wi-drift">' + WI_CLOUD.replace('wi-cloud', 'wi-cloud wi-front') + '</g>'; },
+    cloudy: function () { return '<g class="wi-drift">' + WI_CLOUD + '</g>'; },
+    rainy: function () { return '<g class="wi-drift">' + WI_CLOUD + '</g>' + wiFall('rain', 3); },
+    pouring: function () { return '<g class="wi-drift">' + WI_CLOUD + '</g>' + wiFall('rain fast', 5); },
+    snowy: function () { return '<g class="wi-drift">' + WI_CLOUD + '</g>' + wiFall('snow', 3); },
+    'snowy-rainy': function () { return '<g class="wi-drift">' + WI_CLOUD + '</g>' + wiFall('rain', 2) + wiFall('snow', 2); },
+    hail: function () { return '<g class="wi-drift">' + WI_CLOUD + '</g>' + wiFall('snow fast', 4); },
+    lightning: function () { return '<g class="wi-drift">' + WI_CLOUD + '</g><path class="wi-bolt" d="M25 31l-4 7h5l-3 7"/>'; },
+    'lightning-rainy': function () { return '<g class="wi-drift">' + WI_CLOUD + '</g><path class="wi-bolt" d="M25 31l-4 7h5l-3 7"/>' + wiFall('rain', 2); },
+    fog: function () {
+      return '<g class="wi-fog"><path d="M11 20h26"/><path d="M8 26h28" style="animation-delay:.8s"/><path d="M12 32h26" style="animation-delay:1.6s"/></g>';
+    },
+    windy: function () {
+      return '<g class="wi-wind"><path d="M8 19h20a4 4 0 1 0-4-4"/><path d="M8 26h28a4 4 0 1 1-4 4" style="animation-delay:.6s"/><path d="M8 33h14" style="animation-delay:1.2s"/></g>';
+    },
+  };
+  WI['windy-variant'] = WI.windy;
+  WI.exceptional = WI.cloudy;
+
+  function weatherKind(icon, text) {
+    if (icon && WI[icon]) return icon;
+    const t = String(text || icon || '').toLowerCase();
+    if (/thunder|lightning|onweer/.test(t)) return 'lightning';
+    if (/pour|heavy rain|stortregen/.test(t)) return 'pouring';
+    if (/snow|sneeuw/.test(t)) return 'snowy';
+    if (/hail|hagel/.test(t)) return 'hail';
+    if (/rain|drizzle|shower|regen|motregen|bui/.test(t)) return 'rainy';
+    if (/fog|mist|haze|nevel/.test(t)) return 'fog';
+    if (/wind/.test(t)) return 'windy';
+    if (/partly|half|bewolkt met|part/.test(t)) return 'partlycloudy';
+    if (/night|nacht/.test(t)) return 'clear-night';
+    if (/sun|clear|zon|helder/.test(t)) return 'sunny';
+    if (/cloud|overcast|bewolkt/.test(t)) return 'cloudy';
+    return null;
+  }
+
+  function weatherIconHtml(vm) {
+    const kind = weatherKind(vm.icon, vm.condition);
+    if (!kind) return '';
+    return '<svg class="wx-icon" viewBox="0 0 48 48" aria-hidden="true" data-kind="' + kind + '">' + WI[kind]() + '</svg>';
+  }
+
   /* ---------- Renderers ---------- */
   function renderWeather(vm) {
     if (!vm || (vm.temp == null && !vm.condition && !(vm.forecast && vm.forecast.length) && !(vm.tiles && vm.tiles.length))) {
@@ -66,7 +140,7 @@
       return;
     }
     setMeta('weather', vm.title && vm.title !== 'Weather' ? vm.title : '');
-    let html = '<div class="weather-temp">';
+    let html = '<div class="weather-temp">' + weatherIconHtml(vm);
     if (vm.temp != null) {
       html += '<div class="deg">' + esc(Math.round(vm.temp)) + '<span>' + esc(vm.unit || '°') + '</span></div>';
     }
