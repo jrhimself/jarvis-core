@@ -20,7 +20,7 @@ import { isCommitSha, readDeployResult } from "../dist/dev/deploy.js";
 import { readPullRequest } from "../dist/dev/github.js";
 import { escapeHtml, failureMessage, reviewMessage, spokenFailure } from "../dist/dev/notify.js";
 import { titleFor } from "../dist/dev/run.js";
-import { describeTask, gapBrake } from "../dist/dev-tools.js";
+import { abilityInstruction, describeTask, gapBrake } from "../dist/dev-tools.js";
 import { workerPrompt } from "../dist/dev/worker.js";
 import { run } from "../dist/dev/shell.js";
 import { canPushBranches, linkDependencies } from "../dist/dev/worktree.js";
@@ -317,4 +317,12 @@ test("a finished delegated job says what the runner left behind", () => {
   const spoken = describeTask({ ...task("finished"), detail: "PR 12 is open" });
   assert.match(spoken, /runner 11 finished it/);
   assert.match(spoken, /PR 12 is open/);
+});
+
+test("a missing ability becomes a job to build it, not to answer the request", () => {
+  const job = abilityInstruction("search the web for current news", "what are the road works about?", true);
+  assert.match(job, /^Give JARVIS the ability to search the web for current news, so that he does it himself/);
+  assert.match(job, /not an answer to this one request/);
+  assert.match(job, /put the answer in your DONE line too/);
+  assert.doesNotMatch(abilityInstruction("read the clock", "time?", false), /DONE line/);
 });

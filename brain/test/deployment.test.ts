@@ -187,7 +187,8 @@ test("the facilities report what is off as well as what is on", () => {
 test("a deployment that can build is told to close a gap rather than stop at it", () => {
   const block = describe({}, [], tempDir(), true, ["display", "memory", "selfdev"]).replace(/\s+/g, " ");
   assert.match(block, /When you cannot do something, or do not know it/);
-  assert.match(block, /close_gap, without asking first/);
+  assert.match(block, /call close_gap without asking first/);
+  assert.match(block, /the solution is always that you learn it/);
   assert.match(block, /never try the same thing again in other words/);
   assert.doesNotMatch(block, /say so plainly/);
   assert.doesNotMatch(block, /say that it would take a pack/);

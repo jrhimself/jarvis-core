@@ -221,9 +221,11 @@ Ask for a capability that is missing — or watch it run into the gap on its own
 What happens next depends on a verdict it does not get to make about itself.
 
 A gap it runs into is closed without being asked. When a request cannot be carried out with any tool
-it has, `close_gap` starts the work at once: `build` for an ability that is missing, `find_out` for a
-fact that a machine with a shell and the internet could look up. It then says in one sentence what it
-cannot do yet and what it started. Something the owner asks for as a change to what already works
+it has, `close_gap` starts the work at once, and the work is always to learn the ability behind the
+request -- "look up current local news", not "what is happening on this street" -- so the next request
+of that kind is answered without help. A small fix is written here; anything bigger goes to a runner,
+which builds the ability and sends the answer to the request as well when it finds it on the way.
+JARVIS then says in one sentence what he cannot do yet and that he is learning it. Something the owner asks for as a change to what already works
 still goes through `propose_dev_task` and a spoken yes. Nothing either door starts is merged or
 deployed without that yes. The brakes are numbers, kept in the task table rather than in the
 conversation: one attempt per gap at a time, two per gap a week, four gaps a day. Past them, the gap

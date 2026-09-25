@@ -94,6 +94,29 @@ export function describeTask(task: DevTask): string {
 }
 
 /**
+ * The job a missing ability becomes.
+ *
+ * The ability first and the request second, and said in so many words, because
+ * the first gap handed to a runner came back as an answer: it looked up what was
+ * asked, reported it, and left JARVIS exactly as unable as before. An answer is
+ * welcome on the way; the ability is the job.
+ */
+export function abilityInstruction(ability: string, request: string, runner: boolean): string {
+  return [
+    `Give JARVIS the ability to ${ability.replace(/^to\s+/i, "")}, so that he does it himself from now on.`,
+    `What made this come up: ${request}`,
+    "Build the general ability, not an answer to this one request: a tool in JARVIS' own code, or " +
+      "in a pack, that the next request of this kind reaches without anyone's help.",
+    ...(runner
+      ? [
+          "If you can answer the request while you build it, put the answer in your DONE line too, " +
+            "after what you built, so it reaches the user now.",
+        ]
+      : []),
+  ].join("\n");
+}
+
+/**
  * Whether a gap may be worked on now, and if not, what to say instead.
  *
  * Pure, so the brakes can be tested without a database: `recent` is every
@@ -236,27 +259,26 @@ export function createDevServer(
 
   const gap = tool(
     "close_gap",
-    "Start closing a gap you just ran into, without asking first: something the user " +
-      "asked that you cannot do, or cannot find out, with anything you have. Try your " +
-      "other tools first -- this is for when none of them gets there. 'build' whenever " +
-      "the same kind of request can come again, so it simply works next time: a small fix is written " +
-      "here and becomes a pull request, a bigger one goes to a runner on another machine. " +
-      "'find_out' only for a one-off fact that will not be asked again and that a machine " +
-      "with a shell and the internet could look up; a runner finds it and the answer comes back. " +
-      "Nothing this starts is merged or deployed without the user's yes. After the call, " +
-      "say in one sentence what you cannot do yet and what you started, and move on; do " +
-      "not wait for it inside this turn. When it refuses, say why and stop -- never try " +
-      "the same thing again in other words.",
+    "Give yourself an ability you just found you lack, without asking first: something the " +
+      "user asked that you cannot do, or cannot know, with anything you have. Try your other " +
+      "tools first -- this is for when none of them gets there. It always builds: the point is " +
+      "that the next request of this kind is answered by you, not by somebody working for you. " +
+      "Name the general ability behind the request, not the request itself: 'look up current " +
+      "local news and road works', not 'what is happening on my street'. A small fix is written " +
+      "here and becomes a pull request; anything bigger goes to a runner on another machine, " +
+      "which builds the ability and, when it can, answers this request along the way. Nothing " +
+      "is merged or deployed without the user's yes. After the call, say in one sentence what " +
+      "you cannot do yet and that you are learning it, and move on; do not wait for it inside " +
+      "this turn. When it refuses, say why and stop -- never try the same thing again in other words.",
     {
-      gap: z.string().min(1)
-        .describe("A short, stable name for what is missing, e.g. 'read the clock' or 'doorbell camera on the HUD'"),
-      kind: z.enum(["build", "find_out"]),
+      ability: z.string().min(1)
+        .describe("The general ability that is missing, short and stable, e.g. 'read the clock' or 'search the web for current news'"),
       request: z.string().min(1)
-        .describe("What the user asked, in his own words, and what exactly you could not do or find"),
+        .describe("What the user asked, in his own words, and what exactly you could not do or know"),
       repo: z.enum(["jarvis", "other"]).default("jarvis")
-        .describe("For 'build': 'jarvis' only when the change lives in this assistant's own source"),
+        .describe("'jarvis' only when the ability can live in this assistant's own source"),
       files: z.array(z.string()).default([])
-        .describe("For 'build': repo-relative paths you expect to change; empty when you cannot tell"),
+        .describe("Repo-relative paths you expect to change; empty when you cannot tell"),
       needsNewDependency: z.boolean().default(false),
       needsNewSecret: z.boolean().default(false),
       needsOutsideWork: z.boolean().default(false)
@@ -264,27 +286,9 @@ export function createDevServer(
     },
     async (args) => {
       const now = new Date();
-      const key = slugify(args.gap);
+      const key = slugify(args.ability);
       const brake = gapBrake(dev.gapAttempts(key, now), dev.gapsToday(now));
       if (brake !== null) return refused(brake);
-
-      if (args.kind === "find_out") {
-        if (!dev.canDelegate) {
-          return refused("There is no runner to find this out. Say that you do not know, and that you cannot look it up from here.");
-        }
-        const handed = await dev.delegateBig(
-          `Find out, and change nothing: ${args.request}. End with 'DONE: <the answer>'.`,
-          "finding this out needs a shell and the internet, which I do not have",
-          now,
-          key,
-        );
-        return handed.ok
-          ? ok(
-              `Runner ${handed.slot} is finding it out; the answer comes back to you and to the ` +
-                "user's chat. Say that you do not know yet and that you are having it looked up.",
-            )
-          : refused(handed.error);
-      }
 
       const verdict = dev.judge(
         {
@@ -296,25 +300,25 @@ export function createDevServer(
         },
         now,
       );
-      const instruction = `Make this work: ${args.request}`;
       if (verdict.size === "small") {
-        const started = dev.startSmall(instruction, now, key);
+        const started = dev.startSmall(abilityInstruction(args.ability, args.request, false), now, key);
         return ok(
-          `Started (task ${started.id}): a small fix, written here, ending in a pull request ` +
-            "the user approves. Say what you cannot do yet and that you are building it.",
+          `Started (task ${started.id}): the ability is written here and becomes a pull request ` +
+            "the user approves. Say what you cannot do yet and that you are learning it.",
         );
       }
       if (!dev.canDelegate) {
         return refused(
-          `This needs more than a small fix (${verdict.reason}) and there is no runner to hand it to. ` +
+          `Learning this needs more than a small fix (${verdict.reason}) and there is no runner to hand it to. ` +
             "Say what you cannot do and what it would take.",
         );
       }
-      const handed = await dev.delegateBig(instruction, verdict.reason, now, key);
+      const handed = await dev.delegateBig(abilityInstruction(args.ability, args.request, true), verdict.reason, now, key);
       return handed.ok
         ? ok(
-            `Runner ${handed.slot} is building it, because ${verdict.reason}. You answer its ` +
-              "questions and the user hears when it is done. Say what you cannot do yet and that it is being built.",
+            `Runner ${handed.slot} is building the ability, because ${verdict.reason}. You answer ` +
+              "its questions; the user hears when it is done, and gets the answer to this request " +
+              "then if the runner found it. Say what you cannot do yet and that you are learning it.",
           )
         : refused(handed.error);
     },

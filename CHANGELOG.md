@@ -23,10 +23,13 @@ that was the end of it. Now that is where the work starts.
 
 ### Added
 
-- `close_gap`, a tool that starts closing a gap without asking first. `build` is for a missing
-  ability: a small fix is written here and becomes a pull request, and a bigger one goes to a runner.
-  `find_out` is for a missing fact: a runner looks it up and reports the answer. Nothing it starts is
-  merged or deployed without the owner's yes.
+- `close_gap`, a tool that starts learning a missing ability without asking first. It always
+  builds. It is given the general ability behind the request ("look up current local news"),
+  not the request itself. A small fix is written here and becomes a pull request; anything bigger
+  goes to a runner, which builds the ability and, when it can, answers the request along the way.
+  A runner that only looks the answer up leaves JARVIS as unable as before, so it is told in so
+  many words that the ability is the job. Nothing it starts is merged or deployed without the
+  owner's yes.
 - Brakes on unasked work, kept in the task table: one attempt per gap at a time, two per gap a week,
   and four gaps a day. Past them, the tool refuses and says why, and the gap goes to the owner as a
   question. Tasks carry the gap they belong to in a new `gap` column.

@@ -34,8 +34,8 @@ export const GAP_TOOLS = [
   "mcp__selfdev__start_dev_task",
 ];
 
-const CHECK_INSTRUCTIONS = `You check the answers of a voice assistant that can have work done for it:
-it can have a missing ability built, or have a missing fact looked up on the internet.
+const CHECK_INSTRUCTIONS = `You check the answers of a voice assistant that can learn: it can have a
+missing ability built into itself, so that it can do the thing from then on.
 
 You get what the user asked and what the assistant answered. Decide whether the answer
 gave up: it says, in any language and in any words, that the assistant cannot do this,
@@ -47,14 +47,14 @@ Answer with exactly one word:
 GAVE_UP when it gave up in that way.
 FINE for everything else: a complete answer, a question back to the user, something
 that was done, a refusal for safety or privacy, small talk, or an answer that says the
-missing part is already being built or looked up.`;
+missing ability is already being built.`;
 
 /** The nudge that sends a turn that gave up back to work. */
 export const NUDGE =
   "You told the user you cannot do this or do not know it. Do not stop there. Call close_gap " +
-  "now: 'find_out' for a one-off fact -- news, something local, something happening right now -- " +
-  "and 'build' for anything that can be asked again. Then add one short sentence saying what you " +
-  "started. If close_gap refuses, say why in one sentence and stop.";
+  "now, naming the general ability behind the request, so that you can do it yourself next time. " +
+  "Then add one short sentence saying that you are learning it. If close_gap refuses, say why in " +
+  "one sentence and stop.";
 
 /** Reads the checking model's one word back. Anything unclear lets the turn end. */
 export function readCheck(answer: string): boolean {
