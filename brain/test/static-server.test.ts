@@ -18,7 +18,7 @@ import { tempDir } from "./helpers.ts";
 
 /** A file server over a temp directory, plus the secret sitting next to it. */
 async function serving(): Promise<{
-  get: (path: string, method?: string) => Promise<Response>;
+  get: (path: string, method?: string, redirect?: RequestRedirect) => Promise<Response>;
   close: () => Promise<void>;
 }> {
   const base = tempDir();
@@ -35,7 +35,8 @@ async function serving(): Promise<{
   const { port } = server.address() as AddressInfo;
 
   return {
-    get: (path, method = "GET") => fetch(`http://127.0.0.1:${port}${path}`, { method }),
+    get: (path, method = "GET", redirect = "follow") =>
+      fetch(`http://127.0.0.1:${port}${path}`, { method, redirect }),
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
@@ -57,8 +58,19 @@ test("the root serves the HUD", async () => {
 test("a directory serves its index", async () => {
   const site = await serving();
   try {
-    const response = await site.get("/sub");
+    const response = await site.get("/sub/");
     assert.equal(await response.text(), "<h1>sub</h1>");
+  } finally {
+    await site.close();
+  }
+});
+
+test("a directory without its slash is sent to it, so relative links resolve", async () => {
+  const site = await serving();
+  try {
+    const response = await site.get("/sub?t=1", "GET", "manual");
+    assert.equal(response.status, 301);
+    assert.equal(response.headers.get("location"), "/sub/?t=1");
   } finally {
     await site.close();
   }

@@ -72,7 +72,16 @@ export function createStaticHandler(root: string) {
     let target = resolved;
     try {
       const info = await stat(target);
-      if (info.isDirectory()) target = join(target, "index.html");
+      if (info.isDirectory()) {
+        // Without the slash, the page's relative links resolve one level up.
+        if (!urlPath.endsWith("/")) {
+          const search = new URL(req.url ?? "/", "https://placeholder.invalid").search;
+          res.writeHead(301, { location: `${urlPath}/${search}`, "content-length": 0 });
+          res.end();
+          return;
+        }
+        target = join(target, "index.html");
+      }
     } catch {
       send(res, 404, "Not found");
       return;
