@@ -71,6 +71,12 @@ that was the end of it. Now that is where the work starts.
 - Everything the self-development machinery says is in English: tool answers, guard reasons, task
   details, the written notices and the spoken failure. The owner's name falls back to "the user".
 
+### Fixed
+
+- A question with a slash, a colon or other punctuation in it made memory search throw
+  (`fts5: syntax error`) instead of searching. Only letters and digits reach the full-text
+  query now, for facts and for conversations alike.
+
 ## [2.0.0] - 2026-09-25
 
 A new HUD, and a major version because of it: the page at `/` is a different page. The first HUD,

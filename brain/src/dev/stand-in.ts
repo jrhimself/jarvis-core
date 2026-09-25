@@ -18,7 +18,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 export const STAND_IN_TOOLS = ["WebSearch", "WebFetch"];
 
 /** Longest the stand-in may take in total, found or not. */
-const STAND_IN_TIMEOUT_MS = 120_000;
+const STAND_IN_TIMEOUT_MS = 180_000;
 
 const instructions = (language: string) =>
   `You find the answer to one question for a voice assistant, by searching and reading
@@ -31,6 +31,7 @@ web does not give a reliable answer, say so in one sentence instead of guessing.
  * came back in time; never rejects.
  */
 export async function lookUp(question: string, language: string, model = "sonnet"): Promise<string | null> {
+  const started = Date.now();
   const run = async (): Promise<string | null> => {
     let text = "";
     for await (const message of query({
@@ -50,12 +51,19 @@ export async function lookUp(question: string, language: string, model = "sonnet
       }
     }
     const answer = text.trim();
+    const seconds = Math.round((Date.now() - started) / 1000);
+    console.log(answer === "" ? `stand-in: nothing found in ${seconds}s` : `stand-in: answered in ${seconds}s`);
     return answer === "" ? null : answer;
   };
   try {
     return await Promise.race([
       run(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), STAND_IN_TIMEOUT_MS).unref()),
+      new Promise<null>((resolve) =>
+        setTimeout(() => {
+          console.log(`stand-in: gave up after ${STAND_IN_TIMEOUT_MS / 1000}s`);
+          resolve(null);
+        }, STAND_IN_TIMEOUT_MS).unref(),
+      ),
     ]);
   } catch (error) {
     console.warn("stand-in: could not look a question up:", error);
@@ -67,12 +75,13 @@ export async function lookUp(question: string, language: string, model = "sonnet
  * Waits for an answer as long as a turn can reasonably wait for it.
  *
  * `late` gets the answer when it comes after that, so it can be delivered
- * unprompted instead of being lost.
+ * unprompted instead of being lost -- and gets null when nothing came of it,
+ * because the turn already promised an answer and silence would break that.
  */
 export async function answerFirst(
   lookup: Promise<string | null>,
   waitMs: number,
-  late: (answer: string) => void,
+  late: (answer: string | null) => void,
 ): Promise<string | null> {
   let inTime = true;
   const early = await Promise.race([
@@ -86,9 +95,7 @@ export async function answerFirst(
   ]);
   if (early !== null) return early;
   if (!inTime) {
-    void lookup.then((answer) => {
-      if (answer !== null) late(answer);
-    });
+    void lookup.then((answer) => late(answer));
   }
   return null;
 }

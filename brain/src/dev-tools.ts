@@ -353,7 +353,15 @@ export function createDevServer(
 
       if (lookup === null) return built.ok ? ok(built.text) : refused(built.text);
 
-      const answer = await answerFirst(lookup, ANSWER_WAIT_MS, (late) => void dev.tell(late));
+      const asked = args.question ?? "";
+      const answer = await answerFirst(lookup, ANSWER_WAIT_MS, (late) => {
+        void dev.tell(
+          late ??
+            (language().current === "nl"
+              ? `Ik heb geen antwoord kunnen vinden op: ${asked}`
+              : `I could not find an answer to: ${asked}`),
+        );
+      });
       const found =
         answer === null
           ? "The answer is still being looked up; it is said and sent to the user as soon as it is found. Say so."
