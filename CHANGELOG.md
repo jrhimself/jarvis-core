@@ -15,6 +15,16 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [Unreleased]
+
+### Added
+
+- `JARVIS_CREDENTIAL_EXPIRY` lists when the deployment's credentials run out, as
+  `name=YYYY-MM-DD` pairs. The hourly self check reports `invariant:expiry:<name>` from
+  thirty days before, says how long ago once it has passed, and reports a date it cannot
+  read rather than going quiet. Meant for tokens that carry no readable expiry, such as a
+  long-lived model token, where the date is whatever was written down when it was minted.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added
