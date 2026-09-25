@@ -48,6 +48,7 @@ import { recipesBlock } from "./memory/recipes.js";
 import { distilSession } from "./memory/distiller.js";
 import { memory } from "./memory/store.js";
 import { usageFromResult } from "./memory/usage.js";
+import { nowBlock } from "./now.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
@@ -555,6 +556,13 @@ ${text}`;
     // rather than in the system prompt, which was written before it drained.
     const plan = planContextBlock(planUsage(), config.planWarnPct);
     if (plan !== "") asked = `${plan}
+
+${asked}`;
+
+    // The clock, first of all and for the same reason: the session was started
+    // at an hour that has passed, and everything else in this message is about
+    // something that happened at a time.
+    asked = `${nowBlock()}
 
 ${asked}`;
 
