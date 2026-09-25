@@ -116,10 +116,17 @@ export interface GapTurn {
 export function gapHook(
   turn: () => GapTurn | null,
   check: (question: string, answer: string) => Promise<boolean> = gaveUp,
+  /**
+   * Told the moment the model stops, before the check. The answer is out, and
+   * the check's few seconds are not a silence to fill with a line that says
+   * something is being looked up.
+   */
+  settling: () => void = () => {},
 ): HookCallbackMatcher {
   return {
     hooks: [
       async (input): Promise<HookJSONOutput> => {
+        settling();
         const stop = input as { stop_hook_active?: boolean; last_assistant_message?: string };
         if (stop.stop_hook_active === true) return {};
         const current = turn();

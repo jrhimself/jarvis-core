@@ -147,6 +147,11 @@ export interface TurnHandlers {
    * about it, not an answer: nothing is fetching, so nothing needs filling.
    */
   onLimit?: () => void;
+  /**
+   * The model has stopped and its answer is out; what follows is the check on
+   * whether it gave up. Not a silence to fill.
+   */
+  onSettling?: () => void;
   /** Content the assistant wants on screen. */
   onDisplay: DisplaySink;
 }
@@ -455,7 +460,7 @@ export class AgentSession {
                     return active === null
                       ? null
                       : { question: active.question, tools: active.tools.map((tool) => tool.name) };
-                  }),
+                  }, undefined, () => this.#active?.handlers.onSettling?.()),
                 ],
               }
             : {}),

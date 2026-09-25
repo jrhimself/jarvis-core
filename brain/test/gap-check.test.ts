@@ -52,3 +52,13 @@ test("only a clear GAVE_UP counts", () => {
     assert.equal(readCheck(text), false, text);
   }
 });
+
+test("the turn is told it is settling before anything is checked", async () => {
+  let settled = 0;
+  const matcher = gapHook(() => null, async () => false, () => {
+    settled += 1;
+  });
+  const hook = matcher.hooks[0] as unknown as Hook;
+  await hook({ stop_hook_active: true }, undefined, { signal: new AbortController().signal });
+  assert.equal(settled, 1);
+});
