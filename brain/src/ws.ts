@@ -23,6 +23,7 @@ import { METRICS_INTERVAL_MS, readMetrics } from "./metrics.js";
 import { tileFeed } from "./tiles.js";
 import { brainVersion } from "./version.js";
 import { Listener } from "./voice/scribe.js";
+import { isWebTool } from "./web.js";
 
 /**
  * How often a pack's standing readings are taken.
@@ -38,6 +39,9 @@ const WATCH_INTERVAL_MS = 60 * 1000;
 /** Activity labels that belong to a stage other than the default one. */
 function stageFor(label: string): PipelineStage {
   if (label.startsWith("mcp__")) return "tool";
+  // The web tools carry no server prefix, being the SDK's own, and a search is
+  // the most visible fetch there is -- the pipeline should not file it as thought.
+  if (isWebTool(label)) return "tool";
   if (label.startsWith("memory")) return "memory";
   return "llm";
 }

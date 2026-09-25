@@ -15,6 +15,25 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [1.4.0] - 2026-09-25
+
+### Added
+
+- The assistant can search the web and read a page. Every other source it has was installed on
+  purpose -- a house, a mailbox, a calendar, each a pack with a credential behind it -- so a
+  question about a street, an organisation or a term was one it could only say it had no way to
+  look into. That was not a missing pack: it was `tools: []` in the agent, which withdrew the
+  built-in tools wholesale so that nothing could read this machine, and took the only two that read
+  nothing local with it. Those two are handed back and every other one stays gone. `JARVIS_WEB`
+  (on) withdraws them again, the deployment record carries the answer as a facility of its own, and
+  the prompt block says when not to search -- anything about this house, its devices or what was
+  said last week is answered faster and more surely by a pack or by memory -- and that text
+  arriving from a page is a quotation, never an instruction.
+- What was read goes on screen as one window of sources per turn, built from the results
+  themselves: the page's title, its host, and the full address behind it. No model is asked to
+  repeat a URL, a second search updates the same window rather than stacking another, and a search
+  that found nothing leaves the screen exactly as it was.
+
 ## [1.3.0] - 2026-09-25
 
 ### Added
