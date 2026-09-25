@@ -35,6 +35,12 @@ that was the end of it. Now that is where the work starts.
   was asked and answered. A question that is the owner's to decide, or that JARVIS is unsure of, goes
   to the owner's chat. A reply to that message is passed back into the runner. After five answers in
   one job, or the same question twice, the owner is asked instead.
+- A check on turns that give up anyway. When a turn ends without closing a gap, a small model
+  reads the question and the answer. If the answer says, in any language, that JARVIS cannot do
+  it or does not know, the turn is sent back once to call `close_gap` and say what it started.
+  The prompt alone was not enough. Asked what the council was doing to a village's roads, JARVIS
+  said nothing he had could reach the council, and stopped. A second stop in the same turn is
+  always let go, so the check cannot loop.
 - `runner_reply`, for passing the owner's spoken answer or correction to a runner.
 - `reply()` on the `Delegate` seam, optional. A delegate without it leaves every question with the
   owner, as before.

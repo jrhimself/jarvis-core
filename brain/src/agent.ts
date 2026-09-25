@@ -67,6 +67,7 @@ import { usageFromResult } from "./memory/usage.js";
 import { nowBlock } from "./now.js";
 import { interfaceLanguage, language, languageBlock, languageHook, languageNote, takeOffer } from "./language.js";
 import { createLanguageServer, LANGUAGE_SERVER_NAME, LANGUAGE_TOOLS } from "./language-tools.js";
+import { gapHook } from "./gap-check.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
@@ -191,6 +192,8 @@ function describeInput(input: unknown): string {
 interface ActiveTurn {
   /** The turn's own id, which a pack's confirmation guard reads. */
   turnId: string;
+  /** What was asked, as asked, for the check on a turn that gave up. */
+  question: string;
   handlers: TurnHandlers;
   devControl: DevContext;
   text: string;
@@ -442,6 +445,20 @@ export class AgentSession {
               if (this.#active !== null) this.#active.gated = true;
             }),
           ],
+          // A turn that answered "I cannot" without closing the gap is sent
+          // back once to close it. Only where there is something to close it with.
+          ...(devConfigured
+            ? {
+                Stop: [
+                  gapHook(() => {
+                    const active = this.#active;
+                    return active === null
+                      ? null
+                      : { question: active.question, tools: active.tools.map((tool) => tool.name) };
+                  }),
+                ],
+              }
+            : {}),
         },
         includePartialMessages: true,
       },
@@ -620,6 +637,7 @@ export class AgentSession {
 
     const active: ActiveTurn = {
       turnId,
+      question: text,
       handlers,
       devControl,
       text: "",
