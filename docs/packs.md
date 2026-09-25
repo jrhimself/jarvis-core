@@ -88,6 +88,8 @@ pre-approves no calendar tool and adds no paragraph about the agenda.
 | `persona` | this pack's own paragraph of prompt: when to reach for these tools and how to speak about what comes back. Optional — prose written twice drifts, and the drift is invisible until the model follows the stale copy |
 | `probes` | see §5 |
 | `prompt` | a block of prompt the pack computes rather than writes. Resolved once at session start and allowed to be slow |
+| `watch` | readings taken on a clock while a HUD is open; each names a server and tool so the figures land under the right subject |
+| `desk` | standing HUD windows this pack keeps on the desk; see §4a |
 | `delegate` | somewhere to hand work too big for the assistant. Core keeps the first offered |
 
 `create` is called once per session, not per turn, so a cache — or a pending confirmation — lives
@@ -95,6 +97,26 @@ happily in the closure and dies with the conversation.
 
 **Server names are one namespace across all packs.** The second pack to claim a name is skipped, so
 one pack's tools can never quietly replace another's.
+
+## 4a. Standing desk windows
+
+Packs add overview windows on the HUD desk through `desk` on what `create` returns:
+
+```ts
+desk: [
+  { topic: "house", label: "Huis" },
+  { topic: "mail", label: "Mail", briefing: true },
+],
+```
+
+Each slot is a standing window: it survives the next question and a page reload, and a newer
+reading of the same subject replaces its contents. Core ships five overview slots (weather,
+agenda, mail, work, notes); pack slots are merged on after them.
+
+`briefing` defaults to **false**. Leave it off when the pack only wants a window on the desk; set
+`briefing: true` when the morning briefing should cover that subject. A pack that redeclares a
+core topic wins for that topic's label and briefing flag, so a house can rename a heading or take
+a subject out of the briefing without editing core.
 
 ## 5. `probes` — a tick you have not earned is worse than no line
 
@@ -107,7 +129,7 @@ A server with no probe is reported healthy without being asked. That is right fo
 talks to nothing outside the process and **wrong for everything else** — silence about a dependency
 reads as health.
 
-## 6. `answer()` — what a tool returns, and the context panel
+## 6. `answer()` — what a tool returns, and the desk
 
 Every tool of every pack returns the same envelope: a sentence to say, and the figures behind it
 already labelled.
@@ -121,9 +143,8 @@ return answer("vandaag: bewolkt, 12 tot 22 graden, 55% kans op neerslag", [
 ]);
 ```
 
-The assistant reads `say` and phrases the answer out of it. Core reads `facts` and puts them in the
-HUD's Context panel, as a block of their own under the subject the tool is about — the weather, the
-mail, the agenda. **No tool call is spent, no second fetch happens and the model decides nothing**
+The assistant reads `say` and phrases the answer out of it. Core reads `facts` and puts them on the
+HUD's desk, in the panel of the subject the tool is about — the weather, the mail, the agenda. **No tool call is spent, no second fetch happens and the model decides nothing**
 — the answer was already travelling back through the brain, and a figure the model was asked to
 repeat is a figure it can get wrong.
 

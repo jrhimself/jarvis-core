@@ -12,7 +12,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  actOn,
   buttonsFor,
+  declaredDone,
   doneMessage,
   handleRunnerPress,
   pressed,
@@ -24,20 +26,20 @@ import { readReport } from "../dist/dev/report-endpoint.js";
 import type { Press } from "../dist/telegram.js";
 
 test("a finished runner is recognised, with what it left behind", () => {
-  const verdict = readVerdict("KLAAR: de branch staat klaar met groene tests");
+  const verdict = readVerdict("DONE: the branch is ready with green tests");
   assert.equal(verdict.state, "done");
   assert.equal(
     verdict.state === "done" ? verdict.summary : "",
-    "de branch staat klaar met groene tests",
+    "the branch is ready with green tests",
   );
 });
 
 test("a question is recognised and carries what is being asked", () => {
-  const verdict = readVerdict("VRAAG: moet de knop links of rechts staan?");
+  const verdict = readVerdict("QUESTION: should the button go left or right?");
   assert.equal(verdict.state, "asking");
   assert.equal(
     verdict.state === "asking" ? verdict.question : "",
-    "moet de knop links of rechts staan?",
+    "should the button go left or right?",
   );
 });
 
@@ -75,8 +77,8 @@ test("what a runner reports is escaped before it becomes a message", () => {
 });
 
 test("a message says afterwards what the press did", () => {
-  assert.match(settled("<b>Runner 4</b>", true), /Slot gesloten/);
-  assert.match(settled("<b>Runner 4</b>", false), /Blijft open/);
+  assert.match(settled("<b>Runner 4</b>", true), /Slot closed/);
+  assert.match(settled("<b>Runner 4</b>", false), /Kept open/);
   assert.match(settled("<b>Runner 4</b>", false, "ssh gaf niets terug"), /ssh gaf niets terug/);
 });
 
@@ -129,7 +131,7 @@ test("pressing close asks the delegate to close that slot", async () => {
 
   assert.equal(handled, true);
   assert.deepEqual(closedSlots, [5]);
-  assert.deepEqual(acknowledged, ["Slot gesloten."]);
+  assert.deepEqual(acknowledged, ["Slot closed."]);
 });
 
 test("pressing leave open closes nothing", async () => {
@@ -146,7 +148,7 @@ test("pressing leave open closes nothing", async () => {
   );
 
   assert.equal(asked, false);
-  assert.match(settledWith[0] ?? "", /Blijft open/);
+  assert.match(settledWith[0] ?? "", /Kept open/);
 });
 
 test("a slot that refuses to close says so rather than pretending", async () => {
@@ -158,7 +160,7 @@ test("a slot that refuses to close says so rather than pretending", async () => 
     press("runner:close:4"),
   );
 
-  assert.deepEqual(acknowledged, ["Dat lukte niet."]);
+  assert.deepEqual(acknowledged, ["That did not work."]);
   assert.match(settledWith[0] ?? "", /slot 4 is not running/);
 });
 
@@ -189,4 +191,97 @@ test("a report needs a slot, a brief and something on the screen", () => {
   ]) {
     assert.equal(readReport(payload), null, `should be refused: ${JSON.stringify(payload)}`);
   }
+});
+
+test("only the runner's own KLAAR line counts as declaring the job done", () => {
+  assert.equal(declaredDone("werk werk\n● KLAAR: PR #14 staat open, suite groen\n❯ "), true);
+  assert.equal(declaredDone("KLAAR: klaar\nnog even\n● VRAAG: welke naam wil je?"), false);
+  assert.equal(declaredDone("● VRAAG: welke naam?\n● KLAAR: naam gekozen, PR open"), true);
+  // The brief quotes both words with a placeholder; it is not the runner speaking.
+  assert.equal(
+    declaredDone("Sluit elke beurt af met één regel: 'KLAAR: <wat er ligt>' als je klaar bent,"),
+    false,
+  );
+  assert.equal(declaredDone("● KLAAR: <wat er ligt>"), false);
+  assert.equal(declaredDone("alles gedaan, denk ik"), false);
+});
+
+const REPORT = { slot: 11, task: "Bouw iets", tail: "● KLAAR: PR #14 staat open" };
+
+function sender() {
+  const sent: { html: string; buttons: boolean }[] = [];
+  return {
+    sent,
+    bot: {
+      send: async (_chat: string, html: string, buttons?: unknown[]) => {
+        sent.push({ html, buttons: buttons !== undefined && buttons.length > 0 });
+        return 1;
+      },
+      acknowledge: async () => {},
+      settle: async () => {},
+    } as never,
+  };
+}
+
+test("a job the runner declared done closes its slot without asking", async () => {
+  const { bot, sent } = sender();
+  const closed: number[] = [];
+  await actOn(bot, "chat", REPORT, { state: "done", summary: "PR staat open" }, async (slot) => {
+    closed.push(slot);
+    return { ok: true };
+  });
+  assert.deepEqual(closed, [11]);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.buttons, false);
+  assert.match(sent[0]?.html ?? "", /Slot closed/);
+});
+
+test("an ending the runner did not declare still waits for a press", async () => {
+  const { bot, sent } = sender();
+  let asked = false;
+  await actOn(
+    bot,
+    "chat",
+    { ...REPORT, tail: "ik kom hier niet verder" },
+    { state: "done", summary: "gestrand" },
+    async () => {
+      asked = true;
+      return { ok: true };
+    },
+  );
+  assert.equal(asked, false);
+  assert.equal(sent[0]?.buttons, true);
+});
+
+test("a slot that will not close falls back to the buttons", async () => {
+  const { bot, sent } = sender();
+  await actOn(bot, "chat", REPORT, { state: "done", summary: "klaar" }, async () => ({
+    ok: false,
+    error: "slot 11 is not running",
+  }));
+  assert.equal(sent[0]?.buttons, true);
+});
+
+test("a question never closes anything", async () => {
+  const { bot, sent } = sender();
+  let asked = false;
+  await actOn(
+    bot,
+    "chat",
+    { ...REPORT, tail: "● VRAAG: welke kleur?" },
+    { state: "asking", question: "welke kleur?" },
+    async () => {
+      asked = true;
+      return { ok: true };
+    },
+  );
+  assert.equal(asked, false);
+  assert.match(sent[0]?.html ?? "", /waiting for you/);
+});
+
+test("the older Dutch words still end a turn, for runners started on an older brief", () => {
+  assert.equal(readVerdict("KLAAR: PR is open").state, "done");
+  assert.equal(readVerdict("VRAAG: which name?").state, "asking");
+  assert.equal(declaredDone("● DONE: PR open\n❯ "), true);
+  assert.equal(declaredDone("● DONE: PR open\n● QUESTION: merge it?"), false);
 });

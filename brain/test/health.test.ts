@@ -37,14 +37,14 @@ test("a server with no probe is in-process, not missing", async () => {
 test("each server carries what its own probe answered", async () => {
   const specs: ServerSpec[] = [
     { server: "display", probe: null },
-    { server: "memory", probe: async () => "database antwoordt" },
+    { server: "memory", probe: async () => "database answers" },
     { server: "weather", probe: async () => "verwachting opgehaald" },
   ];
 
   const checks = byServer(await runHealthChecks(specs));
 
   assert.equal(checks.get("memory")?.state, "ok");
-  assert.equal(checks.get("memory")?.detail, "database antwoordt");
+  assert.equal(checks.get("memory")?.detail, "database answers");
   assert.equal(checks.get("weather")?.detail, "verwachting opgehaald");
   assert.equal(typeof checks.get("weather")?.ms, "number", "a probed row is timed");
   assert.equal(checks.get("display")?.ms, undefined, "an in-process row is not");
@@ -57,7 +57,7 @@ test("a shared probe runs once, not once per server", async () => {
   let calls = 0;
   const bridge: Probe = async () => {
     calls += 1;
-    return "de brug antwoordt";
+    return "the bridge answers";
   };
 
   const checks = byServer(
@@ -70,7 +70,7 @@ test("a shared probe runs once, not once per server", async () => {
 
   assert.equal(calls, 1);
   for (const server of ["status", "code", "terminal"]) {
-    assert.equal(checks.get(server)?.detail, "de brug antwoordt");
+    assert.equal(checks.get(server)?.detail, "the bridge answers");
   }
 });
 
@@ -83,8 +83,8 @@ test("a dependency that is down takes its own servers and nothing else", async (
     await runHealthChecks([
       { server: "status", probe: bridge },
       { server: "code", probe: bridge },
-      { server: "ha", probe: async () => "Home Assistant antwoordt" },
-      { server: "memory", probe: async () => "database antwoordt" },
+      { server: "ha", probe: async () => "Home Assistant answers" },
+      { server: "memory", probe: async () => "database answers" },
     ]),
   );
 
@@ -117,7 +117,7 @@ test("what a pack does not run does not appear at all", () => {
   const config = { proactive: "off" } as never;
 
   const specs = specsFor(config, store, ["ha", "control"], {
-    ha: async () => "Home Assistant antwoordt",
+    ha: async () => "Home Assistant answers",
   });
 
   assert.deepEqual(
@@ -182,7 +182,7 @@ test("core's own rows are probed against the real store, not assumed", async () 
 
   assert.equal(asked, 1, "the memory probe runs a real query");
   assert.equal(checks.get("memory")?.state, "ok");
-  assert.equal(checks.get("insight")?.detail, "12 observaties");
+  assert.equal(checks.get("insight")?.detail, "12 observations");
 });
 
 test("what the probes found is remembered, so a tool call need not find out again", async () => {
@@ -203,4 +203,55 @@ test("what the probes found is remembered, so a tool call need not find out agai
   assert.equal(serverIsDown("display"), false, "in-process rows are never down");
   assert.equal(serverIsDown("never-probed"), false, "an unknown server is given the benefit");
   forgetVerdicts();
+});
+
+test("a delegate gets a row of its own, asked through its check", async () => {
+  // Nothing asked after the delegation channel before this row: it was down
+  // for days and the first to notice was the request that needed a runner.
+  const store = { all: () => [], proactiveCounts: () => ({ observations: 0 }) } as never;
+  const config = { proactive: "off" } as never;
+  const delegate = {
+    available: true,
+    slots: [4, 5],
+    free: async () => [4, 5],
+    check: async () => {
+      throw new Error("the host name does not resolve here");
+    },
+  } as never;
+
+  const specs = specsFor(config, store, ["ha"], {}, delegate);
+  assert.deepEqual(
+    specs.map((spec) => spec.server),
+    ["display", "memory", "delegate", "ha"],
+  );
+  assert.equal(specs[2]?.pack, undefined, "the seam is core's, whichever pack fills it");
+
+  const checks = byServer(await runHealthChecks(specs));
+  assert.equal(checks.get("delegate")?.state, "down");
+  assert.equal(checks.get("delegate")?.detail, "the host name does not resolve here");
+});
+
+test("a delegate without a check is asked through its free slots", async () => {
+  const store = { all: () => [], proactiveCounts: () => ({ observations: 0 }) } as never;
+  const config = { proactive: "off" } as never;
+  const up = { available: true, slots: [4, 5], free: async () => [5] } as never;
+  const gone = { available: true, slots: [4, 5], free: async () => null } as never;
+
+  const upRow = byServer(await runHealthChecks(specsFor(config, store, [], {}, up)));
+  assert.equal(upRow.get("delegate")?.state, "ok");
+  assert.equal(upRow.get("delegate")?.detail, "1 of 2 slots free");
+
+  const goneRow = byServer(await runHealthChecks(specsFor(config, store, [], {}, gone)));
+  assert.equal(goneRow.get("delegate")?.state, "down");
+});
+
+test("no delegate, no row", () => {
+  const store = { all: () => [], proactiveCounts: () => ({ observations: 0 }) } as never;
+  const config = { proactive: "off" } as never;
+  const none = { available: false, slots: [], free: async () => [] } as never;
+
+  assert.equal(
+    specsFor(config, store, [], {}, none).some((spec) => spec.server === "delegate"),
+    false,
+  );
 });

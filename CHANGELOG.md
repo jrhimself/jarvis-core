@@ -15,6 +15,96 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.0.0] - 2026-09-25
+
+A new HUD, and a major version because of it: the page at `/` is a different page. The first HUD,
+its tour, its context panel and its memory panel are gone. `JARVIS_SPEECH_LANG` also changes its
+default from `nl` to `en`; a deployment that relied on the Dutch default sets
+`JARVIS_SPEECH_LANG=nl`, or asks JARVIS to switch.
+
+### Added
+
+- The desk. Every subject has a panel that is always on screen -- the weather, the agenda, the
+  facts, the mail, the pull requests and the state of the machine -- with the orb in the middle.
+  A panel lights while it is being talked about and settles afterwards, can be clicked open to
+  full size, and holds the latest reading of its own subject; list panels open with their count
+  and show as many rows as fit. The whole desk takes the colour of what JARVIS is doing:
+  listening, thinking, speaking. A command line at the bottom has the cursor as the page opens.
+  Panels are kept in the browser, so a page opened again shows what was last known before the
+  brain has said anything.
+- Cards over the desk for what belongs to no panel -- a camera, an image, a chart. A card goes
+  when the next question starts, or when it is closed, and the brain is told which one went so it
+  can be asked for again in words.
+- A camera on the HUD is the moving picture. `HomeProvider.cameraStream` passes the provider's
+  MJPEG stream through `/media/live/<id>`, opened for ten minutes and watched for fifteen at most,
+  and `show_camera` asks for it by default; a still is the fallback.
+- Section markers. The model puts a marker in front of each part of an answer that belongs to a
+  desk subject; the brain strips it before anything is spoken or sent to a chat, and sends `focus`
+  with the exact character where that part starts, then `unfocus` when the turn is over. A panel
+  opens as the voice reaches its part, not on a guessed keyword, and each part opens by naming its
+  subject.
+- Packs declare desk subjects of their own through `PackSetup.desk` (`topic`, `label`, optional
+  `briefing`), sent to the page in a `desk` message after `ready`; a pack that names a core topic
+  takes over its label and whether it is part of the briefing. Pack subjects appear as a strip
+  under the orb.
+- A weather shape in `DisplayPayload` (`now`, `sun`, `days`, `hours`): the forecast as readings
+  the page draws, with an animated icon for the sky, rather than as prose the model could get
+  wrong.
+- Language by asking. "Switch to Dutch" switches the voice for the whole deployment through a
+  `set_speech_language` tool, and JARVIS then asks, in the new language, whether the screen
+  should follow; a yes calls `set_interface_language`. The screen has a language of its own,
+  sent to every page as a `ui_lang` message, and the page translates its labels and dates to
+  it. Both choices are kept in the deployment's own database. A question that merely arrives in
+  another language changes nothing. The model is told which language to answer in at the very
+  top of its instructions, above the persona, and again after every round of tool answers, so a
+  briefing read out of Dutch tool answers is still said in English.
+- Spoken lines per language: `JARVIS_THINKING_LINES`, `JARVIS_STOPPED_SENTENCE` and
+  `JARVIS_LIMIT_SENTENCE` take `_EN` and `_NL` suffixes, and both languages have built-in lines.
+  The Telegram chat's own sentences follow the language too.
+- The briefing said again is a lookup: the turn is kept whole in the settings table and
+  `briefing_again` puts its panels back and hands the text over, for as long as
+  `JARVIS_BRIEFING_CACHE_HOURS` (2) allows.
+- A display may wait for any of several words: `anchor` takes alternatives separated by `|`.
+- On a phone the desk is one column, and a button in the corner does what the space bar does:
+  hold to talk, let go to send.
+- The last plan usage reading is kept under the data directory, so a page opened after a restart
+  shows it straight away. The plan report is asked for once per process and backs off for an hour
+  after a refusal; the page shows when the window resets when no percentage is known.
+- Anomaly suggestions can go to a webhook instead of Telegram. Set `HOUSE_OPS_WEBHOOK_URL` (and
+  optionally `HOUSE_OPS_WEBHOOK_KEY`, sent as `Authorization: Bearer`) and ripe findings are posted
+  as JSON for triage elsewhere; quiet hours become a `sleep` flag in the payload rather than a
+  hold. Unset, the Telegram path is unchanged.
+- The health panel has a `delegate` row whenever a pack fills the delegation seam, probed on the
+  same five-minute clock as every other row. `Delegate` gained an optional `check()` that says why
+  the far side does not answer.
+- `JARVIS_CREDENTIAL_EXPIRY` lists when the deployment's credentials run out, as `name=YYYY-MM-DD`
+  pairs. The hourly self check reports `invariant:expiry:<name>` from thirty days before, and
+  reports a date it cannot read rather than going quiet.
+
+### Changed
+
+- A delegated runner that ends its turn with its own `DONE:` line, and that the supervisor also
+  reads as finished, has its slot closed automatically, and the message says so. A question still
+  leaves the slot open.
+- `JARVIS_SPEECH_LANG` defaults to `en` and is where a deployment starts rather than a fixed
+  setting. A switch takes effect from the next question, which opens a fresh conversation.
+- Core's own health lines read in English.
+
+### Fixed
+
+- "Brief me" is briefed, every time. A question that asks for the briefing is recognised in the
+  brain; on such a turn a `PreToolUse` hook adds `again: true` to every tool called with
+  `briefing: true`, so no once-a-day gate is in the way, and a turn the gate answered is not kept
+  as the briefing.
+- A directory URL without its trailing slash still finds its styles.
+
+### Removed
+
+- The first HUD: the thumbnail desk, the transcript sheet, the pipeline and log panels, the
+  context panel, the first-time tour and the memory panel. The memory stays reachable through
+  `/api/memory`, gated by `JARVIS_MEMORY_PANEL` as before.
+- The static `/v2/` prototype.
+
 ## [1.3.0] - 2026-09-25
 
 ### Added

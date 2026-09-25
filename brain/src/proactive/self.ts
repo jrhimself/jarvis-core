@@ -41,6 +41,14 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 3600_000;
 const DAY_MS = 24 * HOUR_MS;
 
+/**
+ * How far ahead an expiring credential is mentioned.
+ *
+ * A month is enough to renew anything by hand at a convenient moment, and short
+ * enough that the warning is not something to learn to ignore for a year.
+ */
+const EXPIRY_WARN_DAYS = 30;
+
 /** The group every finding about JARVIS himself is filed under. */
 export const SELF_GROUP = "jarvis";
 
@@ -218,6 +226,53 @@ export interface SelfReading {
    * decision, and a baseline built on it is quietly about the wrong hours.
    */
   timeZone: { zone: string; fromHost: boolean };
+  /** Every credential with a written-down end, from `JARVIS_CREDENTIAL_EXPIRY`. */
+  expiries: Expiry[];
+}
+
+/** One credential and the day it stops working; `null` when the date did not parse. */
+export interface Expiry {
+  name: string;
+  /** Midnight UTC of the day it expires, or null for text that is not a date. */
+  date: Date | null;
+  /** What was written, for a finding about a typo. */
+  raw: string;
+}
+
+/**
+ * Reads `name=YYYY-MM-DD,name=YYYY-MM-DD`.
+ *
+ * An entry without a name is dropped; an entry with a name and a bad date is
+ * kept with `date: null`, because the whole point of the setting is a warning,
+ * and a typo that silently removes the warning is the one failure it must not
+ * have.
+ */
+export function parseExpiries(raw: string): Expiry[] {
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "")
+    .map((part) => {
+      const at = part.indexOf("=");
+      const name = (at === -1 ? part : part.slice(0, at)).trim();
+      const value = at === -1 ? "" : part.slice(at + 1).trim();
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      let date: Date | null = null;
+      if (match !== null) {
+        const [, y, m, d] = match.map(Number) as [number, number, number, number];
+        const candidate = new Date(Date.UTC(y, m - 1, d));
+        // Date.UTC rolls 2027-02-31 over into March; that is a typo, not a date.
+        if (candidate.getUTCMonth() === m - 1 && candidate.getUTCDate() === d) date = candidate;
+      }
+      return { name, date, raw: value };
+    })
+    .filter((expiry) => expiry.name !== "");
+}
+
+/** Calendar days from today until `date`, both in UTC; negative once it has passed. */
+function daysUntil(date: Date, now: Date): number {
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.round((date.getTime() - today) / DAY_MS);
 }
 
 function finding(input: {
@@ -496,6 +551,39 @@ export function judge(reading: SelfReading, now: Date): Finding[] {
     );
   }
 
+  for (const expiry of reading.expiries) {
+    const fingerprint = `invariant:expiry:${expiry.name}`;
+    if (expiry.date === null) {
+      found.push(
+        finding({
+          fingerprint,
+          rule: "invariant",
+          subject: "host.credentials",
+          detail:
+            `the expiry of ${expiry.name} is written as "${expiry.raw}", which is not a ` +
+            "YYYY-MM-DD date, so nothing will warn before it runs out",
+        }),
+      );
+      continue;
+    }
+    const days = daysUntil(expiry.date, now);
+    if (days > EXPIRY_WARN_DAYS) continue;
+    const day = expiry.date.toISOString().slice(0, 10);
+    found.push(
+      finding({
+        fingerprint,
+        rule: "invariant",
+        subject: "host.credentials",
+        detail:
+          days < 0
+            ? `${expiry.name} expired on ${day}, ${-days} days ago; whatever depends on it has stopped working`
+            : `${expiry.name} expires on ${day}, in ${days} days; renew it and update JARVIS_CREDENTIAL_EXPIRY`,
+        observed: days,
+        expected: EXPIRY_WARN_DAYS,
+      }),
+    );
+  }
+
   if (reading.missingConfig.length > 0) {
     found.push(
       finding({
@@ -749,5 +837,7 @@ export async function inspect(
     git: await deployState(process.cwd()),
     missingConfig: missingConfig(config),
     timeZone: { zone: timeZone(), fromHost: usingHostZone() },
+    // Partial configs exist in tests and older callers; no setting is no check.
+    expiries: parseExpiries(config.credentialExpiry ?? ""),
   };
 }

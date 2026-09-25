@@ -33,6 +33,7 @@ import type {
   PackRequirement,
   PackSetup,
   PackWatch,
+  PackDeskSlot,
 } from "@jarvis/shared";
 import { NO_DELEGATE } from "@jarvis/shared";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -125,6 +126,8 @@ export interface Packs {
   probes: Record<string, () => Promise<string>>;
   /** Readings to take on a clock, from the packs that offered any. */
   watch: PackWatch[];
+  /** Standing HUD desk windows declared by the packs that started. */
+  desk: PackDeskSlot[];
   /**
    * One entry per directory under `packs/`, whatever became of it.
    *
@@ -344,6 +347,7 @@ export async function loadPacks(root: string, context: PackContext): Promise<Pac
   let delegate = NO_DELEGATE;
   const probes: Record<string, () => Promise<string>> = {};
   const watch: PackWatch[] = [];
+  const desk: PackDeskSlot[] = [];
 
   for (const { pack } of packs) {
     // Carried on every report, running or not: what a pack is for and what it
@@ -409,6 +413,17 @@ export async function loadPacks(root: string, context: PackContext): Promise<Pac
       if (watcher.server in servers) watch.push(watcher);
     }
 
+    for (const slot of setup.desk ?? []) {
+      if (typeof slot.topic === "string" && slot.topic.trim() !== "" &&
+          typeof slot.label === "string" && slot.label.trim() !== "") {
+        desk.push({
+          topic: slot.topic.trim(),
+          label: slot.label.trim(),
+          ...(slot.briefing === true ? { briefing: true } : {}),
+        });
+      }
+    }
+
     tools.push(...setup.tools);
     if (setup.persona !== undefined && setup.persona !== "") persona.push(setup.persona);
     if (setup.prompt !== undefined) blocks.push(setup.prompt);
@@ -435,5 +450,6 @@ export async function loadPacks(root: string, context: PackContext): Promise<Pac
     console.log(`packs: ${pack.name}`);
   }
 
-  return { servers, tools, persona, blocks, delegate, probes, watch, reports };
+  return { servers, tools, persona, blocks, delegate, probes, watch, desk, reports };
 }
+

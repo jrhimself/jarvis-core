@@ -56,11 +56,11 @@ test("the tool answers with the same record the prompt carries", async () => {
 
 test("a dependency that did not answer is reported as unreachable, loudly", async () => {
   const said = await ask(record(), async () => [
-    { server: "memory", state: "ok", detail: "database antwoordt", ms: 2 },
+    { server: "memory", state: "ok", detail: "database answers", ms: 2 },
     { server: "house", state: "down", detail: "connect ECONNREFUSED", ms: 41, pack: true },
   ]);
 
-  assert.match(said, /memory: answered in 2ms -- database antwoordt/);
+  assert.match(said, /memory: answered in 2ms -- database answers/);
   assert.match(said, /house \(pack\): DID NOT ANSWER in 41ms -- connect ECONNREFUSED/);
   assert.match(said, /configured but unreachable, which is a different/);
 });

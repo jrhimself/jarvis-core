@@ -14,6 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { Config } from "../config.js";
+import { language } from "../language.js";
 import type { Fact, MemoryStore } from "./store.js";
 import { index } from "./tools.js";
 
@@ -248,7 +249,7 @@ export function serveMemoryApi(
     sendJson(res, 200, {
       memoryPanel: config.memoryPanel,
       voiceTimbre: config.voiceTimbre,
-      speechLang: config.speechLang,
+      speechLang: language().current,
     });
     return true;
   }

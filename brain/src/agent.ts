@@ -14,9 +14,25 @@
 import { randomUUID } from "node:crypto";
 
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SpeechLang } from "@jarvis/shared";
 
 import { loadConfig, proactiveAtLeast } from "./config.js";
 import { describeDeployment, deploymentBlock } from "./deployment.js";
+import {
+  BRIEFING_SERVER_NAME,
+  BRIEFING_TOOLS,
+  BriefingCache,
+  againHook,
+  askedInstruction,
+  asksForBriefing,
+  createBriefingServer,
+  gateHook,
+  looksGated,
+  marksBriefing,
+  type ShownWindow,
+} from "./briefing.js";
+import { deskBriefingBlock, mergeDeskSlots } from "./desk.js";
+import { sectionMarkBlock } from "./sections.js";
 import { createDisplayServer, DISPLAY_TOOLS, showVia, type DisplaySink } from "./display-tool.js";
 import { recordScreen } from "./screens.js";
 import { runHealthChecks, specsFor } from "./health.js";
@@ -49,13 +65,17 @@ import { distilSession } from "./memory/distiller.js";
 import { memory } from "./memory/store.js";
 import { usageFromResult } from "./memory/usage.js";
 import { nowBlock } from "./now.js";
+import { interfaceLanguage, language, languageBlock, languageHook, languageNote, takeOffer } from "./language.js";
+import { createLanguageServer, LANGUAGE_SERVER_NAME, LANGUAGE_TOOLS } from "./language-tools.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
   limitSentence,
   notePlanEvent,
   notePlanReport,
+  notePlanReportAsked,
   planContextBlock,
+  planReportDue,
   planUsage,
 } from "./plan.js";
 import { createSetupServer, SETUP_SERVER_NAME, SETUP_TOOLS } from "./setup-tools.js";
@@ -95,6 +115,9 @@ if (!haConfigured) {
  */
 let inspected: Promise<Packs> | null = null;
 
+/** The last briefing, for the tool that says it again. */
+const briefingCache = new BriefingCache(store, config.briefingCacheHours * 3_600_000);
+
 export function packSummary(): Promise<Packs> {
   inspected ??= loadPacks(packsRoot, {
     store,
@@ -130,6 +153,12 @@ export interface TurnHandlers {
 export interface TurnResult {
   /** Full answer text, assembled from the streamed fragments. */
   text: string;
+  /**
+   * Whether this turn was the briefing: a tool was called with
+   * `briefing: true`. The HUD folds the last window down on the end of one,
+   * so what is left is the desk with everything on it and nothing over it.
+   */
+  briefing: boolean;
 }
 
 /** Reads a nested property without asserting the whole shape of the message. */
@@ -172,6 +201,16 @@ interface ActiveTurn {
   toolCalls: number;
   /** Name and arguments of every tool the turn used, for learning recipes. */
   tools: Array<{ name: string; input: string }>;
+  /** Whether a tool was called with `briefing: true`: this turn is the briefing. */
+  briefing: boolean;
+  /** Whether `briefing_again` was called: the briefing said again is the briefing too. */
+  replayed: boolean;
+  /** Whether the question asked for the briefing in so many words. */
+  asked: boolean;
+  /** Whether a briefing call was answered by the once-a-day gate: then it was no briefing. */
+  gated: boolean;
+  /** Every window that went up during the turn, in order, for saying it again. */
+  windows: ShownWindow[];
 }
 
 /** One conversation's agent process, reused for every turn in it. */
@@ -183,6 +222,14 @@ export class AgentSession {
    * down, and it has to survive the process being replaced mid-conversation.
    */
   readonly id = randomUUID();
+  /**
+   * The language this conversation was opened in.
+   *
+   * Fixed for the life of the session, because it is written into the system
+   * prompt and that is written once. A switch is picked up by the conversation
+   * noticing the difference and opening a new session.
+   */
+  readonly lang: SpeechLang = language().current;
   #active: ActiveTurn | null = null;
   #queue: SDKUserMessage[] = [];
   #wake: (() => void) | null = null;
@@ -190,8 +237,6 @@ export class AgentSession {
   #stream: ReturnType<typeof query> | null = null;
   #pump: Promise<void> | null = null;
   #broken = false;
-  /** Whether the SDK will answer for the plan's windows on this session. */
-  #planAvailable = true;
   /**
    * Which model this conversation's turns run on.
    *
@@ -222,11 +267,30 @@ export class AgentSession {
     // Everything that reaches the screen passes here -- the display tools and
     // the packs that show their own windows both -- so this is the one place
     // that can keep a copy of what the user is looking at.
-    const sink: DisplaySink = (id, payload, dismiss, anchor) => {
+    const sink: DisplaySink = (id, payload, dismiss, anchor, at) => {
       recordScreen(id, payload);
-      this.#active?.handlers.onDisplay(id, payload, dismiss, anchor);
+      const active = this.#active;
+      if (active !== null) {
+        active.windows.push({
+          payload,
+          dismiss,
+          ...(anchor === undefined ? {} : { anchor }),
+          at: at ?? active.text.length,
+        });
+        active.handlers.onDisplay(id, payload, dismiss, anchor, at);
+      }
     };
     const display = createDisplayServer(sink, home);
+    const briefing = createBriefingServer(
+      briefingCache,
+      (payload, dismiss, anchor, at) => {
+        const id = randomUUID().slice(0, 8);
+        sink(id, payload, dismiss, anchor, at);
+        return id;
+      },
+      () => this.lang,
+      config.briefingCacheHours * 3_600_000,
+    );
 
     // Everything a pack could need, and nothing more. `turn` is a function
     // rather than a value because a pack outlives the turn it was created in:
@@ -272,6 +336,7 @@ export class AgentSession {
     // the list the assistant is told about cannot drift from the one it has.
     const serverNames = [
       "display",
+      BRIEFING_SERVER_NAME,
       MEMORY_SERVER_NAME,
       ...Object.keys(packs.servers),
       ...(insightConfigured ? [INSIGHT_SERVER_NAME] : []),
@@ -284,10 +349,17 @@ export class AgentSession {
     // is the paragraph that bounds the rest: the persona describes an assistant
     // with a house, and on a machine without one that description is the thing
     // being contradicted.
+    //
+    // The language goes before all of it. The persona, the memory and the
+    // packs are each written in one language, and a rule about the answer's
+    // language anywhere after them is outvoted by the language they are in.
     const systemPrompt = [
+      languageBlock(this.lang),
       persona.text,
       deploymentBlock(deployment),
       ...packs.persona,
+      deskBriefingBlock(mergeDeskSlots(packs.desk)),
+      sectionMarkBlock(mergeDeskSlots(packs.desk).map((slot) => slot.topic)),
       coreBlock(store),
       ...computed,
       recipesBlock(store),
@@ -323,7 +395,8 @@ export class AgentSession {
         systemPrompt,
         mcpServers: {
           display,
-          [MEMORY_SERVER_NAME]: createMemoryServer(store),
+          [BRIEFING_SERVER_NAME]: briefing,
+          [MEMORY_SERVER_NAME]: createMemoryServer(store, showVia(sink)),
           ...packs.servers,
           ...(insightConfigured ? { [INSIGHT_SERVER_NAME]: createInsightServer(store) } : {}),
           ...(devConfigured
@@ -337,22 +410,39 @@ export class AgentSession {
             : {}),
           // Asks the same dependencies the HUD's panel asks, from the packs this
           // session loaded rather than from a list written here.
+          [LANGUAGE_SERVER_NAME]: createLanguageServer(language(), interfaceLanguage(), store),
           [SETUP_SERVER_NAME]: createSetupServer(deployment, () =>
-            runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes)),
+            runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
           ),
         },
         allowedTools: [
           ...DISPLAY_TOOLS,
+          ...BRIEFING_TOOLS,
           ...MEMORY_TOOLS,
           ...packs.tools,
           ...(insightConfigured ? INSIGHT_TOOLS : []),
           ...(devConfigured ? DEV_TOOLS : []),
           ...SETUP_TOOLS,
+          ...LANGUAGE_TOOLS,
         ],
         // No built-in tools: this assistant has no business reading the filesystem.
         tools: [],
         // Nothing from ~/.claude should leak into the assistant's behaviour.
         settingSources: [],
+        // The language, said again after every round of tool answers: a turn
+        // that reads seven Dutch tool answers after an English note answers in
+        // Dutch otherwise.
+        hooks: {
+          PostToolBatch: [languageHook(() => language().current)],
+          // An explicit "brief me" gets through every once-a-day gate, and a
+          // gate that does answer marks the turn as not having been a briefing.
+          PreToolUse: [againHook(() => this.#active?.asked === true)],
+          PostToolUse: [
+            gateHook(() => {
+              if (this.#active !== null) this.#active.gated = true;
+            }),
+          ],
+        },
         includePartialMessages: true,
       },
     });
@@ -433,7 +523,7 @@ export class AgentSession {
             const active = this.#active;
             if (active !== null && active.text === "") {
               console.warn(`agent: the plan is spent -- ${typeof firstText === "string" ? firstText : "rate_limit"}`);
-              const sentence = limitSentence(config.limitSentence, planUsage());
+              const sentence = limitSentence(config.spoken[this.lang].limit, planUsage(), new Date(), this.lang);
               active.text = sentence;
               active.handlers.onLimit?.();
               active.handlers.onText(sentence);
@@ -446,8 +536,11 @@ export class AgentSession {
                 const name = pick(block, "name");
                 if (this.#active !== null) {
                   this.#active.toolCalls += 1;
+                  const input = pick(block, "input");
+                  if (marksBriefing(input)) this.#active.briefing = true;
+                  if (typeof name === "string" && name.endsWith("briefing_again")) this.#active.replayed = true;
                   if (typeof name === "string") {
-                    this.#active.tools.push({ name, input: describeInput(pick(block, "input")) });
+                    this.#active.tools.push({ name, input: describeInput(input) });
                   }
                 }
                 if (typeof name === "string") {
@@ -478,8 +571,8 @@ export class AgentSession {
           const active = this.#active;
           if (active !== null && active.text === "" && typeof subtype === "string" && subtype.startsWith("error_")) {
             console.warn(`agent: a turn was stopped (${subtype})`);
-            active.text = config.stoppedSentence;
-            active.handlers.onText(config.stoppedSentence);
+            active.text = config.spoken[this.lang].stopped;
+            active.handlers.onText(active.text);
           }
           this.#active?.finish();
           void this.#refreshPlan();
@@ -535,6 +628,11 @@ export class AgentSession {
       firstTextMs: null,
       toolCalls: 0,
       tools: [],
+      briefing: false,
+      replayed: false,
+      asked: asksForBriefing(text),
+      gated: false,
+      windows: [],
     };
     this.#active = active;
     await this.#raise(this.#escalation.startTurn());
@@ -542,12 +640,26 @@ export class AgentSession {
     // Facts the question already reaches for, found locally in a few milliseconds
     // and sent along with it. Without this the assistant pays a tool round trip to
     // learn something the database could have volunteered.
-    let asked = text;
+    //
+    // The language note goes last, against the question itself: the primed
+    // facts are in whatever language the memory is written in, and the thing
+    // read right before a question decides the language of its answer.
+    let asked = `${languageNote(this.lang)}
+${text}`;
+    // The screen switch offered in the turn that changed the voice, for the
+    // fresh session that turn's language change opened.
+    const offer = takeOffer(this.lang, store);
+    if (offer !== "") asked = `${offer}
+${asked}`;
+    // The request for a briefing, restated against the question: the one
+    // sentence the once-a-day gate must never be allowed to answer.
+    if (active.asked) asked = `${asked}
+${askedInstruction()}`;
     try {
       const block = primingBlock(await primeFacts(store, text));
       if (block !== "") asked = `${block}
 
-${text}`;
+${asked}`;
     } catch (error) {
       console.error("memory: could not prime the question:", error);
     }
@@ -596,32 +708,39 @@ ${asked}`;
       // conversation is over, on a cheaper model, out of the answer's way.
       const turnId = store.logTurn(this.id, text, active.text);
       store.recordToolCalls(turnId, active.tools);
+      // The briefing is kept whole -- the words and the windows -- so that the
+      // next request for it is a lookup rather than seven tool calls.
+      if (active.briefing && !active.gated && !looksGated(active.text)) {
+        briefingCache.remember({ lang: this.lang, text: active.text, windows: active.windows });
+      }
     }
 
-    return { text: active.text };
+    return { text: active.text, briefing: active.briefing || active.replayed };
   }
 
   /**
    * Asks the SDK for both windows of the plan, after a turn. The method is
-   * experimental and the token is not always allowed to ask; the first refusal
-   * is remembered for the session, since every turn after it would be refused
-   * the same way. The events keep the pill honest in the meantime.
+   * experimental and the token is not always allowed to ask. How often it is
+   * asked is decided for the whole process (see `planReportDue`), not per
+   * session. The events keep the pill honest in the meantime.
    */
   async #refreshPlan(): Promise<void> {
     const stream = this.#stream;
-    if (stream === null || !this.#planAvailable) return;
+    if (stream === null || !planReportDue()) return;
     const ask = (stream as unknown as Record<string, unknown>)[
       "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET"
     ];
     if (typeof ask !== "function") {
-      this.#planAvailable = false;
+      notePlanReportAsked(false);
       return;
     }
+    // Claimed before the await, so two turns ending together ask once.
+    notePlanReportAsked(false);
     try {
       const report: unknown = await (ask as () => Promise<unknown>).call(stream);
-      if (notePlanReport(report) === null) this.#planAvailable = false;
+      notePlanReportAsked(notePlanReport(report) !== null);
     } catch {
-      // The pill keeps what the events said.
+      // The pill keeps what the events said; the backoff stands.
     }
   }
 

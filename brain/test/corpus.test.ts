@@ -12,7 +12,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import type { MemoryStore } from "../dist/memory/store.js";
-import { renderRun } from "../dist/memory/tools.js";
+import { factsPanel, renderRun } from "../dist/memory/tools.js";
+import { panelOfDisplay } from "../dist/focus.js";
 import {
   ingestCorpus,
   parseProposals,
@@ -324,4 +325,28 @@ test("a pass is dated in Amsterdam, not in the container's UTC", () => {
     scanned: 149, read: 0, written: 0, skipped: 0, retired: 0, gone: 0, failed: 0,
     factsBefore: 628, factsAfter: 628,
   }), /04:07/);
+});
+
+test("the Facts window says per night what was added and what was removed", () => {
+  const night = {
+    at: "2026-09-25T02:07:00.000Z",
+    scanned: 150, read: 6, written: 28, skipped: 0, retired: 16, gone: 0, failed: 0,
+    factsBefore: 812, factsAfter: 824,
+  };
+  const still = { ...night, at: "2026-09-24T02:07:00.000Z", read: 0, written: 0, retired: 0, factsAfter: 812 };
+
+  const panel = factsPanel([night, still]);
+  assert.ok(panel !== null && panel.type === "panel");
+  assert.equal(panel.title, "Facts");
+  assert.deepEqual(panel.figure, { value: 28, label: "16 removed" });
+  assert.match(panel.rows[0]!.value, /\+28 added/);
+  assert.match(panel.rows[0]!.value, /16 removed/);
+  assert.equal(panel.rows[0]!.hint, "824 facts");
+  assert.equal(panel.rows[1]!.value, "no change");
+  // The window opens on the notes section marker; a title that stopped
+  // mapping to that topic would leave it shut.
+  assert.equal(panelOfDisplay(panel), "notes");
+
+  assert.equal(factsPanel([still]), null, "a quiet night puts nothing on screen");
+  assert.equal(factsPanel([]), null);
 });

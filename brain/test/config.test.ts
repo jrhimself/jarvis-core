@@ -35,6 +35,9 @@ const BLANK = {
   JARVIS_FISH_LATENCY: undefined,
   JARVIS_FISH_NORMALIZE: undefined,
   JARVIS_LIMIT_SENTENCE: undefined,
+  JARVIS_LIMIT_SENTENCE_EN: undefined,
+  JARVIS_LIMIT_SENTENCE_NL: undefined,
+  JARVIS_SPEECH_LANG: undefined,
   JARVIS_PLAN_WARN_PCT: undefined,
   JARVIS_VOICE_ID: undefined,
   JARVIS_VOICE_ID_EN: undefined,
@@ -44,6 +47,8 @@ const BLANK = {
   JARVIS_VOICE_TIMBRE: undefined,
   JARVIS_MEMORY_PANEL: undefined,
   JARVIS_THINKING_LINES: undefined,
+  JARVIS_THINKING_LINES_EN: undefined,
+  JARVIS_THINKING_LINES_NL: undefined,
   JARVIS_THINKING_AFTER_MS: undefined,
   JARVIS_SESSION_IDLE_MIN: undefined,
   JARVIS_SESSION_MAX_TURNS: undefined,
@@ -54,6 +59,8 @@ const BLANK = {
   JARVIS_MAX_STEPS: undefined,
   JARVIS_MAX_TURN_USD: undefined,
   JARVIS_STOPPED_SENTENCE: undefined,
+  JARVIS_STOPPED_SENTENCE_EN: undefined,
+  JARVIS_STOPPED_SENTENCE_NL: undefined,
 };
 
 test("an empty environment still yields a working configuration", () => {
@@ -128,14 +135,52 @@ test("english speaks its own voice only when one is set", () => {
   assert.equal(voiceIdFor(two, "en"), "english");
 });
 
-test("the deployment speaks one language, and Dutch unless told otherwise", () => {
-  assert.equal(withEnv({ ...BLANK }, loadConfig).speechLang, "nl");
-  assert.equal(withEnv({ ...BLANK, JARVIS_SPEECH_LANG: "en" }, loadConfig).speechLang, "en");
+test("the deployment starts in one language, and English unless told otherwise", () => {
+  assert.equal(withEnv({ ...BLANK }, loadConfig).speechLang, "en");
+  assert.equal(withEnv({ ...BLANK, JARVIS_SPEECH_LANG: "nl" }, loadConfig).speechLang, "nl");
 
   // A language nobody speaks is a typo, and answering in a language that was
   // never chosen is worse than answering in the default one.
   const typo = quietly(() => withEnv({ ...BLANK, JARVIS_SPEECH_LANG: "de" }, loadConfig));
-  assert.equal(typo.speechLang, "nl");
+  assert.equal(typo.speechLang, "en");
+});
+
+test("every language has its own spoken lines, ready before anybody switches", () => {
+  const config = withEnv({ ...BLANK }, loadConfig);
+  assert.ok(config.spoken.en.thinking.length > 0);
+  assert.ok(config.spoken.nl.thinking.length > 0);
+  assert.notEqual(config.spoken.en.stopped, config.spoken.nl.stopped);
+  assert.ok(config.spoken.en.limit.includes("{reset}"));
+  assert.ok(config.spoken.nl.limit.includes("{reset}"));
+});
+
+test("an unsuffixed line belongs to the starting language, a suffixed one to its own", () => {
+  const dutch = withEnv(
+    {
+      ...BLANK,
+      JARVIS_SPEECH_LANG: "nl",
+      JARVIS_STOPPED_SENTENCE: "Dat lukte niet.",
+      JARVIS_STOPPED_SENTENCE_EN: "That did not work.",
+    },
+    loadConfig,
+  );
+  assert.equal(dutch.spoken.nl.stopped, "Dat lukte niet.");
+  assert.equal(dutch.spoken.en.stopped, "That did not work.");
+
+  // Written for a Dutch deployment, so it is no fallback for English.
+  const older = withEnv(
+    { ...BLANK, JARVIS_SPEECH_LANG: "nl", JARVIS_THINKING_LINES: "Momentje." },
+    loadConfig,
+  );
+  assert.deepEqual(older.spoken.nl.thinking, ["Momentje."]);
+  assert.notDeepEqual(older.spoken.en.thinking, ["Momentje."]);
+
+  // And the suffixed name wins over the unsuffixed one for the same language.
+  const both = withEnv(
+    { ...BLANK, JARVIS_THINKING_LINES: "Old.", JARVIS_THINKING_LINES_EN: "New." },
+    loadConfig,
+  );
+  assert.deepEqual(both.spoken.en.thinking, ["New."]);
 });
 
 test("an empty string counts as unset", () => {
@@ -224,13 +269,13 @@ test("the lines that fill a silence are a list, split on the pipe", () => {
   withEnv({ ...BLANK, JARVIS_THINKING_LINES: "Momentje. | Even kijken, hoor. |" }, () => {
     // Trimmed, empty items dropped -- and the comma inside the second line
     // survives, which is why the separator is not one.
-    assert.deepEqual(loadConfig().thinkingLines, ["Momentje.", "Even kijken, hoor."]);
+    assert.deepEqual(loadConfig().spoken.en.thinking, ["Momentje.", "Even kijken, hoor."]);
   });
 });
 
 test("a deployment that wants no acknowledgement can say so two ways", () => {
   withEnv({ ...BLANK, JARVIS_THINKING_LINES: " | " }, () => {
-    assert.deepEqual(loadConfig().thinkingLines, []);
+    assert.deepEqual(loadConfig().spoken.en.thinking, []);
   });
   withEnv({ ...BLANK, JARVIS_THINKING_AFTER_MS: "0" }, () => {
     assert.equal(loadConfig().thinkingAfterMs, 0);
