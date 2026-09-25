@@ -17,6 +17,12 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ## [Unreleased]
 
+### Changed
+
+- A delegated runner that ends its turn with its own `KLAAR:` line, and that the supervisor
+  also reads as finished, has its slot closed automatically; the Telegram message says so
+  instead of asking. A question still leaves the slot open, and an ending the runner did
+  not declare itself still comes with the Sluiten / Laat open buttons.
 ### Added
 
 - The health panel has a `delegate` row whenever a pack fills the delegation seam, probed on

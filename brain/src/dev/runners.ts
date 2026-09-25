@@ -15,8 +15,15 @@
  *
  * So the far side reports, and the judgement happens here: the instruction that
  * was given is on this side, and only something holding both can tell an ending
- * from a question. A question is relayed. An ending is offered with a button
- * under it, and the slot is closed when the button is pressed, never before.
+ * from a question. A question is relayed, and the slot stays open for the answer.
+ *
+ * An ending closes the slot by itself, but only when two things agree: the model
+ * reads the screen as finished, and the runner wrote its own `KLAAR:` line, which
+ * its brief asks it to end every turn with. Slots are opened on demand, so one
+ * left standing is not a window somebody might still be looking at -- it is the
+ * next job's place. An ending the runner did not declare itself ("definitively
+ * stuck", in the model's words) is still offered with a button, because that is
+ * the case where a person may want to look before the pane is gone.
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -191,6 +198,62 @@ export function settled(body: string, closed: boolean, detail = ""): string {
   return `${body}\n\n<i>${escapeHtml(detail === "" ? note : `${note} ${detail}`)}</i>`;
 }
 
+/**
+ * Whether the runner declared itself finished, in its own words.
+ *
+ * The last `KLAAR:` or `VRAAG:` line on the screen decides. The brief itself
+ * mentions both words, quoted and with a placeholder after them, and can still
+ * be on screen for a short job; a line has to start with the word, after the
+ * bullet the terminal draws, to count as the runner speaking.
+ */
+export function declaredDone(tail: string): boolean {
+  let last: "done" | "asking" | null = null;
+  for (const raw of tail.split("\n")) {
+    const line = raw.replace(/^[\s●⏺•*>-]+/u, "");
+    if (line.includes("<")) continue;
+    if (/^KLAAR\s*:\s*\S/i.test(line)) last = "done";
+    else if (/^VRAAG\s*:\s*\S/i.test(line)) last = "asking";
+  }
+  return last === "done";
+}
+
+/** Closes a slot over the delegate seam. */
+export type CloseSlot = (slot: number) => Promise<Closed>;
+
+/**
+ * Says what a verdict means, and closes the slot when the job is over.
+ *
+ * Split from `supervise` so what happens after a judgement can be exercised
+ * without a model: a runner that declared itself done is closed and the message
+ * says so; anything less certain gets the buttons it always had.
+ */
+export async function actOn(
+  bot: Sender,
+  chatId: string,
+  report: RunnerReport,
+  verdict: Verdict,
+  close?: CloseSlot,
+): Promise<void> {
+  if (verdict.state === "asking") {
+    await bot.send(chatId, questionMessage(report, verdict.question));
+    return;
+  }
+  if (verdict.state !== "done") return;
+
+  const body = doneMessage(report, verdict.summary);
+  if (close !== undefined && declaredDone(report.tail)) {
+    const result = await close(report.slot);
+    if (result.ok) {
+      offered.delete(report.slot);
+      await bot.send(chatId, settled(body, true));
+      return;
+    }
+    console.error(`runners: could not close slot ${report.slot}: ${result.error}`);
+  }
+  const messageId = await bot.send(chatId, body, buttonsFor(report.slot));
+  if (messageId !== null) offered.set(report.slot, { chatId, messageId, body });
+}
+
 /** Slots with a judgement already in flight, so a burst is judged once. */
 const judging = new Set<number>();
 
@@ -215,6 +278,7 @@ export async function supervise(
   bot: Sender,
   chatId: string,
   report: RunnerReport,
+  close?: CloseSlot,
 ): Promise<Verdict> {
   if (chatId === "") return { state: "working" };
   if (judging.has(report.slot)) return { state: "working" };
@@ -228,14 +292,7 @@ export async function supervise(
       ),
     ]);
 
-    if (verdict.state === "done") {
-      const body = doneMessage(report, verdict.summary);
-      const messageId = await bot.send(chatId, body, buttonsFor(report.slot));
-      if (messageId !== null) offered.set(report.slot, { chatId, messageId, body });
-    } else if (verdict.state === "asking") {
-      await bot.send(chatId, questionMessage(report, verdict.question));
-    }
-
+    await actOn(bot, chatId, report, verdict, close);
     return verdict;
   } catch (error) {
     console.error(`runners: could not judge slot ${report.slot}:`, error);
