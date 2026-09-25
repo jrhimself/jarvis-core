@@ -409,7 +409,7 @@ export class AgentSession {
           // Asks the same dependencies the HUD's panel asks, from the packs this
           // session loaded rather than from a list written here.
           [SETUP_SERVER_NAME]: createSetupServer(deployment, () =>
-            runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes)),
+            runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
           ),
         },
         allowedTools: [

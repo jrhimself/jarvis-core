@@ -51,6 +51,18 @@ export interface Delegate {
   /** Which slots are idle, or null when the far side could not be reached. */
   free(): Promise<number[] | null>;
 
+  /**
+   * Whether the far side answers, for the health panel.
+   *
+   * Resolves with what answered and throws with why it did not, like any
+   * probe. Optional: a delegate without it is asked through `free()`, which
+   * can say that the far side is gone but not why -- and "why" is the part
+   * that decides whether to wait or to go and fix a setting. A channel that
+   * nobody asks after is a channel whose failure is found by the one request
+   * that needed it, which is the worst moment to find it.
+   */
+  check?(): Promise<string>;
+
   /** Hands the job on. Resolves with the slot it landed in. */
   send(task: DelegatedTask): Promise<Delegated>;
 
