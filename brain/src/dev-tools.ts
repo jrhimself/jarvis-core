@@ -238,11 +238,11 @@ export function createDevServer(
     "close_gap",
     "Start closing a gap you just ran into, without asking first: something the user " +
       "asked that you cannot do, or cannot find out, with anything you have. Try your " +
-      "other tools first -- this is for when none of them gets there. 'build' when an " +
-      "ability is missing, so the same request works next time: a small fix is written " +
+      "other tools first -- this is for when none of them gets there. 'build' whenever " +
+      "the same kind of request can come again, so it simply works next time: a small fix is written " +
       "here and becomes a pull request, a bigger one goes to a runner on another machine. " +
-      "'find_out' when a piece of information is missing that a machine with a shell and " +
-      "the internet could look up; a runner finds it and the answer comes back to you. " +
+      "'find_out' only for a one-off fact that will not be asked again and that a machine " +
+      "with a shell and the internet could look up; a runner finds it and the answer comes back. " +
       "Nothing this starts is merged or deployed without the user's yes. After the call, " +
       "say in one sentence what you cannot do yet and what you started, and move on; do " +
       "not wait for it inside this turn. When it refuses, say why and stop -- never try " +
