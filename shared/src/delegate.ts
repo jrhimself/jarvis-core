@@ -38,7 +38,7 @@ export type Closed = { ok: true } | { ok: false; error: string };
  * Somewhere to send work that is too big to do here.
  *
  * `slots` are the places a job can land, named by number because that is what
- * the user hears: "slot vier is bezig" is a sentence, "the second delegation
+ * the user hears: "slot four is busy" is a sentence, "the second delegation
  * target" is not. An implementation with a single destination reports `[1]`.
  */
 export interface Delegate {
@@ -70,6 +70,15 @@ export interface Delegate {
   tail(slot: number, lines: number): Promise<RunnerOutput>;
 
   /**
+   * Types a message into a slot's runner: an answer to the question it ended
+   * its turn on, JARVIS' own or the owner's.
+   *
+   * Optional: a delegate that cannot reach back into a job it started leaves
+   * every question with the owner, to be answered at the runner itself.
+   */
+  reply?(slot: number, text: string): Promise<Closed>;
+
+  /**
    * Gives a slot back once its job is over.
    *
    * There are only ever a couple of them, and a runner nobody closed holds one
@@ -85,7 +94,7 @@ export const NO_DELEGATE: Delegate = {
   available: false,
   slots: [],
   free: async () => [],
-  send: async () => ({ ok: false, error: "Er is niets om dit aan door te geven." }),
-  tail: async () => ({ ok: false, error: "Er draait hier geen runner." }),
-  kill: async () => ({ ok: false, error: "Er draait hier geen runner." }),
+  send: async () => ({ ok: false, error: "There is nothing to hand this on to." }),
+  tail: async () => ({ ok: false, error: "No runner runs here." }),
+  kill: async () => ({ ok: false, error: "No runner runs here." }),
 };

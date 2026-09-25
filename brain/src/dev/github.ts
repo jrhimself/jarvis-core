@@ -57,7 +57,7 @@ async function call(
     return null;
   });
 
-  if (response === null) return { ok: false, error: "GitHub is niet bereikbaar." };
+  if (response === null) return { ok: false, error: "GitHub cannot be reached." };
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
     const message = typeof body.message === "string" ? body.message : `${response.status}`;
@@ -91,7 +91,7 @@ export async function openPullRequest(
   if (!created.ok) return created;
   const shaped = readPullRequest(created.value);
   return shaped === null
-    ? { ok: false, error: "GitHub gaf een pull request terug die ik niet kon lezen." }
+    ? { ok: false, error: "GitHub returned a pull request I could not read." }
     : { ok: true, value: shaped };
 }
 
@@ -103,7 +103,7 @@ export async function getPullRequest(
   if (!got.ok) return got;
   const shaped = readPullRequest(got.value);
   return shaped === null
-    ? { ok: false, error: "GitHub gaf een pull request terug die ik niet kon lezen." }
+    ? { ok: false, error: "GitHub returned a pull request I could not read." }
     : { ok: true, value: shaped };
 }
 

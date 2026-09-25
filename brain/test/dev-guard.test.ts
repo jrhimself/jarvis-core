@@ -47,13 +47,13 @@ test("a one-file change in his own code is a small fix", () => {
 test("a shape that names no files is never small", () => {
   const verdict = classify(small({ files: [] }));
   assert.equal(verdict.size, "big");
-  assert.match(verdict.size === "big" ? verdict.reason : "", /bestanden/);
+  assert.match(verdict.size === "big" ? verdict.reason : "", /which files/);
 });
 
 test("work outside his own repository is never small", () => {
   const verdict = classify(small({ repo: "other" }));
   assert.equal(verdict.size, "big");
-  assert.match(verdict.size === "big" ? verdict.reason : "", /eigen code/);
+  assert.match(verdict.size === "big" ? verdict.reason : "", /my own code/);
 });
 
 test("a new package, a new secret or another machine each make it big", () => {
@@ -75,7 +75,7 @@ test("the confirmation boundary is protected even though the change is one line"
   // which is the same verdict for a better reason.
   const verdict = classify(small({ files: ["packs/hass/src/control.ts"] }));
   assert.equal(verdict.size, "big");
-  assert.match(verdict.size === "big" ? verdict.reason : "", /beschermde code/);
+  assert.match(verdict.size === "big" ? verdict.reason : "", /protected code/);
 });
 
 test("the guard cannot rewrite itself, its tests, or the deploy path", () => {
@@ -138,16 +138,16 @@ test("protectedAmong reports every offender, in order", () => {
 
 test("a finished change that touched protected code is thrown away", () => {
   const verdict = escalation(["brain/src/persona.ts", "packs/hass/src/control.ts"]);
-  assert.match(String(verdict), /beschermde code/);
+  assert.match(String(verdict), /protected code/);
 });
 
 test("a change that grew past the file limit is thrown away", () => {
   const changed = Array.from({ length: MAX_FILES + 1 }, (_, i) => `brain/src/f${i}.ts`);
-  assert.match(String(escalation(changed)), /bestanden/);
+  assert.match(String(escalation(changed)), /files/);
 });
 
 test("a worker that changed nothing is not offered as a pull request", () => {
-  assert.match(String(escalation([])), /niets gewijzigd/);
+  assert.match(String(escalation([])), /nothing was changed/);
 });
 
 test("a clean small change survives escalation", () => {
@@ -162,7 +162,7 @@ test("the daily budget stops the fourth fix of the day", () => {
 test("two fixes never run at the same time", () => {
   const verdict = budgetVerdict(0, true);
   assert.equal(verdict.size, "big");
-  assert.match(verdict.size === "big" ? verdict.reason : "", /al met een andere/);
+  assert.match(verdict.size === "big" ? verdict.reason : "", /already working on another/);
 });
 
 test("a branch name keeps the words and folds the accents", () => {

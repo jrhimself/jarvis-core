@@ -15,6 +15,46 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.1.0] - 2026-09-25
+
+JARVIS closes the gaps he runs into himself. Until now, a request he could not carry out ended with an
+honest sentence about what he lacked. Asked for the time, he said he could not check the clock, and
+that was the end of it. Now that is where the work starts.
+
+### Added
+
+- `close_gap`, a tool that starts closing a gap without asking first. `build` is for a missing
+  ability: a small fix is written here and becomes a pull request, and a bigger one goes to a runner.
+  `find_out` is for a missing fact: a runner looks it up and reports the answer. Nothing it starts is
+  merged or deployed without the owner's yes.
+- Brakes on unasked work, kept in the task table: one attempt per gap at a time, two per gap a week,
+  and four gaps a day. Past them, the tool refuses and says why, and the gap goes to the owner as a
+  question. Tasks carry the gap they belong to in a new `gap` column.
+- Runner questions are answered by JARVIS first. A question he can answer from the brief, from what he
+  knows, or from ordinary engineering judgement is typed into the runner, and the owner is told what
+  was asked and answered. A question that is the owner's to decide, or that JARVIS is unsure of, goes
+  to the owner's chat. A reply to that message is passed back into the runner. After five answers in
+  one job, or the same question twice, the owner is asked instead.
+- `runner_reply`, for passing the owner's spoken answer or correction to a runner.
+- `reply()` on the `Delegate` seam, optional. A delegate without it leaves every question with the
+  owner, as before.
+- Runners that have said nothing for half an hour are looked in on every ten minutes. A changed
+  screen is judged like a report. A runner that is no longer running is marked as failed and reported;
+  a job that stopped more than two days ago is tidied without a message.
+- A delegated job the runner declared done is now recorded as `finished`, together with what the
+  runner said it left behind. `dev_status` lists the jobs that are with runners.
+
+### Changed
+
+- The deployment block no longer tells the model to stop at "I cannot". On a deployment that can
+  build, it gets an order to follow: try what it has, close what is missing, and ask the owner only
+  what is the owner's to decide. It is also told when to stop. A deployment without self-development
+  keeps the old, honest wording.
+- Owner requests go through `propose_dev_task` as before. That tool now points at `close_gap` for
+  gaps JARVIS found himself.
+- Everything the self-development machinery says is in English: tool answers, guard reasons, task
+  details, the written notices and the spoken failure. The owner's name falls back to "the user".
+
 ## [2.0.0] - 2026-09-25
 
 A new HUD, and a major version because of it: the page at `/` is a different page. The first HUD,

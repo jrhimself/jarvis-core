@@ -2,32 +2,39 @@
  * Asking JARVIS to build something, and letting him build it.
  *
  * This is the tool surface for the thing that was asked for in so many words: to be
- * able to say "ik wil dat je X kunt" the way he would say it to a runner, and
- * have it happen -- and, when something turns out to be beyond him, to have him
+ * able to say "I want you to be able to do X" the way he would say it to a runner,
+ * and have it happen -- and, when something turns out to be beyond him, to have him
  * go and fix that rather than only report it.
  *
- * The route is not the model's to pick. `propose_dev_task` takes a description
- * of the *shape* of the job -- which repository, which files, does it need a
- * package, a secret, another machine -- and `dev/guard.ts` decides from that
- * whether it is a small fix JARVIS does himself or a big one that goes to a
- * runner elsewhere. A model that is asked "is this small?" answers with the
- * answer that gets the work started; a model asked "does this need a new
- * dependency?" has to lie about the world instead, and the diff is checked
- * against the same rules afterwards either way.
+ * The route is not the model's to pick. `propose_dev_task` and `close_gap` take a
+ * description of the *shape* of the job -- which repository, which files, does it
+ * need a package, a secret, another machine -- and `dev/guard.ts` decides from that
+ * whether it is a small fix JARVIS does himself or a big one that goes to a runner
+ * elsewhere. A model that is asked "is this small?" answers with the answer that
+ * gets the work started; a model asked "does this need a new dependency?" has to lie
+ * about the world instead, and the diff is checked against the same rules afterwards
+ * either way.
  *
- * Everything that changes something takes two turns, like `ha-control.ts`: one
- * tool call to register the intent, a spoken question, and a later turn to carry
- * it out. There are three of them here, and the last is the one that matters --
- * merging means JARVIS restarts on code he wrote himself.
+ * Two doors, with different locks. Something the owner asks for takes two turns,
+ * like `ha-control.ts`: one tool call to register the intent, a spoken question,
+ * and a later turn to carry it out. Something JARVIS finds he cannot do takes one:
+ * `close_gap` starts the work at once, because an assistant that stops to ask
+ * permission for every missing ability is an assistant that reports gaps instead of
+ * closing them. What keeps that door safe is what it cannot reach -- nothing it
+ * starts is merged or deployed without the owner's yes -- and the brakes in
+ * `dev/store.ts`: one attempt per gap at a time, two per week, a handful a day.
+ *
+ * Merging is the one that matters most, and it keeps both turns: merging means
+ * JARVIS restarts on code he wrote himself.
  */
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
 import type { Config } from "./config.js";
-import { DAILY_LIMIT, MAX_FILES } from "./dev/guard.js";
+import { DAILY_LIMIT, MAX_FILES, slugify } from "./dev/guard.js";
 import { SelfDevelopment } from "./dev/run.js";
-import type { DevTask } from "./dev/store.js";
+import { DAILY_GAPS, GAP_ATTEMPTS, type DevTask } from "./dev/store.js";
 
 /** What was proposed, so a later turn can carry out that and nothing else. */
 export interface PendingDevAction {
@@ -63,25 +70,55 @@ function refused(text: string) {
   return { content: [{ type: "text" as const, text }], isError: true };
 }
 
-/** One task as short Dutch facts, for the model to speak from. */
+/** One task as short facts, for the model to speak from. */
 export function describeTask(task: DevTask): string {
   const head = `"${task.instruction}"`;
   switch (task.state) {
     case "running":
-      return `${head}: daar ben ik nu mee bezig — ${task.detail}.`;
+      return `${head}: working on it now -- ${task.detail}.`;
     case "awaiting":
       return task.prUrl === null
-        ? `${head}: klaar, maar zonder pull request — ${task.detail}.`
-        : `${head}: klaar en groen, wacht op jouw akkoord. ${task.prUrl}`;
+        ? `${head}: done, but without a pull request -- ${task.detail}.`
+        : `${head}: done and green, waiting for your approval. ${task.prUrl}`;
     case "merged":
       return `${head}: ${task.detail}.`;
     case "abandoned":
-      return `${head}: weggegooid, ${task.detail}.`;
+      return `${head}: dropped, ${task.detail}.`;
     case "delegated":
-      return `${head}: doorgegeven aan runner ${task.slot ?? "?"}, want ${task.detail}.`;
+      return `${head}: handed to runner ${task.slot ?? "?"}, because ${task.detail}.`;
+    case "finished":
+      return `${head}: runner ${task.slot ?? "?"} finished it -- ${task.detail}.`;
     default:
-      return `${head}: mislukt, ${task.detail}.`;
+      return `${head}: failed, ${task.detail}.`;
   }
+}
+
+/**
+ * Whether a gap may be worked on now, and if not, what to say instead.
+ *
+ * Pure, so the brakes can be tested without a database: `recent` is every
+ * attempt at this gap in the last week, `today` the number of gaps started
+ * today. The order is the order the reasons matter in -- an attempt that is
+ * still running is the answer to "why not again", whatever the counts say.
+ */
+export function gapBrake(recent: readonly DevTask[], today: number): string | null {
+  const open = recent.find((task) => ["running", "awaiting", "delegated"].includes(task.state));
+  if (open !== undefined) {
+    return `This gap is already being worked on: ${describeTask(open)} Say so, and do not start it again.`;
+  }
+  if (recent.length >= GAP_ATTEMPTS) {
+    return (
+      `This gap was tried ${recent.length} times this week and is still open. Do not try again: ` +
+      "tell the user what you cannot do, what was tried, and ask how he wants it solved."
+    );
+  }
+  if (today >= DAILY_GAPS) {
+    return (
+      `${today} gaps were started today, which is the most in one day. Say what you cannot do ` +
+      "yet and that you will not start more work on it today; ask whether it should wait until tomorrow."
+    );
+  }
+  return null;
 }
 
 export function createDevServer(
@@ -91,16 +128,16 @@ export function createDevServer(
 ) {
   const propose = tool(
     "propose_dev_task",
-    "Register a piece of work before asking the user about it: a feature he asked " +
-      "for, a gap you just ran into and want to close so the same request works next " +
-      "time, or an investigation into why something is broken when the cause is not " +
-      "visible from here — no logs, no shell, no other machine. Describe the shape of " +
-      "the job honestly — the answer decides whether you do it yourself or hand it to " +
-      "a runner, and it is checked against the real diff afterwards. An investigation " +
-      "has no file list yet, which routes it to a runner; that is the honest answer, " +
-      "not a guess dressed up as one. Call this, then say out loud in one sentence " +
-      "what you understood and which route it takes, and stop. Carry it out with " +
-      "start_dev_task once the user has said yes.",
+    "Register a piece of work the user asked for, before asking him about it: a " +
+      "feature, an automation, a change to how you behave. For something you ran into " +
+      "yourself -- an ability you turned out not to have, a fact you could not find -- " +
+      "use close_gap instead, which does not wait for a yes. Describe the shape of the " +
+      "job honestly -- the answer decides whether you do it yourself or hand it to a " +
+      "runner, and it is checked against the real diff afterwards. An investigation has " +
+      "no file list yet, which routes it to a runner; that is the honest answer, not a " +
+      "guess dressed up as one. Call this, then say out loud in one sentence what you " +
+      "understood and which route it takes, and stop. Carry it out with start_dev_task " +
+      "once the user has said yes.",
     {
       instruction: z.string().min(1)
         .describe("The job, in the user's own words, as literally as you can keep it"),
@@ -134,19 +171,19 @@ export function createDevServer(
 
       if (verdict.size === "small") {
         return ok(
-          "Kleine fix: die doe ik zelf. Zeg hardop wat je gaat bouwen en dat je er een " +
-            "pull request van maakt die hij eerst ziet, vraag of je mag beginnen, en stop daar.",
+          "A small fix: you do it yourself. Say out loud what you will build and that it " +
+            "becomes a pull request he sees first, ask whether you may start, and stop there.",
         );
       }
       if (!dev.canDelegate) {
         return ok(
-          `Dat is te groot voor mij (${verdict.reason}) en ik kan geen runner starten. ` +
-            "Zeg dat hardop en vraag of je het moet noteren.",
+          `Too big to do here (${verdict.reason}) and there is no runner to hand it to. ` +
+            "Say so, and ask whether you should note it down.",
         );
       }
       return ok(
-        `Grote klus, want ${verdict.reason}. Zeg hardop dat je dit niet zelf doet en waarom, ` +
-          "dat je het doorgeeft aan een runner, vraag of dat goed is, en stop daar.",
+        `A big job, because ${verdict.reason}. Say out loud that you will not do it here and ` +
+          "why, that you will hand it to a runner, ask whether that is all right, and stop there.",
       );
     },
     { annotations: { readOnlyHint: false, idempotentHint: true } },
@@ -157,7 +194,7 @@ export function createDevServer(
     "Carry out the work registered with propose_dev_task, on the route the guard " +
       "chose: a small fix runs here and ends in a pull request, a big one is handed " +
       "to a runner elsewhere. Needs a spoken yes from an earlier turn. This takes " +
-      "minutes — say that you have started and that you will come back to it, then " +
+      "minutes -- say that you have started and that you will come back to it, then " +
       "stop; do not wait for it inside this turn.",
     {
       instruction: z.string().min(1).describe("Must match what was passed to propose_dev_task"),
@@ -172,68 +209,160 @@ export function createDevServer(
         pending.key.trim() === args.instruction.trim();
       if (!matches || pending?.askedInTurn === turnId) {
         return refused(
-          "Dit moet eerst voorgesteld worden. Roep propose_dev_task aan, vraag het hardop, " +
-            "en probeer het opnieuw zodra hij in een latere beurt geantwoord heeft.",
+          "This has to be proposed first. Call propose_dev_task, ask out loud, and try " +
+            "again once he has answered in a later turn.",
         );
       }
-      if (!args.confirmed) return refused("Hij heeft nog niets bevestigd. Vraag het, en zet dan confirmed op true.");
+      if (!args.confirmed) return refused("He has not confirmed anything yet. Ask, then set confirmed to true.");
       setPending(null);
 
       const now = new Date();
-      const route = pending.route ?? { size: "big" as const, reason: "ik weet niet meer hoe groot dit was" };
+      const route = pending.route ?? { size: "big" as const, reason: "I no longer know how big this was" };
       if (route.size === "big") {
         const handed = await dev.delegateBig(args.instruction, route.reason, now);
         return handed.ok
-          ? ok(`Runner ${handed.slot} pakt het op, want ${route.reason}.`)
+          ? ok(`Runner ${handed.slot} has it, because ${route.reason}.`)
           : refused(handed.error);
       }
 
       const started = dev.startSmall(args.instruction, now);
       return ok(
-        `Begonnen (taak ${started.id}). Zeg dat je eraan werkt en dat je je meldt zodra er ` +
-          "een pull request klaarstaat. Vraag later dev_status voor de stand; verzin niets.",
+        `Started (task ${started.id}). Say that you are working on it and that you will ` +
+          "report back once a pull request is ready. Ask dev_status later for where it stands; invent nothing.",
       );
     },
     { annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } },
   );
 
+  const gap = tool(
+    "close_gap",
+    "Start closing a gap you just ran into, without asking first: something the user " +
+      "asked that you cannot do, or cannot find out, with anything you have. Try your " +
+      "other tools first -- this is for when none of them gets there. 'build' when an " +
+      "ability is missing, so the same request works next time: a small fix is written " +
+      "here and becomes a pull request, a bigger one goes to a runner on another machine. " +
+      "'find_out' when a piece of information is missing that a machine with a shell and " +
+      "the internet could look up; a runner finds it and the answer comes back to you. " +
+      "Nothing this starts is merged or deployed without the user's yes. After the call, " +
+      "say in one sentence what you cannot do yet and what you started, and move on; do " +
+      "not wait for it inside this turn. When it refuses, say why and stop -- never try " +
+      "the same thing again in other words.",
+    {
+      gap: z.string().min(1)
+        .describe("A short, stable name for what is missing, e.g. 'read the clock' or 'doorbell camera on the HUD'"),
+      kind: z.enum(["build", "find_out"]),
+      request: z.string().min(1)
+        .describe("What the user asked, in his own words, and what exactly you could not do or find"),
+      repo: z.enum(["jarvis", "other"]).default("jarvis")
+        .describe("For 'build': 'jarvis' only when the change lives in this assistant's own source"),
+      files: z.array(z.string()).default([])
+        .describe("For 'build': repo-relative paths you expect to change; empty when you cannot tell"),
+      needsNewDependency: z.boolean().default(false),
+      needsNewSecret: z.boolean().default(false),
+      needsOutsideWork: z.boolean().default(false)
+        .describe("True when hardware, another machine or another service is involved"),
+    },
+    async (args) => {
+      const now = new Date();
+      const key = slugify(args.gap);
+      const brake = gapBrake(dev.gapAttempts(key, now), dev.gapsToday(now));
+      if (brake !== null) return refused(brake);
+
+      if (args.kind === "find_out") {
+        if (!dev.canDelegate) {
+          return refused("There is no runner to find this out. Say that you do not know, and that you cannot look it up from here.");
+        }
+        const handed = await dev.delegateBig(
+          `Find out, and change nothing: ${args.request}. End with 'DONE: <the answer>'.`,
+          "finding this out needs a shell and the internet, which I do not have",
+          now,
+          key,
+        );
+        return handed.ok
+          ? ok(
+              `Runner ${handed.slot} is finding it out; the answer comes back to you and to the ` +
+                "user's chat. Say that you do not know yet and that you are having it looked up.",
+            )
+          : refused(handed.error);
+      }
+
+      const verdict = dev.judge(
+        {
+          repo: args.repo,
+          files: args.files,
+          needsNewDependency: args.needsNewDependency,
+          needsNewSecret: args.needsNewSecret,
+          needsOutsideWork: args.needsOutsideWork,
+        },
+        now,
+      );
+      const instruction = `Make this work: ${args.request}`;
+      if (verdict.size === "small") {
+        const started = dev.startSmall(instruction, now, key);
+        return ok(
+          `Started (task ${started.id}): a small fix, written here, ending in a pull request ` +
+            "the user approves. Say what you cannot do yet and that you are building it.",
+        );
+      }
+      if (!dev.canDelegate) {
+        return refused(
+          `This needs more than a small fix (${verdict.reason}) and there is no runner to hand it to. ` +
+            "Say what you cannot do and what it would take.",
+        );
+      }
+      const handed = await dev.delegateBig(instruction, verdict.reason, now, key);
+      return handed.ok
+        ? ok(
+            `Runner ${handed.slot} is building it, because ${verdict.reason}. You answer its ` +
+              "questions and the user hears when it is done. Say what you cannot do yet and that it is being built.",
+          )
+        : refused(handed.error);
+    },
+    { annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } },
+  );
+
   const status = tool(
     "dev_status",
     "Where JARVIS' own building work stands: what is running, what is waiting for " +
-      "the user's yes, how the last attempt failed and what the output said, how the last " +
-      "deploy ended. The only acceptable source for claims like 'die fix staat klaar' " +
-      "or 'de tests faalden hierop' — never say either from memory.",
+      "the user's yes, what runners are doing, how the last attempt failed and what the " +
+      "output said, how the last deploy ended. The only acceptable source for claims like " +
+      "'that fix is ready' or 'the tests failed on this' -- never say either from memory.",
     {},
     async () => {
       const lines: string[] = [];
       const running = dev.running();
       const waiting = dev.awaiting();
+      const handed = dev.delegated();
 
       if (running !== null) lines.push(describeTask(running));
       if (waiting !== null) lines.push(describeTask(waiting));
-      if (running === null && waiting === null) {
-        lines.push("Ik ben nergens mee bezig en er wacht niets op akkoord.");
+      for (const task of handed) lines.push(describeTask(task));
+      // What a runner found out or built comes back here as well as to the chat,
+      // so "what did it find" has an answer in conversation.
+      for (const task of dev.recentlyFinished(new Date())) lines.push(describeTask(task));
+      if (running === null && waiting === null && handed.length === 0) {
+        lines.push("Nothing is being built, and nothing is waiting for approval.");
       }
 
-      // The failure and its output, so "waarom ging dat mis" is answered from
+      // The failure and its output, so "why did that go wrong" is answered from
       // what actually happened rather than from what the attempt was about.
       const failed = dev.lastFailure();
       if (failed !== null && failed.id !== running?.id && failed.id !== waiting?.id) {
-        lines.push(`Laatste mislukking — ${describeTask(failed)}`);
+        lines.push(`Last failure -- ${describeTask(failed)}`);
         if (failed.log !== null && failed.log.trim() !== "") {
-          lines.push("De laatste regels van die run:", failed.log);
+          lines.push("The last lines of that run:", failed.log);
         }
       }
       if (!dev.canOpenPullRequests) {
-        lines.push("Let op: ik heb geen GitHub-token, dus ik kan wel pushen maar geen pull request openen.");
+        lines.push("Note: there is no GitHub token, so a branch can be pushed but no pull request opened.");
       }
 
       const deployed = await dev.lastDeployResult();
       if (deployed !== null) {
         lines.push(
           deployed.ok
-            ? `Laatste deploy: ${deployed.sha.slice(0, 7)} draait sinds ${deployed.at}.`
-            : `Laatste deploy mislukte bij "${deployed.step}": ${deployed.detail}`,
+            ? `Last deploy: ${deployed.sha.slice(0, 7)}, running since ${deployed.at}.`
+            : `Last deploy failed at "${deployed.step}": ${deployed.detail}`,
         );
       }
       return ok(lines.join("\n"));
@@ -243,7 +372,7 @@ export function createDevServer(
 
   const steer = tool(
     "dev_steer",
-    "Pass an extra instruction to the fix that is being written right now — a " +
+    "Pass an extra instruction to the fix that is being written right now -- a " +
       "correction, a preference, a change of mind. Use it when the user says something " +
       "about the work while it is running. Refused when nothing is running.",
     {
@@ -252,7 +381,7 @@ export function createDevServer(
     async (args) => {
       const answered = await dev.steer(args.message);
       return answered === null
-        ? refused("Er is op dit moment geen fix bezig om iets aan door te geven.")
+        ? refused("No fix is being written right now to pass this on to.")
         : ok(answered);
     },
     { annotations: { readOnlyHint: false, idempotentHint: false } },
@@ -267,13 +396,13 @@ export function createDevServer(
     {},
     async () => {
       const waiting = dev.awaiting();
-      if (waiting === null) return refused("Er wacht geen fix op akkoord.");
-      if (waiting.prNumber === null) return refused("Die fix heeft geen pull request om te mergen.");
+      if (waiting === null) return refused("No fix is waiting for approval.");
+      if (waiting.prNumber === null) return refused("That fix has no pull request to merge.");
       const { turnId, setPending } = context();
       setPending({ kind: "merge", key: String(waiting.prNumber), askedInTurn: turnId });
       return ok(
-        `Klaar om te mergen: ${describeTask(waiting)} Vraag hardop of het mag, noem dat je ` +
-          "daarna herstart, en stop daar.",
+        `Ready to merge: ${describeTask(waiting)} Ask out loud whether you may, mention that ` +
+          "you restart afterwards, and stop there.",
       );
     },
     { annotations: { readOnlyHint: false, idempotentHint: true } },
@@ -283,7 +412,7 @@ export function createDevServer(
     "approve_merge",
     "Merge the waiting pull request and restart on it. Needs propose_merge and a " +
       "spoken yes from an earlier turn. The restart happens after the suite has run " +
-      "again on the merged commit, so it is a minute or two away — say so, and check " +
+      "again on the merged commit, so it is a minute or two away -- say so, and check " +
       "dev_status afterwards rather than claiming it worked.",
     {
       confirmed: z.boolean().default(false)
@@ -299,18 +428,18 @@ export function createDevServer(
         pending.key === String(waiting.prNumber);
       if (!matches || pending?.askedInTurn === turnId) {
         return refused(
-          "Dit moet eerst voorgesteld worden. Roep propose_merge aan, vraag het hardop, en " +
-            "probeer het opnieuw zodra hij in een latere beurt geantwoord heeft.",
+          "This has to be proposed first. Call propose_merge, ask out loud, and try again " +
+            "once he has answered in a later turn.",
         );
       }
-      if (!args.confirmed) return refused("Hij heeft nog niets bevestigd. Vraag het, en zet dan confirmed op true.");
+      if (!args.confirmed) return refused("He has not confirmed anything yet. Ask, then set confirmed to true.");
       setPending(null);
 
       const merged = await dev.approve(new Date());
       return merged.ok
         ? ok(
-            `Gemerged als ${merged.sha.slice(0, 7)}. De deploy draait de suite opnieuw en ` +
-              "herstart me daarna; controleer het later met dev_status.",
+            `Merged as ${merged.sha.slice(0, 7)}. The deploy runs the suite again and restarts ` +
+              "you afterwards; check it later with dev_status.",
           )
         : refused(merged.error);
     },
@@ -328,17 +457,33 @@ export function createDevServer(
     },
     async (args) => {
       const read = await dev.runnerOutput(args.slot, args.lines);
-      return read.ok ? ok(read.text === "" ? "Die runner toont niets leesbaars." : read.text) : refused(read.error);
+      return read.ok ? ok(read.text === "" ? "That runner shows nothing readable." : read.text) : refused(read.error);
     },
     { annotations: { readOnlyHint: true } },
+  );
+
+  const reply = tool(
+    "runner_reply",
+    "Type a message into a delegated runner: the user's answer to a question it asked, " +
+      "or a correction he wants passed on. Runner questions you can answer yourself are " +
+      "answered without this tool; use it when the user tells you what to say to one.",
+    {
+      slot: z.number().int().describe(`Which runner: ${dev.delegationSlots.join(" or ")}`),
+      message: z.string().min(1).describe("What to tell the runner, complete enough to act on"),
+    },
+    async (args) => {
+      const sent = await dev.replyToRunner(args.slot, args.message);
+      return sent.ok ? ok(`Runner ${args.slot} has it.`) : refused(sent.error);
+    },
+    { annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: true } },
   );
 
   return createSdkMcpServer({
     name: DEV_SERVER_NAME,
     version: "1.0.0",
-    tools: [propose, start, status, steer, proposeMerge, approveMerge, runner],
+    tools: [propose, start, gap, status, steer, proposeMerge, approveMerge, runner, reply],
   });
 }
 
 /** The limits, so the persona can be honest about them without guessing. */
-export const DEV_LIMITS = { DAILY_LIMIT, MAX_FILES };
+export const DEV_LIMITS = { DAILY_LIMIT, MAX_FILES, DAILY_GAPS, GAP_ATTEMPTS };

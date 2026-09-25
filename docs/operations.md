@@ -95,6 +95,8 @@ lands.
 ```mermaid
 flowchart LR
     ask["spoken: 'I want you to be able to X'"] --> propose["propose_dev_task<br/>describes the SHAPE of the job"]
+    gap["a request it cannot carry out"] --> close["close_gap<br/>no yes needed · brakes per gap and per day"]
+    close --> guard
     propose --> guard{"dev/guard.ts<br/>pure, testable, no model"}
     guard -->|small| wt["git worktree, node_modules linked<br/>per entry, workspace links rebuilt"]
     guard -->|big| deleg["whatever a pack offers as a Delegate<br/>(default: nowhere — write it down and say so)"]

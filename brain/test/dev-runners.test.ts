@@ -17,8 +17,14 @@ import {
   declaredDone,
   doneMessage,
   handleRunnerPress,
+  handleRunnerReply,
+  lookIn,
+  onQuestion,
+  OWN_ANSWERS_PER_JOB,
   pressed,
   questionMessage,
+  QUIET_MS,
+  readConsideration,
   readVerdict,
   settled,
 } from "../dist/dev/runners.js";
@@ -284,4 +290,150 @@ test("the older Dutch words still end a turn, for runners started on an older br
   assert.equal(readVerdict("VRAAG: which name?").state, "asking");
   assert.equal(declaredDone("● DONE: PR open\n❯ "), true);
   assert.equal(declaredDone("● DONE: PR open\n● QUESTION: merge it?"), false);
+});
+
+test("JARVIS' answer is read with everything after the word, lines and all", () => {
+  assert.deepEqual(readConsideration("ANSWER: use the second one.\nKeep the test.", "q"), {
+    answer: "use the second one.\nKeep the test.",
+  });
+  assert.deepEqual(readConsideration("Thinking...\nASK: which colour do you want?", "q"), {
+    ask: "which colour do you want?",
+  });
+});
+
+test("anything that is not a clear answer goes to the owner with the runner's question", () => {
+  for (const text of ["", "I think maybe the left one", "ANSWER:", "ASK:"]) {
+    assert.deepEqual(readConsideration(text, "left or right?"), { ask: "left or right?" }, text);
+  }
+});
+
+/** A bot that remembers what it sent, and numbers its messages. */
+function messages() {
+  const sent: string[] = [];
+  return {
+    sent,
+    bot: {
+      send: async (_chat: string, html: string) => {
+        sent.push(html);
+        return 100 + sent.length;
+      },
+      acknowledge: async () => {},
+      settle: async () => {},
+    } as never,
+  };
+}
+
+test("a question JARVIS can answer is typed into the runner, and the owner is told", async () => {
+  const { bot, sent } = messages();
+  const typed: string[] = [];
+  await onQuestion(bot, "chat", { ...REPORT, slot: 21 }, "tabs or spaces?", {
+    consider: async () => ({ answer: "Spaces, like the rest of the file." }),
+    reply: async (_slot, text) => {
+      typed.push(text);
+      return { ok: true };
+    },
+  });
+  assert.deepEqual(typed, ["Spaces, like the rest of the file."]);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0] ?? "", /asked, and I answered/);
+});
+
+test("a question that is the owner's goes to him, and his reply goes to the runner", async () => {
+  const { bot, sent } = messages();
+  const typed: Array<[number, string]> = [];
+  const reply = async (slot: number, text: string) => {
+    typed.push([slot, text]);
+    return { ok: true as const };
+  };
+  await onQuestion(bot, "chat", { ...REPORT, slot: 22 }, "delete the old branch?", {
+    consider: async () => ({ ask: "May the runner delete the old branch?" }),
+    reply,
+  });
+  assert.equal(typed.length, 0);
+  assert.match(sent[0] ?? "", /May the runner delete the old branch\?/);
+  assert.match(sent[0] ?? "", /Reply to this message/);
+
+  // Message 101 was the question; a reply to it reaches runner 22.
+  assert.equal(await handleRunnerReply(bot, reply, { chatId: "chat", text: "yes", replyTo: 101 }), true);
+  assert.deepEqual(typed, [[22, "yes"]]);
+  assert.match(sent[1] ?? "", /Passed on to runner 22/);
+
+  // A reply to anything else is ordinary chat.
+  assert.equal(await handleRunnerReply(bot, reply, { chatId: "chat", text: "hi", replyTo: 5 }), false);
+  assert.equal(await handleRunnerReply(bot, reply, { chatId: "chat", text: "hi" }), false);
+});
+
+test("the same question twice is not answered by JARVIS a second time", async () => {
+  const { bot, sent } = messages();
+  let considered = 0;
+  const seam = {
+    consider: async () => {
+      considered += 1;
+      return { answer: "Run the tests." };
+    },
+    reply: async () => ({ ok: true as const }),
+  };
+  await onQuestion(bot, "chat", { ...REPORT, slot: 23 }, "What next?", seam);
+  await onQuestion(bot, "chat", { ...REPORT, slot: 23 }, "what  next?", seam);
+  assert.equal(considered, 1);
+  assert.match(sent[1] ?? "", /did not settle it/);
+});
+
+test("after a handful of answers, the next question is the owner's", async () => {
+  const { bot, sent } = messages();
+  const seam = {
+    consider: async () => ({ answer: "Go on." }),
+    reply: async () => ({ ok: true as const }),
+  };
+  for (let i = 0; i < OWN_ANSWERS_PER_JOB; i += 1) {
+    await onQuestion(bot, "chat", { ...REPORT, slot: 24 }, `question ${i}`, seam);
+  }
+  await onQuestion(bot, "chat", { ...REPORT, slot: 24 }, "one more", seam);
+  assert.match(sent.at(-1) ?? "", /this one is yours/);
+});
+
+test("without a way to reach back, every question goes to the owner as before", async () => {
+  const { bot, sent } = messages();
+  await onQuestion(bot, "chat", { ...REPORT, slot: 25 }, "left or right?");
+  assert.match(sent[0] ?? "", /is waiting for you/);
+  assert.doesNotMatch(sent[0] ?? "", /Reply to this message/);
+});
+
+test("a job the runner declared done is marked finished", async () => {
+  const { bot } = messages();
+  const finished: Array<[number, string]> = [];
+  await actOn(
+    bot,
+    "chat",
+    REPORT,
+    { state: "done", summary: "PR open" },
+    async () => ({ ok: true }),
+    { finished: (slot, summary) => finished.push([slot, summary]) },
+  );
+  assert.deepEqual(finished, [[REPORT.slot, "PR open"]]);
+});
+
+test("a quiet runner is looked in on, and an unchanged screen is judged once", async () => {
+  const reports: number[] = [];
+  const job = { slot: 31, task: "build it", since: 0 };
+  const tail = async () => ({ ok: true as const, text: "same screen" });
+  const report = async (r: { slot: number }) => reports.push(r.slot);
+  const gone = async () => assert.fail("not gone");
+
+  await lookIn([job], [31], tail, report, gone, QUIET_MS - 1);
+  assert.deepEqual(reports, [], "too soon to look");
+  await lookIn([job], [31], tail, report, gone, QUIET_MS);
+  await lookIn([job], [31], tail, report, gone, 3 * QUIET_MS);
+  assert.deepEqual(reports, [31]);
+});
+
+test("a runner that is not running any more, or not a slot any more, is gone", async () => {
+  const gone: number[] = [];
+  const onGone = async (job: { slot: number }) => {
+    gone.push(job.slot);
+  };
+  const dead = async () => ({ ok: false as const, error: "jarvis-delegate: slot 32 is not running" });
+  await lookIn([{ slot: 32, task: "x", since: 0 }], [32], dead, async () => {}, onGone, QUIET_MS);
+  await lookIn([{ slot: 4, task: "x", since: 0 }], [11, 12, 13], dead, async () => {}, onGone, QUIET_MS);
+  assert.deepEqual(gone, [32, 4]);
 });
