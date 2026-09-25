@@ -79,7 +79,7 @@ export interface DevTask {
 export const GAP_ATTEMPTS = 2;
 
 /** Gaps JARVIS may start closing on his own in one day, across all of them. */
-export const DAILY_GAPS = 4;
+export const DAILY_GAPS = 8;
 
 export function migrateDev(db: DatabaseSync): void {
   db.exec(`

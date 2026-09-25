@@ -31,7 +31,7 @@ that was the end of it. Now that is where the work starts.
   many words that the ability is the job. Nothing it starts is merged or deployed without the
   owner's yes.
 - Brakes on unasked work, kept in the task table: one attempt per gap at a time, two per gap a week,
-  and four gaps a day. Past them, the tool refuses and says why, and the gap goes to the owner as a
+  and eight gaps a day. Past them, the tool refuses and says why, and the gap goes to the owner as a
   question. Tasks carry the gap they belong to in a new `gap` column.
 - Runner questions are answered by JARVIS first. A question he can answer from the brief, from what he
   knows, or from ordinary engineering judgement is typed into the runner, and the owner is told what

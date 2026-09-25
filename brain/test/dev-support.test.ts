@@ -309,8 +309,8 @@ test("a gap tried twice this week goes to the owner instead of a third attempt",
 });
 
 test("a busy day stops new gaps, whichever they are", () => {
-  assert.match(String(gapBrake([], 4)), /most in one day/);
-  assert.equal(gapBrake([], 3), null);
+  assert.match(String(gapBrake([], 8)), /most in one day/);
+  assert.equal(gapBrake([], 7), null);
 });
 
 test("a finished delegated job says what the runner left behind", () => {

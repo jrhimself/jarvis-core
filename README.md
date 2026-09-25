@@ -228,7 +228,7 @@ which builds the ability and sends the answer to the request as well when it fin
 JARVIS then says in one sentence what he cannot do yet and that he is learning it. Something the owner asks for as a change to what already works
 still goes through `propose_dev_task` and a spoken yes. Nothing either door starts is merged or
 deployed without that yes. The brakes are numbers, kept in the task table rather than in the
-conversation: one attempt per gap at a time, two per gap a week, four gaps a day. Past them, the gap
+conversation: one attempt per gap at a time, two per gap a week, eight gaps a day. Past them, the gap
 goes to the owner as a question.
 
 A **small fix** is written here. A `git worktree` is cut from `origin/main` so the live checkout is
