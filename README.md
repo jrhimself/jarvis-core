@@ -118,6 +118,14 @@ before it does not disappear: it shrinks into a row underneath, four in view at 
 briefing that covers the house, the mail and the agenda therefore ends with all three side by side,
 in the order they were spoken.
 
+**The web.** Search it, and read a page off it. It is the one source here that comes with no pack
+and no credential behind it, which is why it belongs to core: everything else the assistant knows
+had to be installed and pointed at something first, and a question about a street, an organisation
+or a term is one that nothing installed can answer. Two built-in tools and no others — every
+remaining one reads this machine, and those stay withdrawn. What was read goes up as a window of
+sources, taken from the results themselves rather than from the model, so an answer can be held
+against what it was taken from. `JARVIS_WEB=off` withdraws both again.
+
 **Itself.** What it noticed about the house and about its own jobs (`anomalies`), what earlier
 conversations were about, what it remembers and why, what every model call cost, and what the last
 attempt to extend itself did. The HUD's own panels say the same thing without being asked: one row
@@ -388,6 +396,7 @@ capability is simply not offered.
 | `JARVIS_VOICE_TIMBRE` | How far the browser colours the voice, `0`-`100`. `0` is the voice as it came. Filtering happens in the page, so it costs no credit and no latency. |
 | `JARVIS_SPEECH_LANG` | The language this deployment is spoken to and answers in: `nl` (default) or `en`. It decides which of the two voices above reads an answer, which language the microphone is transcribed as, and what a line put through `say` is spoken in when the caller names no language of its own. It translates nothing: what the assistant writes is the persona's business, and a persona that writes Dutch while this says English will be read out with an accent, so the two are set together. |
 | `JARVIS_MEMORY_PANEL` | `off`, `read` (default) or `edit` — how much of the memory the HUD may see and change. Not `edit` by default on purpose: the control surface has no authentication of its own, so anything that reaches the port would be able to rewrite and delete what the assistant knows. |
+| `JARVIS_WEB` | Whether the assistant may search the web and read a page (`on` by default; `off` withdraws both tools). These are the only built-in tools it is given: the rest read this machine, and are refused whatever this is set to. On by default because it needs no credential and no pack, so the alternative is an assistant that says it cannot look something up when it can. What a page says is quoted back, never acted on — the prompt says so in as many words, because a fetched page is somebody else's writing arriving in the middle of a conversation. |
 | `JARVIS_TIMEZONE`, `JARVIS_LOCALE` | The zone every weekday, hour and spoken time is worked out in, and the language dates and numbers are written in. Unset, the zone is the machine's own and the locale is `nl-NL`; the zone in use is printed at every startup. Getting this wrong is silent — a behavioural baseline still builds, it is just about different hours — so a machine whose clock is UTC while the house is not opens a finding about itself until the zone is named. |
 | `JARVIS_PORT`, `JARVIS_CERT_DIR` | Where it listens, and the TLS certificate and key. |
 | `JARVIS_MEMORY_PATH`, `JARVIS_DATA_DIR` | The memory database, and the runtime state around it. |

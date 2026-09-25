@@ -26,6 +26,7 @@ const BARE = {
   JARVIS_NOTIFY_ENTITY: undefined,
   JARVIS_NOTIFY_WEBHOOK: undefined,
   JARVIS_PROACTIVE: undefined,
+  JARVIS_WEB: undefined,
   JARVIS_DEV_REPO: undefined,
   GITHUB_TOKEN_JARVIS: undefined,
 };
@@ -181,4 +182,15 @@ test("the facilities report what is off as well as what is on", () => {
   const on = describe({ ELEVENLABS_API_KEY: "key", JARVIS_PROACTIVE: "announce" });
   assert.match(on, /answers are spoken/);
   assert.match(on, /JARVIS_PROACTIVE is "announce"/);
+});
+
+test("reading the web is reported either way, since it is on unasked", () => {
+  // The one facility that is on by default, which makes its off case the one
+  // that has to be stated: an assistant that cannot look anything up has to
+  // know that about itself before it offers to.
+  assert.match(describe({}), /searching the web and reading a page are available/);
+
+  const off = describe({ JARVIS_WEB: "off" });
+  assert.match(off, /JARVIS_WEB is off/);
+  assert.match(off, /set JARVIS_WEB to on/);
 });

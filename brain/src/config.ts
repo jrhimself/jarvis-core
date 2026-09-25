@@ -207,6 +207,16 @@ export interface Config {
   escalateModel: string;
   /** Model to fall back on when the primary one is overloaded. Empty tries nothing else. */
   fallbackModel: string;
+  /**
+   * Whether the assistant may search the web and read a page.
+   *
+   * On, and the only built-in tools that are granted at all. Reading a page
+   * needs no credential and no pack, so a deployment that has to switch it on
+   * first is one whose assistant says it cannot look anything up while it
+   * perfectly well can. Off withdraws both tools, which is the right answer on
+   * a machine that is to reach nothing it was not pointed at.
+   */
+  web: boolean;
   /** How many steps one question may take before the turn is stopped. 0 does not stop it. */
   maxSteps: number;
   /** What one question may cost before the turn is stopped, in dollars. 0 does not stop it. */
@@ -477,6 +487,7 @@ export function loadConfig(): Config {
     model: envString("JARVIS_MODEL", "sonnet"),
     escalateModel: envString("JARVIS_ESCALATE_MODEL", ""),
     fallbackModel: envString("JARVIS_FALLBACK_MODEL", ""),
+    web: envFlag("JARVIS_WEB", true),
     // Sixteen is roughly twice the longest turn seen in ordinary use, which is
     // the shape a brake should have: invisible until something is wrong.
     maxSteps: envNumber("JARVIS_MAX_STEPS", 16, 0, 200),
