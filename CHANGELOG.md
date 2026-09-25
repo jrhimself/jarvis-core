@@ -15,6 +15,18 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [1.3.0] - 2026-09-25
+
+### Added
+
+- The assistant knows what time it is. A model has no clock, so asked the hour it either said so
+  or made one up, and a tool for it would have made the cheapest question in the house the
+  slowest. The current moment now travels in front of every question, beside the primed facts and
+  the plan line and for the same reason: the system prompt is written once per session, and a
+  session outlives the minute it started in. It is written in the deployment's own locale and
+  worked out in its configured zone, which the line names, so an assistant reasoning in the
+  container's UTC says so rather than answering an hour that is right somewhere else.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added
