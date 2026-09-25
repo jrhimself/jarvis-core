@@ -192,6 +192,16 @@ export interface Config {
    * whole of it. Without it the report route does not exist at all.
    */
   runnerToken: string;
+  /**
+   * When the credentials this deployment lives on stop working, as
+   * `name=YYYY-MM-DD` pairs separated by commas. Empty checks nothing.
+   *
+   * Some credentials carry no expiry anyone can read back -- a long-lived model
+   * token is an opaque string -- so the date is whatever the person who minted
+   * it wrote down. Held here as text; the self checks parse it, so a typo is a
+   * finding rather than a startup failure.
+   */
+  credentialExpiry: string;
   /** How many may be sent in a rolling day, before anything is rendered. */
   suggestPerDay: number;
   /** Local hour the quiet window opens; equal to `quietTo` means never quiet. */
@@ -485,6 +495,7 @@ export function loadConfig(): Config {
     suggestToken: envString("JARVIS_TELEGRAM_TOKEN", ""),
     suggestChat: envString("JARVIS_TELEGRAM_CHAT", ""),
     runnerToken: envString("JARVIS_RUNNER_TOKEN", ""),
+    credentialExpiry: envString("JARVIS_CREDENTIAL_EXPIRY", ""),
     suggestPerDay: envNumber("JARVIS_SUGGEST_PER_DAY", 6, 1, 50),
     quietFrom: envNumber("JARVIS_QUIET_FROM", 21, 0, 23),
     quietTo: envNumber("JARVIS_QUIET_TO", 7, 0, 23),
