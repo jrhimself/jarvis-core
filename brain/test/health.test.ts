@@ -204,3 +204,54 @@ test("what the probes found is remembered, so a tool call need not find out agai
   assert.equal(serverIsDown("never-probed"), false, "an unknown server is given the benefit");
   forgetVerdicts();
 });
+
+test("a delegate gets a row of its own, asked through its check", async () => {
+  // Nothing asked after the delegation channel before this row: it was down
+  // for days and the first to notice was the request that needed a runner.
+  const store = { all: () => [], proactiveCounts: () => ({ observations: 0 }) } as never;
+  const config = { proactive: "off" } as never;
+  const delegate = {
+    available: true,
+    slots: [4, 5],
+    free: async () => [4, 5],
+    check: async () => {
+      throw new Error("the host name does not resolve here");
+    },
+  } as never;
+
+  const specs = specsFor(config, store, ["ha"], {}, delegate);
+  assert.deepEqual(
+    specs.map((spec) => spec.server),
+    ["display", "memory", "delegate", "ha"],
+  );
+  assert.equal(specs[2]?.pack, undefined, "the seam is core's, whichever pack fills it");
+
+  const checks = byServer(await runHealthChecks(specs));
+  assert.equal(checks.get("delegate")?.state, "down");
+  assert.equal(checks.get("delegate")?.detail, "the host name does not resolve here");
+});
+
+test("a delegate without a check is asked through its free slots", async () => {
+  const store = { all: () => [], proactiveCounts: () => ({ observations: 0 }) } as never;
+  const config = { proactive: "off" } as never;
+  const up = { available: true, slots: [4, 5], free: async () => [5] } as never;
+  const gone = { available: true, slots: [4, 5], free: async () => null } as never;
+
+  const upRow = byServer(await runHealthChecks(specsFor(config, store, [], {}, up)));
+  assert.equal(upRow.get("delegate")?.state, "ok");
+  assert.equal(upRow.get("delegate")?.detail, "1 of 2 slots free");
+
+  const goneRow = byServer(await runHealthChecks(specsFor(config, store, [], {}, gone)));
+  assert.equal(goneRow.get("delegate")?.state, "down");
+});
+
+test("no delegate, no row", () => {
+  const store = { all: () => [], proactiveCounts: () => ({ observations: 0 }) } as never;
+  const config = { proactive: "off" } as never;
+  const none = { available: false, slots: [], free: async () => [] } as never;
+
+  assert.equal(
+    specsFor(config, store, [], {}, none).some((spec) => spec.server === "delegate"),
+    false,
+  );
+});

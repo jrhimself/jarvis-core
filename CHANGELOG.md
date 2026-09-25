@@ -15,6 +15,16 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [Unreleased]
+
+### Added
+
+- The health panel has a `delegate` row whenever a pack fills the delegation seam, probed on
+  the same five-minute clock as every other row. Until now nothing asked after the channel to
+  the runners: it could be dead for days, and the first to find out was the one request that
+  needed it. `Delegate` gained an optional `check()` that says *why* the far side does not
+  answer; a delegate without it is asked through `free()`.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added

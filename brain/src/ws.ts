@@ -110,7 +110,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     void packSummary()
       .then((packs) =>
         runHealthChecks(
-          specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes),
+          specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes, packs.delegate),
         ),
       )
       .then((checks) => send({ kind: "health", checks }))

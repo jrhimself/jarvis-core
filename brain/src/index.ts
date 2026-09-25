@@ -129,7 +129,7 @@ async function main(): Promise<void> {
   const checkHealth = (): void => {
     void packSummary()
       .then((packs) =>
-        runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes)),
+        runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
       )
       .catch((error: unknown) => console.error("health checks failed:", error));
   };
