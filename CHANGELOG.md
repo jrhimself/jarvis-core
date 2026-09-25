@@ -15,6 +15,15 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [Unreleased]
+
+### Changed
+
+- A delegated runner that ends its turn with its own `KLAAR:` line, and that the supervisor
+  also reads as finished, has its slot closed automatically; the Telegram message says so
+  instead of asking. A question still leaves the slot open, and an ending the runner did
+  not declare itself still comes with the Sluiten / Laat open buttons.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added

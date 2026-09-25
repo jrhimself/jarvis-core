@@ -84,7 +84,9 @@ async function main(): Promise<void> {
     if (
       serveRunnerReport(req, res, config.runnerToken, (report) => {
         if (bot === null) return;
-        void supervise(store, bot, config.suggestChat, report);
+        void supervise(store, bot, config.suggestChat, report, async (slot) =>
+          (await packSummary()).delegate.kill(slot),
+        );
       })
     ) {
       return;

@@ -12,7 +12,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  actOn,
   buttonsFor,
+  declaredDone,
   doneMessage,
   handleRunnerPress,
   pressed,
@@ -189,4 +191,90 @@ test("a report needs a slot, a brief and something on the screen", () => {
   ]) {
     assert.equal(readReport(payload), null, `should be refused: ${JSON.stringify(payload)}`);
   }
+});
+
+test("only the runner's own KLAAR line counts as declaring the job done", () => {
+  assert.equal(declaredDone("werk werk\n● KLAAR: PR #14 staat open, suite groen\n❯ "), true);
+  assert.equal(declaredDone("KLAAR: klaar\nnog even\n● VRAAG: welke naam wil je?"), false);
+  assert.equal(declaredDone("● VRAAG: welke naam?\n● KLAAR: naam gekozen, PR open"), true);
+  // The brief quotes both words with a placeholder; it is not the runner speaking.
+  assert.equal(
+    declaredDone("Sluit elke beurt af met één regel: 'KLAAR: <wat er ligt>' als je klaar bent,"),
+    false,
+  );
+  assert.equal(declaredDone("● KLAAR: <wat er ligt>"), false);
+  assert.equal(declaredDone("alles gedaan, denk ik"), false);
+});
+
+const REPORT = { slot: 11, task: "Bouw iets", tail: "● KLAAR: PR #14 staat open" };
+
+function sender() {
+  const sent: { html: string; buttons: boolean }[] = [];
+  return {
+    sent,
+    bot: {
+      send: async (_chat: string, html: string, buttons?: unknown[]) => {
+        sent.push({ html, buttons: buttons !== undefined && buttons.length > 0 });
+        return 1;
+      },
+      acknowledge: async () => {},
+      settle: async () => {},
+    } as never,
+  };
+}
+
+test("a job the runner declared done closes its slot without asking", async () => {
+  const { bot, sent } = sender();
+  const closed: number[] = [];
+  await actOn(bot, "chat", REPORT, { state: "done", summary: "PR staat open" }, async (slot) => {
+    closed.push(slot);
+    return { ok: true };
+  });
+  assert.deepEqual(closed, [11]);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.buttons, false);
+  assert.match(sent[0]?.html ?? "", /Slot gesloten/);
+});
+
+test("an ending the runner did not declare still waits for a press", async () => {
+  const { bot, sent } = sender();
+  let asked = false;
+  await actOn(
+    bot,
+    "chat",
+    { ...REPORT, tail: "ik kom hier niet verder" },
+    { state: "done", summary: "gestrand" },
+    async () => {
+      asked = true;
+      return { ok: true };
+    },
+  );
+  assert.equal(asked, false);
+  assert.equal(sent[0]?.buttons, true);
+});
+
+test("a slot that will not close falls back to the buttons", async () => {
+  const { bot, sent } = sender();
+  await actOn(bot, "chat", REPORT, { state: "done", summary: "klaar" }, async () => ({
+    ok: false,
+    error: "slot 11 is not running",
+  }));
+  assert.equal(sent[0]?.buttons, true);
+});
+
+test("a question never closes anything", async () => {
+  const { bot, sent } = sender();
+  let asked = false;
+  await actOn(
+    bot,
+    "chat",
+    { ...REPORT, tail: "● VRAAG: welke kleur?" },
+    { state: "asking", question: "welke kleur?" },
+    async () => {
+      asked = true;
+      return { ok: true };
+    },
+  );
+  assert.equal(asked, false);
+  assert.match(sent[0]?.html ?? "", /wacht op jou/);
 });
