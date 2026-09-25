@@ -220,6 +220,17 @@ node dist/prompt-size-cli.js                # what the system prompt currently w
 Ask for a capability that is missing — or watch it run into the gap on its own — and it can close it.
 What happens next depends on a verdict it does not get to make about itself.
 
+A gap it runs into is closed without being asked. When a request cannot be carried out with any tool
+it has, `close_gap` starts the work at once, and the work is always to learn the ability behind the
+request -- "look up current local news", not "what is happening on this street" -- so the next request
+of that kind is answered without help. A small fix is written here; anything bigger goes to a runner,
+which builds the ability and sends the answer to the request as well when it finds it on the way.
+JARVIS then says in one sentence what he cannot do yet and that he is learning it. Something the owner asks for as a change to what already works
+still goes through `propose_dev_task` and a spoken yes. Nothing either door starts is merged or
+deployed without that yes. The brakes are numbers, kept in the task table rather than in the
+conversation: one attempt per gap at a time, two per gap a week, eight gaps a day. Past them, the gap
+goes to the owner as a question.
+
 A **small fix** is written here. A `git worktree` is cut from `origin/main` so the live checkout is
 never edited in place, and a worker is started in it with five tools: read, write, edit, glob, grep.
 No shell, deliberately — the SDK confines file tools to the working directory, so a worker without
@@ -240,6 +251,18 @@ task as well, so `dev_status` can still answer "waarom ging dat mis" the next mo
 Anything **too big** is handed to whatever a pack offers as a `Delegate`. With nothing offered — the
 default — the verdict is written down and said out loud, which is what a capability gap already does.
 A gap worth recording but not worth building now is written down the same way and left there.
+
+A delegated runner is supervised rather than left to its own devices. Each time it ends a turn, its
+machine reports the last screen to `POST /runner/report`. A small model reads that screen as done,
+asking or working. A question goes to JARVIS first. He answers it on the stronger model when the
+answer follows from the brief, from what he knows, or from ordinary engineering judgement. The answer
+is typed into the runner through the delegate's `reply`, and the owner is told what was asked and
+answered. What is the owner's to decide — taste, money, access, anything that cannot be undone — or
+what JARVIS is unsure of goes to the owner's chat. A reply to that message goes back into the runner.
+After five answers in one job, or the same question twice, the owner hears of it instead. Runners
+that stay quiet for half an hour are looked in on from this side, because one stuck on a prompt never
+ends a turn. A job whose runner has disappeared is marked as failed. A job the runner declared done
+has its slot closed, and its record says what the runner left behind.
 
 Which of the two it is comes from `brain/src/dev/guard.ts`, from a described shape — which
 repository, which files, does this need a package, a secret, another machine — and never from asking

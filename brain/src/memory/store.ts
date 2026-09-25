@@ -762,7 +762,10 @@ export class MemoryStore {
   search(query: string, limit = 8): Fact[] {
     const terms = query
       .toLowerCase()
-      .replace(/["'()*]/g, " ")
+      // Only letters and digits reach FTS5: its query syntax gives meaning to
+      // much more than quotes and brackets, and a slash or a colon in a
+      // sentence was a syntax error rather than a search.
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
       .split(/\s+/)
       .filter((t) => t.length > 2);
 
@@ -973,7 +976,10 @@ export class MemoryStore {
   searchSessions(query: string, limit = 5): Session[] {
     const terms = query
       .toLowerCase()
-      .replace(/["'()*]/g, " ")
+      // Only letters and digits reach FTS5: its query syntax gives meaning to
+      // much more than quotes and brackets, and a slash or a colon in a
+      // sentence was a syntax error rather than a search.
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
       .split(/\s+/)
       .filter((t) => t.length > 2);
     if (terms.length === 0) return [];

@@ -20,7 +20,7 @@ import { isCommitSha, readDeployResult } from "../dist/dev/deploy.js";
 import { readPullRequest } from "../dist/dev/github.js";
 import { escapeHtml, failureMessage, reviewMessage, spokenFailure } from "../dist/dev/notify.js";
 import { titleFor } from "../dist/dev/run.js";
-import { describeTask } from "../dist/dev-tools.js";
+import { abilityInstruction, describeTask, gapBrake } from "../dist/dev-tools.js";
 import { workerPrompt } from "../dist/dev/worker.js";
 import { run } from "../dist/dev/shell.js";
 import { canPushBranches, linkDependencies } from "../dist/dev/worktree.js";
@@ -100,7 +100,7 @@ test("a failure carries the output that caused it, escaped", () => {
     detail: "de tests bleven rood",
     log: "not ok 3 - accu\n  expected <b>3</b>, got 4",
   });
-  assert.match(message, /JARVIS' fix is mislukt/);
+  assert.match(message, /JARVIS' fix failed/);
   assert.match(message, /&lt;accu&gt;/);
   assert.match(message, /<pre>/);
   assert.match(message, /expected &lt;b&gt;3&lt;\/b&gt;/);
@@ -112,7 +112,7 @@ test("a fix the guard stopped is not called a failure", () => {
     detail: "hij bleef aan beschermde bestanden komen",
     abandoned: true,
   });
-  assert.match(message, /laten vallen/);
+  assert.match(message, /dropped a fix/);
   assert.ok(!message.includes("mislukt"));
 });
 
@@ -166,7 +166,7 @@ test("a task waiting for approval is described with its link", () => {
     detail: "1 file changed",
     log: null,
   });
-  assert.match(spoken, /wacht op jouw akkoord/);
+  assert.match(spoken, /waiting for your approval/);
   assert.match(spoken, /pull\/9/);
 });
 
@@ -183,11 +183,11 @@ test("a delegated task says which runner has it and why", () => {
     prUrl: null,
     prNumber: null,
     slot: 4,
-    detail: "daar is een nieuw pakket voor nodig",
+    detail: "it needs a new package",
     log: null,
   });
   assert.match(spoken, /runner 4/);
-  assert.match(spoken, /nieuw pakket/);
+  assert.match(spoken, /new package/);
 });
 
 test("the worker is told about every protected path by name", () => {
@@ -268,4 +268,62 @@ test("a copy that may not push to its origin is told so before any work happens"
   assert.equal(refs.stdout.trim(), "");
 
   await rm(root, { recursive: true, force: true });
+});
+
+/** A task row with only the fields a test cares about spelled out. */
+function task(state: string, id = 1): Parameters<typeof describeTask>[0] {
+  return {
+    id,
+    createdAt: "",
+    updatedAt: "",
+    instruction: "read the clock",
+    size: "small",
+    state: state as never,
+    branch: null,
+    worktree: null,
+    prUrl: null,
+    prNumber: null,
+    slot: 11,
+    detail: "writing it",
+    log: null,
+    gap: "read-the-clock",
+  };
+}
+
+test("a gap nobody is working on may be started", () => {
+  assert.equal(gapBrake([], 0), null);
+  assert.equal(gapBrake([task("failed")], 0), null);
+});
+
+test("a gap that is already being worked on is not started again", () => {
+  for (const state of ["running", "awaiting", "delegated"]) {
+    const brake = gapBrake([task(state)], 0);
+    assert.match(String(brake), /already being worked on/, state);
+  }
+});
+
+test("a gap tried twice this week goes to the owner instead of a third attempt", () => {
+  const brake = gapBrake([task("failed", 2), task("finished", 1)], 0);
+  assert.match(String(brake), /tried 2 times/);
+  assert.match(String(brake), /ask how he wants it solved/);
+});
+
+test("a busy day stops new gaps, whichever they are", () => {
+  assert.match(String(gapBrake([], 8)), /most in one day/);
+  assert.equal(gapBrake([], 7), null);
+});
+
+test("a finished delegated job says what the runner left behind", () => {
+  const spoken = describeTask({ ...task("finished"), detail: "PR 12 is open" });
+  assert.match(spoken, /runner 11 finished it/);
+  assert.match(spoken, /PR 12 is open/);
+});
+
+test("a missing ability becomes a job to build it, not to answer the request", () => {
+  const job = abilityInstruction("search the web for current news", "what are the road works about?", true);
+  assert.match(job, /^Give JARVIS the ability to search the web for current news, so that he does it himself/);
+  assert.match(job, /not an answer to this one request/);
+  assert.match(job, /as parameters rather than written into the code/);
+  assert.match(job, /put the answer in your DONE line too/);
+  assert.doesNotMatch(abilityInstruction("read the clock", "time?", false), /DONE line/);
 });

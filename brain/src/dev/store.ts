@@ -32,6 +32,8 @@ function localDay(ms: number): string {
  * different things the next time the same request comes up: `merged` means it
  * works now, `abandoned` means the guard stopped it and a runner should get it,
  * `failed` means the attempt itself broke and repeating it is reasonable.
+ * `finished` is a delegated job whose runner said it was done; what it made is
+ * in `detail`, and whatever it opened still waits for the owner.
  */
 export type DevState =
   | "running"
@@ -39,7 +41,8 @@ export type DevState =
   | "merged"
   | "abandoned"
   | "failed"
-  | "delegated";
+  | "delegated"
+  | "finished";
 
 export interface DevTask {
   id: number;
@@ -62,7 +65,21 @@ export interface DevTask {
    * underneath it are what makes the next attempt possible.
    */
   log: string | null;
+  /**
+   * The gap this attempt was started to close, when JARVIS started it himself.
+   *
+   * A short stable name ("read-the-clock") rather than the request: the same
+   * missing ability is asked for in a dozen phrasings, and the brakes on
+   * starting work unasked are counted per ability, not per sentence.
+   */
+  gap?: string | null;
 }
+
+/** Attempts at one gap in a week before JARVIS stops and asks instead. */
+export const GAP_ATTEMPTS = 2;
+
+/** Gaps JARVIS may start closing on his own in one day, across all of them. */
+export const DAILY_GAPS = 8;
 
 export function migrateDev(db: DatabaseSync): void {
   db.exec(`
@@ -95,6 +112,11 @@ export function migrateDev(db: DatabaseSync): void {
   if (!columns.some((column) => column.name === "log")) {
     db.exec("ALTER TABLE dev_tasks ADD COLUMN log TEXT");
   }
+  // Added later again: which gap an attempt belongs to, for the brakes on work
+  // JARVIS starts without being asked.
+  if (!columns.some((column) => column.name === "gap")) {
+    db.exec("ALTER TABLE dev_tasks ADD COLUMN gap TEXT");
+  }
 }
 
 /** node:sqlite hands back null-prototype rows; this shapes one. */
@@ -113,19 +135,20 @@ function row(raw: Record<string, unknown>): DevTask {
     slot: raw.slot === null || raw.slot === undefined ? null : Number(raw.slot),
     detail: raw.detail === null || raw.detail === undefined ? "" : String(raw.detail),
     log: raw.log === null || raw.log === undefined ? null : String(raw.log),
+    gap: raw.gap === null || raw.gap === undefined ? null : String(raw.gap),
   };
 }
 
 export function createDevTask(
   db: DatabaseSync,
-  task: { instruction: string; size: "small" | "big"; state: DevState; detail?: string },
+  task: { instruction: string; size: "small" | "big"; state: DevState; detail?: string; gap?: string | null },
   at: Date,
 ): number {
   const iso = at.toISOString();
   db.prepare(
-    `INSERT INTO dev_tasks (created_at, updated_at, instruction, size, state, detail)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(iso, iso, task.instruction, task.size, task.state, task.detail ?? "");
+    `INSERT INTO dev_tasks (created_at, updated_at, instruction, size, state, detail, gap)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(iso, iso, task.instruction, task.size, task.state, task.detail ?? "", task.gap ?? null);
   const last = db.prepare("SELECT last_insert_rowid() AS id").get() as Record<string, unknown>;
   return Number(last.id);
 }
@@ -197,6 +220,55 @@ export function lastFailedDevTask(db: DatabaseSync): DevTask | null {
     .prepare("SELECT * FROM dev_tasks WHERE state IN ('failed', 'abandoned') ORDER BY id DESC LIMIT 1")
     .get() as Record<string, unknown> | undefined;
   return raw === undefined ? null : row(raw);
+}
+
+/** Jobs that are with a runner right now, oldest first. */
+export function delegatedDevTasks(db: DatabaseSync): DevTask[] {
+  const rows = db
+    .prepare("SELECT * FROM dev_tasks WHERE state = 'delegated' AND slot IS NOT NULL ORDER BY id")
+    .all() as Array<Record<string, unknown>>;
+  return rows.map(row);
+}
+
+/**
+ * Ends the job a slot was running, in whichever way it ended.
+ *
+ * By slot, because that is all a runner's report carries. Only the newest
+ * delegated row for it is touched: a slot is reused, and an older job that was
+ * never closed off must not be rewritten with a newer job's ending.
+ */
+export function endDelegated(
+  db: DatabaseSync,
+  slot: number,
+  ending: { state: "finished" | "failed"; detail: string },
+  at: Date,
+): DevTask | null {
+  const found = db
+    .prepare("SELECT * FROM dev_tasks WHERE state = 'delegated' AND slot = ? ORDER BY id DESC LIMIT 1")
+    .get(slot) as Record<string, unknown> | undefined;
+  if (found === undefined) return null;
+  const task = row(found);
+  updateDevTask(db, task.id, ending, at);
+  return { ...task, ...ending };
+}
+
+/** Every attempt at one gap in the week before `now`, newest first. */
+export function gapAttempts(db: DatabaseSync, gap: string, now: Date): DevTask[] {
+  const since = new Date(now.getTime() - 7 * 24 * 3_600_000).toISOString();
+  const rows = db
+    .prepare("SELECT * FROM dev_tasks WHERE gap = ? AND created_at >= ? ORDER BY id DESC")
+    .all(gap, since) as Array<Record<string, unknown>>;
+  return rows.map(row);
+}
+
+/** How many gaps were started today at home, whatever became of them. */
+export function gapsToday(db: DatabaseSync, now: Date): number {
+  const window = new Date(now.getTime() - 48 * 3_600_000).toISOString();
+  const rows = db
+    .prepare("SELECT created_at FROM dev_tasks WHERE gap IS NOT NULL AND created_at >= ?")
+    .all(window) as Array<Record<string, unknown>>;
+  const today = localDay(now.getTime());
+  return rows.filter((raw) => localDay(Date.parse(String(raw.created_at))) === today).length;
 }
 
 export function latestDevTasks(db: DatabaseSync, limit: number): DevTask[] {

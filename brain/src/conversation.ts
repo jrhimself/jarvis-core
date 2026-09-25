@@ -356,6 +356,13 @@ export class Conversation {
             opening.said();
             stopThinking();
           },
+          onSettling: () => {
+            // The answer is out and the turn is being checked; a line saying
+            // something is being looked up would be said after the answer.
+            opening.told();
+            opening.said();
+            stopThinking();
+          },
           onDisplay: (id, payload, dismiss, anchor, at) => {
             if (abort.signal.aborted) return;
             // A window said again belongs where it was the first time: that far

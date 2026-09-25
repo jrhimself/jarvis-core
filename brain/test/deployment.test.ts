@@ -36,9 +36,10 @@ function describe(
   packs: PackReport[] = [],
   root = tempDir(),
   ownPersona = true,
+  servers = ["display", "memory"],
 ): string {
   return withEnv({ ...BARE, ...env }, () =>
-    deploymentBlock(describeDeployment(loadConfig(), packs, ["display", "memory"], ownPersona, root)),
+    deploymentBlock(describeDeployment(loadConfig(), packs, servers, ownPersona, root)),
   );
 }
 
@@ -181,4 +182,20 @@ test("the facilities report what is off as well as what is on", () => {
   const on = describe({ ELEVENLABS_API_KEY: "key", JARVIS_PROACTIVE: "announce" });
   assert.match(on, /answers are spoken/);
   assert.match(on, /JARVIS_PROACTIVE is "announce"/);
+});
+
+test("a deployment that can build is told to close a gap rather than stop at it", () => {
+  const block = describe({}, [], tempDir(), true, ["display", "memory", "selfdev"]).replace(/\s+/g, " ");
+  assert.match(block, /When you cannot do something, or do not know it/);
+  assert.match(block, /call close_gap without asking first/);
+  assert.match(block, /the solution is always that you learn it/);
+  assert.match(block, /never try the same thing again in other words/);
+  assert.doesNotMatch(block, /say so plainly/);
+  assert.doesNotMatch(block, /say that it would take a pack/);
+});
+
+test("a deployment that cannot build still only admits what is missing", () => {
+  const block = describe({}).replace(/\s+/g, " ");
+  assert.match(block, /say so plainly/);
+  assert.doesNotMatch(block, /close_gap/);
 });

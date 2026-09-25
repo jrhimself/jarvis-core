@@ -632,3 +632,11 @@ test("the notes a pass read are found by the moment they were read", () => {
     assert.equal(store.corpusFilesSince(later).length, 0, "a note read before the cutoff is not new");
   });
 });
+
+test("a question with punctuation in it is searched, not refused", () => {
+  withStore((store) => {
+    store.remember({ kind: "voorkeur", subject: "Wegwerkzaamheden", body: "de straten worden opnieuw geasfalteerd" });
+    assert.doesNotThrow(() => store.search("wat is er met de straten / asfalt: waarom?"));
+    assert.equal(store.search("straten/asfalt").length, 1);
+  });
+});

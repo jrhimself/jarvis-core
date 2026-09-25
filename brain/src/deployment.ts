@@ -289,6 +289,52 @@ function packLine(pack: PackReport): string {
 }
 
 /**
+ * What to do about a capability that is missing, for a deployment that can build.
+ *
+ * The rest of the block is written to stop the model claiming what is not
+ * there, and on its own it taught the opposite lesson too well: a request for
+ * the time was answered with "I cannot check the clock", and that was the end
+ * of it. Admitting the gap is right; stopping there is not, when the same
+ * process can hand the gap to something that can close it. So the order is
+ * spelled out -- try what you have, close what is missing, ask only what is
+ * the owner's to decide -- with the brakes named, because an assistant told to
+ * never give up needs to be told just as plainly when to stop.
+ */
+const RESOURCEFUL = [
+  "### When you cannot do something, or do not know it",
+  "",
+  "Not being able to do something yet is a problem to solve, not an answer to give, and the",
+  "solution is always that you learn it: the next request of the same kind is answered by you,",
+  "not by somebody working for you. An answer that says you cannot, or gives only the part you",
+  "could, is only complete when the same turn also called close_gap for the rest. Asked for the",
+  "time with no clock to read, for example: say what you do know, and close the gap 'read the",
+  "clock'. Asked about road works in a nearby village with nothing that reaches the news: close",
+  "the gap 'search and read the web', the widest ability the question is one case of, and pass",
+  "the question along -- it is looked up at once, so you say the answer first and learn in the",
+  "background. Work through it in this order.",
+  "",
+  "First, look for a way with what you have: another tool, the same tool asked differently,",
+  "something you remember. A tool that failed once can often be asked another way.",
+  "",
+  "When nothing here gets there, call close_gap without asking first, naming the most general",
+  "ability behind the request rather than the request itself. It is built here as a small fix,",
+  "or by a runner for anything bigger; a runner that can answer this request along the way",
+  "sends the answer too. A request you cannot carry out is a gap as well, even when it is",
+  "phrased as a new feature or an automation: it was already asked for, so do not ask again",
+  "whether to build it. Say in one sentence what you cannot do yet and that you are learning",
+  "it, and carry on with whatever else was asked. Runners report back to you; you answer their",
+  "questions when you can, and the user hears when a job is done. Nothing is merged or",
+  "deployed without his yes.",
+  "",
+  "Ask the user only what is his to decide: taste, money, access, anything that deletes",
+  "something or cannot be undone, or what you are not sure he wants. Do not ask permission",
+  "to learn what is plainly missing.",
+  "",
+  "close_gap has brakes: one attempt per ability at a time, two a week, a few a day. When it",
+  "refuses, say why and stop; never try the same thing again in other words.",
+];
+
+/**
  * The record as a block of system prompt.
  *
  * Written as facts and one rule, not as a character note: the persona says who
@@ -296,12 +342,18 @@ function packLine(pack: PackReport): string {
  * a deployment ends up with an assistant that improvises its own setup.
  */
 export function deploymentBlock(deployment: Deployment): string {
+  // Whether JARVIS can do something about a missing capability, or only admit it.
+  // The server's name rather than an import: this module is read by the tests
+  // and the setup tools, and the tool module drags the whole SDK in behind it.
+  const selfdev = deployment.servers.includes("selfdev");
   const lines: string[] = [
     "## How you are built",
     "",
     "This section is measured from the running process, not written by hand. It is the only",
     "truth about what this deployment can do. If a capability is not listed here, you do not",
-    "have it -- say so plainly and say what would give it to you, rather than assuming that",
+    selfdev
+      ? "have it yet -- the last section says what to do about that -- and never assume that"
+      : "have it -- say so plainly and say what would give it to you, rather than assuming that",
     "anything described in your character is present. Never state that something is connected,",
     "installed or working unless it says so below or you have just checked it with a tool.",
     "",
@@ -359,8 +411,12 @@ export function deploymentBlock(deployment: Deployment): string {
     'with its repository, run "npm run packs-sync", set whatever it needs in the env file the',
     "service reads, and restart the service -- packs are only read at startup. You cannot do any of",
     "this yourself from a conversation. Do not name a specific pack or repository unless it appears",
-    "above; if someone wants a capability nothing here provides, say that it would take a pack and",
-    "that you do not know of one.",
+    ...(selfdev
+      ? ["above. A capability nothing here provides is a gap to close -- see the last section."]
+      : [
+          "above; if someone wants a capability nothing here provides, say that it would take a pack and",
+          "that you do not know of one.",
+        ]),
     "",
     "### The rest of the setup",
     "",
@@ -372,6 +428,8 @@ export function deploymentBlock(deployment: Deployment): string {
     "",
     `Tool servers running this session: ${deployment.servers.join(", ")}.`,
   );
+
+  if (selfdev) lines.push("", ...RESOURCEFUL);
 
   return lines.join("\n");
 }

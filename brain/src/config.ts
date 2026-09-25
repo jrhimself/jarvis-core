@@ -133,7 +133,7 @@ export interface Config {
    *
    * Used where a prompt has to name somebody -- the nightly passes over the
    * notes and the conversations, which read better with a name than with a
-   * pronoun. Empty falls back to "de gebruiker", which works and reads like a
+   * pronoun. Empty falls back to "the user", which works and reads like a
    * manual. The persona is where the name really lives; this is for the prompts
    * the persona does not reach.
    */
@@ -346,7 +346,7 @@ export interface Config {
  * that is the language they read and write in.
  */
 export function ownerName(config: Config): string {
-  return config.owner === "" ? "de gebruiker" : config.owner;
+  return config.owner === "" ? "the user" : config.owner;
 }
 
 /**

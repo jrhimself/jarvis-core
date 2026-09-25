@@ -28,7 +28,16 @@ import { Telegram } from "./telegram.js";
 import { handlePress } from "./proactive/suggest.js";
 import { packSummary } from "./agent.js";
 import { serveRunnerReport } from "./dev/report-endpoint.js";
-import { handleRunnerPress, supervise } from "./dev/runners.js";
+import {
+  consider,
+  goneMessage,
+  handleRunnerPress,
+  handleRunnerReply,
+  lookIn,
+  supervise,
+  type RunnerSeam,
+} from "./dev/runners.js";
+import { delegatedDevTasks, endDelegated } from "./dev/store.js";
 import { warmRecordedLines } from "./conversation.js";
 import { language } from "./language.js";
 import { configurePlanStore, loadPlanUsage } from "./plan.js";
@@ -36,6 +45,12 @@ import { attachWebsocket } from "./ws.js";
 import { runHealthChecks, specsFor } from "./health.js";
 
 /** How often every dependency is asked whether it still answers. */
+/** How often delegated runners that went quiet are looked in on. */
+const RUNNER_LOOK_MS = 10 * 60_000;
+
+/** A job older than this that turns out to have stopped is tidied without a message. */
+const RUNNER_NEWS_MS = 48 * 3_600_000;
+
 const HEALTH_INTERVAL_MS = 5 * 60 * 1000;
 
 async function main(): Promise<void> {
@@ -79,6 +94,23 @@ async function main(): Promise<void> {
   const bot = listening ? new Telegram(config.suggestToken) : null;
   const chat = bot === null ? null : new Chat(bot, config.suggestChat);
 
+  // What the runner supervisor can do over the delegate seam, which is the
+  // pack's business rather than core's: close a slot, type into it, and mark
+  // the job's record when the runner says it is done.
+  const closeSlot = async (slot: number) => (await packSummary()).delegate.kill(slot);
+  const runnerSeam: RunnerSeam = {
+    reply: async (slot, text) => {
+      const delegate = (await packSummary()).delegate;
+      return delegate.reply === undefined
+        ? { ok: false, error: "this delegate cannot pass a message to a runner" }
+        : delegate.reply(slot, text);
+    },
+    consider: (report, question) => consider(store, report, question),
+    finished: (slot, summary) => {
+      endDelegated(store.devConnection(), slot, { state: "finished", detail: summary }, new Date());
+    },
+  };
+
   const server = createServer({ cert, key }, (req, res) => {
     // Images the assistant fetched come from memory, not from disk.
     if (serveMedia(req, res)) return;
@@ -91,9 +123,7 @@ async function main(): Promise<void> {
     if (
       serveRunnerReport(req, res, config.runnerToken, (report) => {
         if (bot === null) return;
-        void supervise(store, bot, config.suggestChat, report, async (slot) =>
-          (await packSummary()).delegate.kill(slot),
-        );
+        void supervise(store, bot, config.suggestChat, report, closeSlot, runnerSeam);
       })
     ) {
       return;
@@ -163,19 +193,56 @@ async function main(): Promise<void> {
         if (press.chatId !== config.suggestChat) return;
         // Closing a delegated slot travels back over the same seam the job left
         // by, which is the pack's business rather than core's.
-        const closed = await handleRunnerPress(
-          bot,
-          async (slot) => (await packSummary()).delegate.kill(slot),
-          press,
-        );
+        const closed = await handleRunnerPress(bot, closeSlot, press);
         if (closed) return;
         await handlePress(db, bot, press);
       },
       said: async (said) => {
+        // A reply to a runner's question goes to that runner, not to the chat.
+        if (said.chatId === config.suggestChat && (await handleRunnerReply(bot, runnerSeam.reply, said))) {
+          return;
+        }
         await chat.said(said);
       },
     });
     console.log("telegram: listening for answers and questions");
+  }
+
+  // Runners that went quiet without reporting are looked in on from here: one
+  // stuck on a prompt never ends a turn, and one that died never reports.
+  let lookTimer: NodeJS.Timeout | null = null;
+  if (bot !== null) {
+    const look = () => {
+      const db = store.devConnection();
+      const watched = delegatedDevTasks(db).map((task) => ({
+        slot: task.slot ?? -1,
+        task: task.instruction,
+        since: Date.parse(task.createdAt),
+      }));
+      if (watched.length === 0) return;
+      void packSummary()
+        .then((packs) =>
+          lookIn(
+            watched,
+            packs.delegate.slots,
+            (slot, lines) => packs.delegate.tail(slot, lines),
+            (report) => supervise(store, bot, config.suggestChat, report, closeSlot, runnerSeam),
+            async (job) => {
+              endDelegated(db, job.slot, { state: "failed", detail: "the runner stopped without saying it was done" }, new Date());
+              // A job from weeks ago that nobody closed off is tidied quietly;
+              // only one that was still news is worth a message.
+              if (Date.now() - job.since < RUNNER_NEWS_MS) {
+                await bot.send(config.suggestChat, goneMessage(job.slot, job.task));
+              }
+            },
+            Date.now(),
+          ),
+        )
+        .catch((error: unknown) => console.error("runners: could not look in:", error));
+    };
+    look();
+    lookTimer = setInterval(look, RUNNER_LOOK_MS);
+    lookTimer.unref();
   }
 
   server.listen(config.port, () => {
@@ -193,6 +260,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     console.log(`jarvis brain: ${signal} received, shutting down`);
     stopProactive();
+    if (lookTimer !== null) clearInterval(lookTimer);
     hangUp?.();
     chat?.close();
     server.close(() => process.exit(0));

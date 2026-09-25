@@ -23,14 +23,14 @@ export function reviewMessage(task: {
   stat: string;
 }): string {
   const lines = [
-    "<b>JARVIS heeft een fix klaarstaan</b>",
+    "<b>JARVIS has a fix ready</b>",
     "",
     `<i>${escapeHtml(task.instruction)}</i>`,
     "",
     escapeHtml(task.summary),
   ];
   if (task.stat !== "") lines.push("", `<pre>${escapeHtml(task.stat)}</pre>`);
-  lines.push("", `<a href="${escapeHtml(task.prUrl)}">Bekijk de pull request</a>`);
+  lines.push("", `<a href="${escapeHtml(task.prUrl)}">Open the pull request</a>`);
   return lines.join("\n");
 }
 
@@ -69,8 +69,8 @@ export function failureMessage(task: {
 }): string {
   const lines = [
     task.abandoned === true
-      ? "<b>JARVIS heeft een fix laten vallen</b>"
-      : "<b>JARVIS' fix is mislukt</b>",
+      ? "<b>JARVIS dropped a fix</b>"
+      : "<b>JARVIS' fix failed</b>",
     "",
     `<i>${escapeHtml(task.instruction)}</i>`,
     "",
@@ -88,5 +88,5 @@ export function failureMessage(task: {
  * owner knows now, and the reason why is in the written notice and on the task.
  */
 export function spokenFailure(task: { instruction: string; detail: string }): string {
-  return `De fix voor "${task.instruction}" is er niet gekomen: ${task.detail}.`;
+  return `The fix for "${task.instruction}" did not come about: ${task.detail}.`;
 }

@@ -44,13 +44,13 @@ export async function requestDeploy(
   sha: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!isCommitSha(sha)) {
-    return { ok: false, error: "Dat is geen volledige commit-hash." };
+    return { ok: false, error: "That is not a full commit hash." };
   }
   try {
     await writeFile(join(dataDir, REQUEST_FILE), `${sha}\n`, "utf8");
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: `Kon de deploy niet aanvragen: ${String(error)}` };
+    return { ok: false, error: `Could not request the deploy: ${String(error)}` };
   }
 }
 
