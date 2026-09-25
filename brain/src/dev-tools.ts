@@ -34,6 +34,8 @@ import { z } from "zod";
 import type { Config } from "./config.js";
 import { DAILY_LIMIT, MAX_FILES, slugify } from "./dev/guard.js";
 import { SelfDevelopment } from "./dev/run.js";
+import { answerFirst, lookUp } from "./dev/stand-in.js";
+import { language } from "./language.js";
 import { DAILY_GAPS, GAP_ATTEMPTS, type DevTask } from "./dev/store.js";
 
 /** What was proposed, so a later turn can carry out that and nothing else. */
@@ -60,6 +62,9 @@ export interface DevContext {
 }
 
 export const DEV_SERVER_NAME = "selfdev";
+
+/** How long a turn waits for the answer to a question whose ability is being learned. */
+const ANSWER_WAIT_MS = 40_000;
 export const DEV_TOOLS = [`mcp__${DEV_SERVER_NAME}__*`];
 
 function ok(text: string) {
@@ -107,6 +112,9 @@ export function abilityInstruction(ability: string, request: string, runner: boo
     `What made this come up: ${request}`,
     "Build the general ability, not an answer to this one request: a tool in JARVIS' own code, or " +
       "in a pack, that the next request of this kind reaches without anyone's help.",
+    "Build it as generically as you can: the widest ability this request is one case of, with the " +
+      "specifics -- a place, a topic, a device, a name -- as parameters rather than written into the code. " +
+      "If a wider ability covers this and many other requests, build that one.",
     ...(runner
       ? [
           "If you can answer the request while you build it, put the answer in your DONE line too, " +
@@ -261,20 +269,23 @@ export function createDevServer(
     "close_gap",
     "Give yourself an ability you just found you lack, without asking first: something the " +
       "user asked that you cannot do, or cannot know, with anything you have. Try your other " +
-      "tools first -- this is for when none of them gets there. It always builds: the point is " +
-      "that the next request of this kind is answered by you, not by somebody working for you. " +
-      "Name the general ability behind the request, not the request itself: 'look up current " +
-      "local news and road works', not 'what is happening on my street'. A small fix is written " +
-      "here and becomes a pull request; anything bigger goes to a runner on another machine, " +
-      "which builds the ability and, when it can, answers this request along the way. Nothing " +
-      "is merged or deployed without the user's yes. After the call, say in one sentence what " +
-      "you cannot do yet and that you are learning it, and move on; do not wait for it inside " +
-      "this turn. When it refuses, say why and stop -- never try the same thing again in other words.",
+      "tools first -- this is for when none of them gets there. It always builds, as generically " +
+      "as possible: name the widest ability this request is one case of -- 'search and read the " +
+      "web', not 'look up road works in one village'; 'show any camera on the HUD when something " +
+      "happens', not 'show the doorbell' -- so that every request of that kind is answered by you " +
+      "from then on. When the request is a question, pass it as 'question': it is also looked up " +
+      "at once, and the answer comes back in this call so you can say it first. A small ability " +
+      "is written here and becomes a pull request; anything bigger goes to a runner on another " +
+      "machine. Nothing is merged or deployed without the user's yes. After the call, give the " +
+      "answer if there is one, then say in one sentence that you are learning to do this yourself. " +
+      "When it refuses to build, say why and stop -- never try the same thing again in other words.",
     {
       ability: z.string().min(1)
-        .describe("The general ability that is missing, short and stable, e.g. 'read the clock' or 'search the web for current news'"),
+        .describe("The widest general ability that is missing, e.g. 'read the clock' or 'search and read the web'"),
       request: z.string().min(1)
         .describe("What the user asked, in his own words, and what exactly you could not do or know"),
+      question: z.string().optional()
+        .describe("The user's question as he asked it, when it is one that could be looked up; omit for something to do"),
       repo: z.enum(["jarvis", "other"]).default("jarvis")
         .describe("'jarvis' only when the ability can live in this assistant's own source"),
       files: z.array(z.string()).default([])
@@ -286,41 +297,68 @@ export function createDevServer(
     },
     async (args) => {
       const now = new Date();
-      const key = slugify(args.ability);
-      const brake = gapBrake(dev.gapAttempts(key, now), dev.gapsToday(now));
-      if (brake !== null) return refused(brake);
+      // The answer first: looked up now, in parallel with whatever is built.
+      const lookup =
+        args.question === undefined || args.question.trim() === ""
+          ? null
+          : lookUp(args.question, language().current === "nl" ? "Dutch" : "English");
 
-      const verdict = dev.judge(
-        {
-          repo: args.repo,
-          files: args.files,
-          needsNewDependency: args.needsNewDependency,
-          needsNewSecret: args.needsNewSecret,
-          needsOutsideWork: args.needsOutsideWork,
-        },
-        now,
-      );
-      if (verdict.size === "small") {
-        const started = dev.startSmall(abilityInstruction(args.ability, args.request, false), now, key);
-        return ok(
-          `Started (task ${started.id}): the ability is written here and becomes a pull request ` +
-            "the user approves. Say what you cannot do yet and that you are learning it.",
+      const built = await (async (): Promise<{ ok: boolean; text: string }> => {
+        const key = slugify(args.ability);
+        const brake = gapBrake(dev.gapAttempts(key, now), dev.gapsToday(now));
+        if (brake !== null) return { ok: false, text: brake };
+
+        const verdict = dev.judge(
+          {
+            repo: args.repo,
+            files: args.files,
+            needsNewDependency: args.needsNewDependency,
+            needsNewSecret: args.needsNewSecret,
+            needsOutsideWork: args.needsOutsideWork,
+          },
+          now,
         );
-      }
-      if (!dev.canDelegate) {
-        return refused(
-          `Learning this needs more than a small fix (${verdict.reason}) and there is no runner to hand it to. ` +
-            "Say what you cannot do and what it would take.",
+        if (verdict.size === "small") {
+          const started = dev.startSmall(abilityInstruction(args.ability, args.request, false), now, key);
+          return {
+            ok: true,
+            text:
+              `Learning it (task ${started.id}): written here, ending in a pull request the user ` +
+              "approves. Say that you are learning to do this yourself.",
+          };
+        }
+        if (!dev.canDelegate) {
+          return {
+            ok: false,
+            text:
+              `Learning this needs more than a small fix (${verdict.reason}) and there is no runner ` +
+              "to hand it to. Say what you cannot do and what it would take.",
+          };
+        }
+        const handed = await dev.delegateBig(
+          abilityInstruction(args.ability, args.request, true),
+          verdict.reason,
+          now,
+          key,
         );
-      }
-      const handed = await dev.delegateBig(abilityInstruction(args.ability, args.request, true), verdict.reason, now, key);
-      return handed.ok
-        ? ok(
-            `Runner ${handed.slot} is building the ability, because ${verdict.reason}. You answer ` +
-              "its questions; the user hears when it is done, and gets the answer to this request " +
-              "then if the runner found it. Say what you cannot do yet and that you are learning it.",
-          )
-        : refused(handed.error);
+        return handed.ok
+          ? {
+              ok: true,
+              text:
+                `Runner ${handed.slot} is building the ability, because ${verdict.reason}. You answer ` +
+                "its questions and the user hears when it is done. Say that you are learning to do this yourself.",
+            }
+          : { ok: false, text: handed.error };
+      })();
+
+      if (lookup === null) return built.ok ? ok(built.text) : refused(built.text);
+
+      const answer = await answerFirst(lookup, ANSWER_WAIT_MS, (late) => void dev.tell(late));
+      const found =
+        answer === null
+          ? "The answer is still being looked up; it is said and sent to the user as soon as it is found. Say so."
+          : `The answer, looked up just now on the web: ${answer}\nSay this answer first, in your own words.`;
+      return ok(`${found}\n${built.ok ? "" : "Learning it did not start: "}${built.text}`);
     },
     { annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } },
   );

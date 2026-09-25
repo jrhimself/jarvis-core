@@ -46,7 +46,7 @@ import {
   openPullRequest,
   type GitHubConfig,
 } from "./github.js";
-import { failureMessage, reviewMessage, spokenFailure } from "./notify.js";
+import { escapeHtml, failureMessage, reviewMessage, spokenFailure } from "./notify.js";
 import {
   awaitingDevTask,
   createDevTask,
@@ -221,6 +221,15 @@ export class SelfDevelopment {
   /** What a delegated runner is showing right now. */
   async runnerOutput(slot: number, lines: number) {
     return this.#delegate.tail(slot, lines);
+  }
+
+  /** Says something unprompted, and sends it to the written channel too. Never throws. */
+  async tell(text: string): Promise<void> {
+    try {
+      await notify(this.channels, { spoken: text, written: escapeHtml(text) });
+    } catch (error: unknown) {
+      console.error("could not deliver a late answer:", error);
+    }
   }
 
   /** Types a message into a delegated runner, when the delegate can reach back. */

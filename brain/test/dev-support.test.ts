@@ -323,6 +323,7 @@ test("a missing ability becomes a job to build it, not to answer the request", (
   const job = abilityInstruction("search the web for current news", "what are the road works about?", true);
   assert.match(job, /^Give JARVIS the ability to search the web for current news, so that he does it himself/);
   assert.match(job, /not an answer to this one request/);
+  assert.match(job, /as parameters rather than written into the code/);
   assert.match(job, /put the answer in your DONE line too/);
   assert.doesNotMatch(abilityInstruction("read the clock", "time?", false), /DONE line/);
 });

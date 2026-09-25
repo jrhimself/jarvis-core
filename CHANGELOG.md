@@ -30,6 +30,13 @@ that was the end of it. Now that is where the work starts.
   A runner that only looks the answer up leaves JARVIS as unable as before, so it is told in so
   many words that the ability is the job. Nothing it starts is merged or deployed without the
   owner's yes.
+- The answer first. When the gap is a question, `close_gap` also looks it up at once, in a
+  short model run that can search and read the web and do nothing else. It waits up to 40 seconds,
+  so JARVIS says the answer first and learns in the background. An answer that comes later is
+  spoken and sent to the chat on its own. The ability itself is still built: the lookup is a
+  stand-in for today, not the capability.
+- Abilities are built as generically as possible. The runner is told to build the widest ability
+  the request is one case of, with places, topics, devices and names as parameters.
 - Brakes on unasked work, kept in the task table: one attempt per gap at a time, two per gap a week,
   and eight gaps a day. Past them, the tool refuses and says why, and the gap goes to the owner as a
   question. Tasks carry the gap they belong to in a new `gap` column.
