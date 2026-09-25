@@ -394,7 +394,7 @@ export class AgentSession {
         mcpServers: {
           display,
           [BRIEFING_SERVER_NAME]: briefing,
-          [MEMORY_SERVER_NAME]: createMemoryServer(store),
+          [MEMORY_SERVER_NAME]: createMemoryServer(store, showVia(sink)),
           ...packs.servers,
           ...(insightConfigured ? { [INSIGHT_SERVER_NAME]: createInsightServer(store) } : {}),
           ...(devConfigured

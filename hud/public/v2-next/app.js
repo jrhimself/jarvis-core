@@ -1583,13 +1583,21 @@ function _focusPanelNow(id) {
 }
 
 const FOCUS_EASE = '560ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-const FOCUS_GROW = 'transform ' + FOCUS_EASE + ', height ' + FOCUS_EASE + ', margin-bottom ' + FOCUS_EASE;
+const FOCUS_GROW = 'transform ' + FOCUS_EASE + ', width ' + FOCUS_EASE + ', height ' + FOCUS_EASE + ', margin-bottom ' + FOCUS_EASE;
+
+/* Panels that open wide rather than only bigger. A pull request is a long
+   title beside a short id; scaled up in its column it stayed a tall, narrow
+   sheet with every title wrapped over three lines. Laid out this many times
+   wider before it is scaled, the titles get a line each. */
+const WIDE_FOCUS = { work: 2.4 };
 
 /** Back to the desk size, and the rows that do not fit there off again. */
 function settlePanelSize(el, id) {
+  el.style.width = '';
   el.style.height = '';
   el.style.marginBottom = '';
   delete el.dataset.baseH;
+  delete el.dataset.baseW;
   if (window.LiveBridge && LiveBridge.fitPanel) LiveBridge.fitPanel(id);
 }
 
@@ -1631,14 +1639,21 @@ function _focusPanelApply(id, done) {
   /* Enlarged is more than bigger: the rows that fell off the desk panel come
      back, with their details, and the panel grows to hold them. The negative
      margin keeps the column where it was while this one is lifted out. */
+  /* A wide panel is measured at the width it will have, so the rows it gets
+     back are the rows that fit on those longer lines; then it starts from its
+     slot width again and grows into it. */
+  const wideW = WIDE_FOCUS[id]
+    ? Math.max(first.width, Math.min(first.width * WIDE_FOCUS[id], (vw - margin * 2) / 1.25))
+    : first.width;
+  if (wideW > first.width) el.style.width = wideW + 'px';
   if (window.LiveBridge && LiveBridge.fitPanel) LiveBridge.fitPanel(id);
   const body = el.querySelector('.panel-body');
   const baseH = el.offsetHeight;
   let extra = body ? Math.max(0, body.scrollHeight - body.clientHeight) : 0;
   extra = Math.min(extra, Math.max(0, (vh - margin * 2) / 1.25 - baseH));
   const fullH = first.height * (baseH + extra) / Math.max(1, baseH);
-  const scale = Math.min(1.7, (vw - margin * 2) / first.width, (vh - margin * 2) / fullH);
-  const targetW = first.width * scale;
+  const scale = Math.min(1.7, (vw - margin * 2) / wideW, (vh - margin * 2) / fullH);
+  const targetW = wideW * scale;
   const targetH = fullH * scale;
   const targetLeft = (vw - targetW) / 2;
   const targetTop = (vh - targetH) / 2;
@@ -1654,9 +1669,14 @@ function _focusPanelApply(id, done) {
     el.style.height = baseH + 'px';
     el.style.marginBottom = '0px';
   }
+  if (wideW > first.width) {
+    el.dataset.baseW = String(first.width);
+    el.style.width = first.width + 'px';
+  }
   void el.offsetWidth;
   el.style.transition = FOCUS_GROW;
   el.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
+  if (wideW > first.width) el.style.width = wideW + 'px';
   if (extra > 0) {
     el.style.height = baseH + extra + 'px';
     el.style.marginBottom = -extra + 'px';
@@ -1722,6 +1742,7 @@ function _unfocusPanelNow(/* silent */) {
       el.style.height = el.dataset.baseH + 'px';
       el.style.marginBottom = '0px';
     }
+    if (el.dataset.baseW) el.style.width = el.dataset.baseW + 'px';
     let finished = false;
     const finish = (e) => {
       if (e && e.propertyName && e.propertyName !== 'transform') return;

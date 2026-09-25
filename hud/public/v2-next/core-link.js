@@ -49,6 +49,7 @@
     werk: 'work', work: 'work', pull: 'work', pulls: 'work',
     request: 'work', requests: 'work', pr: 'work', prs: 'work',
     note: 'notes', notes: 'notes', notitie: 'notes', notities: 'notes',
+    fact: 'notes', facts: 'notes', feiten: 'notes',
   };
 
   const DEFAULT_STICKY_ORDER = ['weather', 'agenda', 'mail', 'work', 'notes'];
@@ -98,7 +99,7 @@ registerProcessor('mic-tap', MicTap);
     let STICKY_ORDER = DEFAULT_STICKY_ORDER.slice();
     const STICKY_LABEL = {
       weather: 'Weer', agenda: 'Agenda', mail: 'Mail',
-      work: 'Pull requests', notes: 'Notities',
+      work: 'Pull requests', notes: 'Facts',
     };
 
     function windowTopic(title) {
@@ -310,7 +311,7 @@ registerProcessor('mic-tap', MicTap);
       if (payload && payload.type === 'text') {
         items.push({ tag: payload.title || 'Note', text: payload.body || '' });
       } else if (payload && payload.type === 'panel' && Array.isArray(payload.rows)) {
-        for (const r of payload.rows) items.push({ tag: r.label || '', text: r.value || '' });
+        for (const r of payload.rows) items.push({ tag: r.label || '', text: r.value || '', sub: r.hint || '' });
       }
       const tilesArr = (tiles && tiles.tiles) || [];
       if (!items.length) {
@@ -318,7 +319,8 @@ registerProcessor('mic-tap', MicTap);
       }
       return {
         items,
-        title: (payload && payload.title) || (tiles && tiles.topicLabel) || 'Notes',
+        title: (payload && payload.title) || (tiles && tiles.topicLabel) || 'Facts',
+        figure: (payload && payload.figure) || null,
       };
     },
 

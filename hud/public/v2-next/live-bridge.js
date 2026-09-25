@@ -266,11 +266,16 @@
       setBody('notes', emptyHtml());
       return;
     }
+    /* The nightly pass over the notes: what last night added, beside it what
+       it removed, and a row per night. A window from before the pass sent a
+       figure counts its rows. */
     const items = vm.items || [];
-    let html = heroHtml(items.length, items.length === 1 ? 'Note' : 'Notes');
+    let html = vm.figure
+      ? heroHtml(vm.figure.value, 'Added', vm.figure.label ? esc(vm.figure.label) : '')
+      : heroHtml(items.length, items.length === 1 ? 'Fact' : 'Facts');
     html += '<ul class="list compact">';
     items.forEach(function (it) {
-      html += rowHtml('', it.tag, it.text);
+      html += rowHtml('', it.tag, it.text, it.sub);
     });
     html += '</ul>';
     setList('notes', html);

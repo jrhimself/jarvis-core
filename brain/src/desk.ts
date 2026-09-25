@@ -14,7 +14,7 @@ export const CORE_DESK: readonly PackDeskSlot[] = [
   { topic: "agenda", label: "Agenda", briefing: true },
   { topic: "mail", label: "Mail", briefing: true },
   { topic: "work", label: "Pull requests", briefing: true },
-  { topic: "notes", label: "Notities", briefing: true },
+  { topic: "notes", label: "Facts", briefing: true },
 ];
 
 /**

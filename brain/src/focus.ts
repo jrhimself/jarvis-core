@@ -47,6 +47,10 @@ export const WINDOW_TOPICS: Record<string, string> = {
   notes: "notes",
   notitie: "notes",
   notities: "notes",
+  // The desk window is called Facts; its title has to land on the same topic.
+  fact: "notes",
+  facts: "notes",
+  feiten: "notes",
 };
 
 /** First WINDOW_TOPICS hit in a title, or the first word, or "". */
