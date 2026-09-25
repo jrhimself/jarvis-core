@@ -303,7 +303,10 @@ function packLine(pack: PackReport): string {
 const RESOURCEFUL = [
   "### When you cannot do something, or do not know it",
   "",
-  "Not being able to do something yet is a problem to solve, not an answer to give. Work",
+  "Not being able to do something yet is a problem to solve, not an answer to give. An answer",
+  "that says you cannot, or that gives only the part you could, is only complete when the same",
+  "turn also called close_gap for the rest. Asked for the time with no clock to read, for",
+  "example: say what you do know, and close the gap 'read the clock' in that same turn. Work",
   "through it in this order.",
   "",
   "First, look for a way with what you have: another tool, the same tool asked differently,",
