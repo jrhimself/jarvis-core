@@ -17,7 +17,7 @@ import type { DisplayDismiss, DisplayPayload, HomeProvider, PackDisplay } from "
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
-import { fetchAndStore, MediaFetchError } from "./media.js";
+import { fetchAndStore, MediaFetchError, putStream } from "./media.js";
 import { describeScreen, recentScreens, screenById, screenTitle } from "./screens.js";
 
 export type DisplaySink = (
@@ -25,6 +25,13 @@ export type DisplaySink = (
   payload: DisplayPayload,
   dismiss: DisplayDismiss,
   anchor?: string,
+  /**
+   * For a window said again: how far into the answer it went up the first
+   * time, in characters. The cue is then that far into this answer too,
+   * rather than the moment the replaying tool was called, which is before the
+   * answer has begun.
+   */
+  at?: number,
 ) => void;
 
 /**
@@ -40,6 +47,7 @@ function defaultDismiss(payload: DisplayPayload): DisplayDismiss {
       return { mode: "timeout", ms: 45_000 };
     case "panel":
     case "chart":
+    case "weather":
       return { mode: "next-turn" };
     case "text":
       return { mode: "manual" };
@@ -78,8 +86,9 @@ const anchorField = z
   .optional()
   .describe(
     "A word from your own answer that this belongs to, for example 'mail' or 'agenda'. " +
-      "The screen holds it back until you say that word. Leave it out to have it " +
-      "appear where you are in the sentence right now.",
+      "The screen holds it back until you say that word. Several alternatives may be " +
+      "separated by '|' ('agenda|calendar'); the first one said releases it. Leave it " +
+      "out to have it appear where you are in the sentence right now.",
   );
 
 function ok(text: string) {
@@ -317,11 +326,11 @@ export function createDisplayServer(sink: DisplaySink, home: HomeProvider | null
         .string()
         .regex(/^camera\.[a-z0-9_]+$/, "must be a camera entity id, like camera.voordeur")
         .describe("Entity id of the camera"),
-      alt: z.string().min(3).describe("Which camera this is, in Dutch, e.g. 'de voordeur'"),
+      alt: z.string().min(3).describe("Which camera this is, in English, as a title: e.g. 'Front door'"),
       live: z
         .boolean()
-        .default(false)
-        .describe("True to keep refreshing the image, false for a single snapshot"),
+        .default(true)
+        .describe("True (the default) for the moving picture; false only when a single snapshot is asked for"),
       anchor: anchorField,
     },
     async (args) => {
@@ -329,12 +338,14 @@ export function createDisplayServer(sink: DisplaySink, home: HomeProvider | null
       if (still === undefined) return failed("There is no camera to show here.");
       try {
         const stored = await fetchAndStore(still.url, still.headers);
+        const moving = args.live ? home?.cameraStream?.(args.entity_id) : undefined;
         show(
           {
             type: "image",
             url: stored.url,
             alt: args.alt,
             ...(args.live ? { refreshMs: 2000 } : {}),
+            ...(moving === undefined ? {} : { stream: putStream(moving.url, moving.headers) }),
           },
           undefined,
           args.anchor,

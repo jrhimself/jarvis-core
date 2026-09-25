@@ -15,8 +15,15 @@
  *
  * So the far side reports, and the judgement happens here: the instruction that
  * was given is on this side, and only something holding both can tell an ending
- * from a question. A question is relayed. An ending is offered with a button
- * under it, and the slot is closed when the button is pressed, never before.
+ * from a question. A question is relayed, and the slot stays open for the answer.
+ *
+ * An ending closes the slot by itself, but only when two things agree: the model
+ * reads the screen as finished, and the runner wrote its own `DONE:` line, which
+ * its brief asks it to end every turn with. Slots are opened on demand, so one
+ * left standing is not a window somebody might still be looking at -- it is the
+ * next job's place. An ending the runner did not declare itself ("definitively
+ * stuck", in the model's words) is still offered with a button, because that is
+ * the case where a person may want to look before the pane is gone.
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -55,19 +62,23 @@ const JUDGE_TIMEOUT_MS = 90_000;
 const TAIL_CHARS = 6000;
 
 const instructions = (owner: string) =>
-  `Je bewaakt een Claude-runner die namens JARVIS een klus doet op een andere machine.
-Je krijgt de opdracht die hij meekreeg en het laatste scherm van zijn terminal.
+  `You supervise a Claude runner doing a job for JARVIS on another machine.
+You get the brief it was started with and the last screen of its terminal.
 
-Antwoord met precies één regel, in één van deze drie vormen:
+Answer with exactly one line, in one of these three forms:
 
-KLAAR: <in één zin wat er nu ligt>
-VRAAG: <in één zin wat hij van ${owner} nodig heeft>
-BEZIG
+DONE: <in one sentence, what is there now>
+QUESTION: <in one sentence, what it needs from ${owner}>
+WORKING
 
-Kies KLAAR alleen als het werk af is of definitief gestrand. Kies VRAAG als hij
-wacht op een keuze, een goedkeuring of informatie die alleen ${owner} heeft.
-Kies BEZIG bij alles daartussen, ook als je het niet zeker weet -- een runner
-die nog draait mag niet gesloten worden.`;
+Choose DONE only when the work is finished or definitively stuck. Choose QUESTION
+when it is waiting for a choice, an approval or information only ${owner} has.
+Choose WORKING for everything in between, including when you are not sure -- a
+runner that is still going must not be closed.`;
+
+/** The line that ends a runner's turn, in the words its brief asks for or the older ones. */
+const DONE_LINE = /^(?:DONE|KLAAR)\s*:\s*(.+)$/i;
+const QUESTION_LINE = /^(?:QUESTION|VRAAG)\s*:\s*(.+)$/i;
 
 /**
  * Reads the model's one line back.
@@ -83,10 +94,10 @@ export function readVerdict(answer: string): Verdict {
     .find((l) => l !== "");
   if (line === undefined) return { state: "working" };
 
-  const done = /^KLAAR\s*:\s*(.+)$/i.exec(line);
+  const done = DONE_LINE.exec(line);
   if (done?.[1] !== undefined) return { state: "done", summary: done[1].trim() };
 
-  const asking = /^VRAAG\s*:\s*(.+)$/i.exec(line);
+  const asking = QUESTION_LINE.exec(line);
   if (asking?.[1] !== undefined) return { state: "asking", question: asking[1].trim() };
 
   return { state: "working" };
@@ -101,10 +112,10 @@ function excerpt(text: string): string {
 /** Asks the model what it is looking at. */
 export async function judge(store: MemoryStore, report: RunnerReport): Promise<Verdict> {
   const prompt = [
-    `Opdracht die runner ${report.slot} meekreeg:`,
+    `Brief runner ${report.slot} was started with:`,
     report.task.trim(),
     "",
-    "Laatste scherm van zijn terminal:",
+    "Last screen of its terminal:",
     excerpt(report.tail),
   ].join("\n");
 
@@ -137,7 +148,7 @@ export async function judge(store: MemoryStore, report: RunnerReport): Promise<V
 /** The message that offers to close a slot. */
 export function doneMessage(report: RunnerReport, summary: string): string {
   return [
-    `<b>Runner ${report.slot} is klaar</b>`,
+    `<b>Runner ${report.slot} is done</b>`,
     "",
     escapeHtml(summary),
     "",
@@ -148,7 +159,7 @@ export function doneMessage(report: RunnerReport, summary: string): string {
 /** The message that passes on what the runner wants to know. */
 export function questionMessage(report: RunnerReport, question: string): string {
   return [
-    `<b>Runner ${report.slot} wacht op jou</b>`,
+    `<b>Runner ${report.slot} is waiting for you</b>`,
     "",
     escapeHtml(question),
     "",
@@ -169,8 +180,8 @@ function firstLine(task: string): string {
 /** The two answers to "it is finished", in the order they are shown. */
 export function buttonsFor(slot: number): { text: string; data: string }[] {
   return [
-    { text: "Sluiten", data: `${TAG}:close:${slot}` },
-    { text: "Laat open", data: `${TAG}:keep:${slot}` },
+    { text: "Close", data: `${TAG}:close:${slot}` },
+    { text: "Keep open", data: `${TAG}:keep:${slot}` },
   ];
 }
 
@@ -187,8 +198,65 @@ export function pressed(data: string): { action: "close" | "keep"; slot: number 
 
 /** What a message becomes once it has been answered. */
 export function settled(body: string, closed: boolean, detail = ""): string {
-  const note = closed ? "Slot gesloten." : "Blijft open.";
+  const note = closed ? "Slot closed." : "Kept open.";
   return `${body}\n\n<i>${escapeHtml(detail === "" ? note : `${note} ${detail}`)}</i>`;
+}
+
+/**
+ * Whether the runner declared itself finished, in its own words.
+ *
+ * The last `DONE:` or `QUESTION:` line on the screen decides (`KLAAR:` and
+ * `VRAAG:` from older briefs count too). The brief itself
+ * mentions both words, quoted and with a placeholder after them, and can still
+ * be on screen for a short job; a line has to start with the word, after the
+ * bullet the terminal draws, to count as the runner speaking.
+ */
+export function declaredDone(tail: string): boolean {
+  let last: "done" | "asking" | null = null;
+  for (const raw of tail.split("\n")) {
+    const line = raw.replace(/^[\s●⏺•*>-]+/u, "");
+    if (line.includes("<")) continue;
+    if (DONE_LINE.test(line)) last = "done";
+    else if (QUESTION_LINE.test(line)) last = "asking";
+  }
+  return last === "done";
+}
+
+/** Closes a slot over the delegate seam. */
+export type CloseSlot = (slot: number) => Promise<Closed>;
+
+/**
+ * Says what a verdict means, and closes the slot when the job is over.
+ *
+ * Split from `supervise` so what happens after a judgement can be exercised
+ * without a model: a runner that declared itself done is closed and the message
+ * says so; anything less certain gets the buttons it always had.
+ */
+export async function actOn(
+  bot: Sender,
+  chatId: string,
+  report: RunnerReport,
+  verdict: Verdict,
+  close?: CloseSlot,
+): Promise<void> {
+  if (verdict.state === "asking") {
+    await bot.send(chatId, questionMessage(report, verdict.question));
+    return;
+  }
+  if (verdict.state !== "done") return;
+
+  const body = doneMessage(report, verdict.summary);
+  if (close !== undefined && declaredDone(report.tail)) {
+    const result = await close(report.slot);
+    if (result.ok) {
+      offered.delete(report.slot);
+      await bot.send(chatId, settled(body, true));
+      return;
+    }
+    console.error(`runners: could not close slot ${report.slot}: ${result.error}`);
+  }
+  const messageId = await bot.send(chatId, body, buttonsFor(report.slot));
+  if (messageId !== null) offered.set(report.slot, { chatId, messageId, body });
 }
 
 /** Slots with a judgement already in flight, so a burst is judged once. */
@@ -215,6 +283,7 @@ export async function supervise(
   bot: Sender,
   chatId: string,
   report: RunnerReport,
+  close?: CloseSlot,
 ): Promise<Verdict> {
   if (chatId === "") return { state: "working" };
   if (judging.has(report.slot)) return { state: "working" };
@@ -228,14 +297,7 @@ export async function supervise(
       ),
     ]);
 
-    if (verdict.state === "done") {
-      const body = doneMessage(report, verdict.summary);
-      const messageId = await bot.send(chatId, body, buttonsFor(report.slot));
-      if (messageId !== null) offered.set(report.slot, { chatId, messageId, body });
-    } else if (verdict.state === "asking") {
-      await bot.send(chatId, questionMessage(report, verdict.question));
-    }
-
+    await actOn(bot, chatId, report, verdict, close);
     return verdict;
   } catch (error) {
     console.error(`runners: could not judge slot ${report.slot}:`, error);
@@ -266,14 +328,14 @@ export async function handleRunnerPress(
 
   if (answer.action === "keep") {
     offered.delete(answer.slot);
-    await bot.acknowledge(press.queryId, "Blijft open.");
+    await bot.acknowledge(press.queryId, "Kept open.");
     await bot.settle(press.chatId, press.messageId, settled(body, false));
     return true;
   }
 
   const result = await close(answer.slot);
   offered.delete(answer.slot);
-  await bot.acknowledge(press.queryId, result.ok ? "Slot gesloten." : "Dat lukte niet.");
+  await bot.acknowledge(press.queryId, result.ok ? "Slot closed." : "That did not work.");
   await bot.settle(
     press.chatId,
     press.messageId,

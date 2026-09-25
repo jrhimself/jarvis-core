@@ -25,6 +25,8 @@
  */
 
 import { proactiveAtLeast, type Config } from "./config.js";
+import type { Delegate } from "@jarvis/shared";
+
 import type { MemoryStore } from "./memory/store.js";
 
 export type HealthState = "ok" | "down" | "off";
@@ -131,7 +133,7 @@ export function coreSpecs(config: Config, store: MemoryStore): ServerSpec[] {
       // Not a ping: `all(1)` runs a real query through the open SQLite handle.
       probe: async () => {
         store.all(1);
-        return "database antwoordt";
+        return "database answers";
       },
     },
     ...(proactiveAtLeast(config.proactive, "observe")
@@ -140,7 +142,7 @@ export function coreSpecs(config: Config, store: MemoryStore): ServerSpec[] {
             server: "insight",
             probe: async () => {
               const counts = store.proactiveCounts();
-              return `${counts.observations} observaties`;
+              return `${counts.observations} observations`;
             },
           },
         ]
@@ -161,11 +163,39 @@ export function specsFor(
   store: MemoryStore,
   packServers: readonly string[],
   packProbes: Readonly<Record<string, Probe>>,
+  delegate?: Delegate,
 ): ServerSpec[] {
   return [
     ...coreSpecs(config, store),
+    ...(delegate?.available === true ? [{ server: "delegate", probe: delegateProbe(delegate) }] : []),
     ...packServers.map((server) => ({ server, probe: packProbes[server] ?? null, pack: true })),
   ];
+}
+
+/**
+ * Asks the delegate whether its far side answers.
+ *
+ * A delegate is not an MCP server, so no pack probe covers it, and for a long
+ * time nothing did: the channel could be dead for days and the first to know was
+ * the one request that needed a runner. Core's row rather than a pack's, because
+ * the seam is core's -- which pack fills it does not change what is being asked.
+ *
+ * Built once per delegate and kept, so the probe keeps its identity across calls
+ * the way every other probe does.
+ */
+const delegateProbes = new WeakMap<Delegate, Probe>();
+
+function delegateProbe(delegate: Delegate): Probe {
+  const known = delegateProbes.get(delegate);
+  if (known !== undefined) return known;
+  const probe: Probe = async () => {
+    if (delegate.check !== undefined) return delegate.check();
+    const free = await delegate.free();
+    if (free === null) throw new Error("unreachable");
+    return `${free.length} of ${delegate.slots.length} slots free`;
+  };
+  delegateProbes.set(delegate, probe);
+  return probe;
 }
 
 /** Runs every distinct probe once, side by side, and reports one row per server. */
@@ -201,7 +231,7 @@ export async function runHealthChecks(specs: readonly ServerSpec[]): Promise<Hea
     const verdict = verdicts.get(spec.probe);
     // Unreachable while the set above is built from these same specs.
     if (verdict === undefined)
-      return { server: spec.server, state: "down" as const, detail: "geen uitslag", ...from };
+      return { server: spec.server, state: "down" as const, detail: "no result", ...from };
     return {
       server: spec.server,
       state: verdict.state,

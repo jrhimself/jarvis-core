@@ -118,7 +118,11 @@ export class Voice implements SpeakingVoice {
 
       const audio = message["audio"];
       if (typeof audio === "string" && audio !== "") {
-        this.handlers.onAudio(audio, normaliseAlignment(message["normalizedAlignment"] ?? message["alignment"]));
+        // The plain alignment is one entry per character of the text that was
+        // sent, which is the text on the transcript. The normalised one is of
+        // the text as the voice read it, numbers written out and marks dropped,
+        // and its count drifts from the transcript's a little more per sentence.
+        this.handlers.onAudio(audio, normaliseAlignment(message["alignment"] ?? message["normalizedAlignment"]));
       }
 
       if (message["isFinal"] === true) {

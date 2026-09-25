@@ -19,9 +19,12 @@ import { dirname, join } from "node:path";
 
 import { loadConfig } from "./config.js";
 import { AgentSession } from "./agent.js";
+import { language } from "./language.js";
 import { Opening } from "./opening.js";
+import { SectionMarks, type SectionPass } from "./sections.js";
 import { SpokenText } from "./spoken.js";
 import { RecordedLines } from "./voice/lines.js";
+import { pcmDurationMs, spreadAlignment } from "./voice/pace.js";
 import type { PendingDevAction } from "./dev-tools.js";
 import {
   openVoice,
@@ -41,9 +44,12 @@ const config = loadConfig();
  */
 const recorded = new RecordedLines(config, join(dirname(config.memoryPath), "voice-lines"));
 
-/** Records the deployment's lines that are not on disk yet. Called at startup. */
-export function warmRecordedLines(): Promise<number> {
-  return recorded.warm(config.thinkingLines, config.speechLang);
+/**
+ * Records one language's lines that are not on disk yet. Called at startup for
+ * the current language, and again for a language the moment it is switched to.
+ */
+export function warmRecordedLines(lang: SpeechLang = language().current): Promise<number> {
+  return recorded.warm(config.spoken[lang].thinking, lang);
 }
 
 /** Re-check the credit balance at most this often. */
@@ -158,7 +164,13 @@ export interface ConversationCallbacks {
   ) => void;
   onAudio: (turnId: string, seq: number, data: string, alignment?: Alignment) => void;
   onAudioDone: (turnId: string) => void;
-  onDone: (turnId: string, durationMs: number, expectsReply: boolean) => void;
+  /**
+   * The answer reached a part about a desk topic: the model's marker stood at
+   * `chars`, counted in the text sent through `onText` for this turn (the
+   * opening line included). The marker itself is not in that text.
+   */
+  onSection?: (turnId: string, topic: string, chars: number) => void;
+  onDone: (turnId: string, durationMs: number, expectsReply: boolean, briefing?: boolean) => void;
   onError: (turnId: string | undefined, message: string) => void;
 }
 
@@ -220,6 +232,10 @@ export class Conversation {
     const startedAt = performance.now();
     this.callbacks.onActivity(turnId, "denkt na");
 
+    // Read once, so a switch halfway through a turn cannot give it a voice in
+    // one language and an answer in the other.
+    const lang = language().current;
+
     // How far the answer has been written when something is put on screen. A
     // tool is reached for mid-sentence and answers in milliseconds, so this is
     // the only moment at which the screen and the sentence are still in step.
@@ -227,7 +243,7 @@ export class Conversation {
 
     // Opened before the first token so the first sentence can be spoken as
     // soon as it exists, rather than after the answer is complete.
-    const speaking = this.voice === "off" ? null : await this.#openVoice(turnId, abort);
+    const speaking = this.voice === "off" ? null : await this.#openVoice(turnId, abort, lang);
     const voice = speaking?.voice ?? null;
 
     // Text for the screen waits until the browser knows whether the brain
@@ -252,12 +268,18 @@ export class Conversation {
 
     // Something to say while this turn is still fetching. The boundaries are
     // Opening's; the clock is this one's, because it is the one holding a voice.
-    const opening = new Opening(config.thinkingLines, config.thinkingAfterMs);
+    const opening = new Opening(config.spoken[lang].thinking, config.thinkingAfterMs);
     let thinking: NodeJS.Timeout | null = null;
     // The answer, with its dashes taken out on the way to the voice and the
     // transcript. Everything the model writes goes through it; the opening
     // lines below do not, being ours.
     const spoken = new SpokenText();
+    // After the dash filter, so what is counted is what is shown and said.
+    const sections = new SectionMarks();
+    const place = (pass: SectionPass): string => {
+      for (const mark of pass.marks) this.callbacks.onSection?.(turnId, mark.topic, written + mark.at);
+      return pass.text;
+    };
 
     const stopThinking = (): void => {
       if (thinking === null) return;
@@ -282,8 +304,8 @@ export class Conversation {
         show(said, true);
         // Recorded earlier, so it is heard now and the voice's socket stays
         // free for the first sentence of the answer.
-        const clip = speaking === null ? null : recorded.get(line, config.speechLang);
-        if (clip !== null && speaking !== null) speaking.play(clip);
+        const clip = speaking === null ? null : recorded.get(line, lang);
+        if (clip !== null && speaking !== null) speaking.play(clip, said);
         else voice?.speak(said);
       }, opening.afterMs);
       thinking.unref?.();
@@ -292,6 +314,12 @@ export class Conversation {
     armThinking();
 
     try {
+      // A session speaks the language it was opened in. After a switch the
+      // next question starts a new one: what was said before is in memory, and
+      // a session told to answer in two languages answers in neither reliably.
+      if (this.#agent !== null && !this.#agent.broken && this.#agent.lang !== lang) {
+        this.#endSession();
+      }
       if (this.#agent === null || this.#agent.broken) {
         this.#agent?.close();
         this.#agent = new AgentSession();
@@ -307,7 +335,7 @@ export class Conversation {
             // it for good.
             if (opening.said()) armThinking();
             else stopThinking();
-            const text = spoken.push(chunk);
+            const text = place(sections.push(spoken.push(chunk)));
             if (text === "") return;
             written += text.length;
             show(text);
@@ -328,10 +356,12 @@ export class Conversation {
             opening.said();
             stopThinking();
           },
-          onDisplay: (id, payload, dismiss, anchor) => {
+          onDisplay: (id, payload, dismiss, anchor, at) => {
             if (abort.signal.aborted) return;
+            // A window said again belongs where it was the first time: that far
+            // into the answer, counted from where this answer begins.
             this.callbacks.onDisplay(turnId, id, payload, dismiss, {
-              chars: written,
+              chars: written + (at ?? 0),
               ...(anchor === undefined ? {} : { anchor }),
             });
           },
@@ -346,7 +376,12 @@ export class Conversation {
         abort.signal,
       );
 
-      const rest = spoken.flush();
+      const flushed = place(sections.push(spoken.flush()));
+      const held = sections.flush();
+      for (const mark of held.marks) {
+        this.callbacks.onSection?.(turnId, mark.topic, written + flushed.length + mark.at);
+      }
+      const rest = flushed + held.text;
       if (rest !== "" && !abort.signal.aborted) {
         written += rest.length;
         show(rest);
@@ -364,6 +399,7 @@ export class Conversation {
         turnId,
         Math.round(performance.now() - startedAt),
         endsInQuestion(result.text),
+        result.briefing,
       );
     } catch (error) {
       voice?.abort();
@@ -391,7 +427,7 @@ export class Conversation {
    * audio the way it does for an answer, but nothing is thought about and no
    * tokens are spent: the text goes straight to the voice.
    */
-  async say(turnId: string, text: string, lang: SpeechLang = config.speechLang): Promise<void> {
+  async say(turnId: string, text: string, lang: SpeechLang = language().current): Promise<void> {
     if (this.#closed) return;
 
     if (this.#current !== null) this.#current.abort.abort();
@@ -438,14 +474,18 @@ export class Conversation {
   async #openVoice(
     turnId: string,
     abort: AbortController,
-    lang: SpeechLang = config.speechLang,
+    lang: SpeechLang = language().current,
     fx: SpeechFx = ANSWER_FX,
   ): Promise<{
     voice: SpeakingVoice;
     spoken: Promise<void>;
     ready: Promise<void>;
-    /** Plays audio that was recorded earlier, as if the voice had just made it. */
-    play: (clip: Buffer) => void;
+    /**
+     * Plays audio that was recorded earlier, as if the voice had just made
+     * it. The text is what the clip says, so the transcript can be paced on
+     * it the way it is paced on a voice that sends timings.
+     */
+    play: (clip: Buffer, text: string) => void;
   } | null> {
     console.log(
       `voice: opening (${voiceProviderName(config)}, key ${voiceConfigured(config) ? "present" : "missing"}, voice ${voiceFor(config, lang) || "default"}, lang ${lang})`,
@@ -522,7 +562,12 @@ export class Conversation {
       lang,
     );
 
-    return { voice, spoken, ready, play: (clip) => play(clip.toString("base64")) };
+    return {
+      voice,
+      spoken,
+      ready,
+      play: (clip, text) => play(clip.toString("base64"), spreadAlignment(text, pcmDurationMs(clip.length))),
+    };
   }
 
   cancel(turnId: string): void {

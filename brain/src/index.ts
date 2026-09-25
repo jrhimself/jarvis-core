@@ -30,6 +30,8 @@ import { packSummary } from "./agent.js";
 import { serveRunnerReport } from "./dev/report-endpoint.js";
 import { handleRunnerPress, supervise } from "./dev/runners.js";
 import { warmRecordedLines } from "./conversation.js";
+import { language } from "./language.js";
+import { configurePlanStore, loadPlanUsage } from "./plan.js";
 import { attachWebsocket } from "./ws.js";
 import { runHealthChecks, specsFor } from "./health.js";
 
@@ -38,6 +40,11 @@ const HEALTH_INTERVAL_MS = 5 * 60 * 1000;
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // Last known plan usage, so a cold websocket still has numbers for the pill
+  // before any turn has refreshed them this process.
+  configurePlanStore(config.dataDir);
+  loadPlanUsage();
 
   let cert: Buffer;
   let key: Buffer;
@@ -84,7 +91,9 @@ async function main(): Promise<void> {
     if (
       serveRunnerReport(req, res, config.runnerToken, (report) => {
         if (bot === null) return;
-        void supervise(store, bot, config.suggestChat, report);
+        void supervise(store, bot, config.suggestChat, report, async (slot) =>
+          (await packSummary()).delegate.kill(slot),
+        );
       })
     ) {
       return;
@@ -103,6 +112,14 @@ async function main(): Promise<void> {
   // kept, so a slow turn is acknowledged from disk rather than from a socket.
   void warmRecordedLines().catch((error: unknown) => {
     console.warn("voice: could not record the opening lines:", error);
+  });
+  // A language nobody spoke before has no recorded lines yet; a switch asked
+  // for in conversation needs them as much as the start does.
+  language().onChange((lang) => {
+    console.log(`language: switched to ${lang}`);
+    void warmRecordedLines(lang).catch((error: unknown) =>
+      console.warn("language: could not record the lines:", error),
+    );
   });
 
   // Loading the model and indexing older facts takes a few seconds; neither
@@ -129,7 +146,7 @@ async function main(): Promise<void> {
   const checkHealth = (): void => {
     void packSummary()
       .then((packs) =>
-        runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes)),
+        runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
       )
       .catch((error: unknown) => console.error("health checks failed:", error));
   };

@@ -8,7 +8,7 @@
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { formatLocal } from "@jarvis/shared";
+import { formatLocal, type DisplayPayload, type PackDisplay } from "@jarvis/shared";
 
 import { embed, fromBlob, similarity, toBlob } from "./embedding.js";
 import type { CorpusRun, Fact, FactKind, MemoryStore, RevisionReason, Session } from "./store.js";
@@ -344,10 +344,47 @@ export function renderRun(run: CorpusRun): string {
   );
 }
 
+/** A night that neither added nor dropped anything. */
+function quietRun(run: CorpusRun): boolean {
+  return run.written === 0 && run.retired === 0 && run.gone === 0;
+}
+
+/**
+ * The window over the nightly passes: one row per night, what it added and
+ * what it removed.
+ *
+ * Built here rather than left to the model. Asked to put the history on
+ * screen, it wrote its own shorthand per row -- "+28, -16 (824)" -- which
+ * nobody reads as facts added and removed. The title is what the desk panel
+ * is called, and it has to keep mapping to the `notes` topic (see
+ * WINDOW_TOPICS), or the window stops opening on its section marker.
+ */
+export function factsPanel(runs: readonly CorpusRun[]): DisplayPayload | null {
+  const newest = runs[0];
+  if (newest === undefined || quietRun(newest)) return null;
+  return {
+    type: "panel",
+    title: "Facts",
+    figure: { value: newest.written, label: `${newest.retired} removed` },
+    rows: runs.map((run) => ({
+      label: formatLocal(new Date(run.at), { weekday: "short", day: "numeric", month: "short" }),
+      value: quietRun(run)
+        ? "no change"
+        : `${run.written > 0 ? "+" : ""}${run.written} added · ` +
+          `${run.retired > 0 ? "−" : ""}${run.retired} removed`,
+      hint: `${run.factsAfter} facts`,
+    })),
+  };
+}
+
 /** A pass is nightly, so this much silence means one did not happen. */
 const RUN_OVERDUE_MS = 30 * 3_600_000;
 
-export function createMemoryServer(store: MemoryStore) {
+/**
+ * `display`, when there is a screen, is where `note_ingest` puts its own
+ * window; without one (the prompt-size tool) it only answers.
+ */
+export function createMemoryServer(store: MemoryStore, display?: PackDisplay) {
   const recall = tool(
     "recall",
     "Look something up in your memory of this household — preferences, people, " +
@@ -469,9 +506,8 @@ export function createMemoryServer(store: MemoryStore) {
       "while working with a coding agent, which become facts in your memory. Use it as " +
       "the last item of the morning briefing, and whenever he asks what you picked up " +
       "from his notes or whether the ingest still runs. When a night changed something, " +
-      "say it in one sentence and put the history on screen with show_panel as well — " +
-      "one row per night, the date as the label. A night that changed nothing is worth " +
-      "neither: no sentence, no panel.",
+      "say it in one sentence; the tool puts the history on screen by itself, so never " +
+      "call show_panel for it. A night that changed nothing is worth no sentence.",
     {
       limit: z.number().int().min(1).max(14).default(7).describe("How many nights"),
     },
@@ -489,10 +525,14 @@ export function createMemoryServer(store: MemoryStore) {
           : `Let op: de laatste pass is ${Math.floor(silent / 3_600_000)} uur geleden; ` +
             "hij hoort elke nacht te draaien.";
 
-      const quiet = newest.written === 0 && newest.retired === 0 && newest.gone === 0;
+      const quiet = quietRun(newest);
+      const panel = factsPanel(runs);
+      if (panel !== null && display !== undefined) {
+        display(panel, undefined, "notes|notities|facts|feiten", "facts");
+      }
       const note = quiet
         ? "Laatste nacht veranderde er niets — in de briefing niets zeggen en niets tonen."
-        : "Toon deze historie ook op het scherm, naast wat je erover zegt.";
+        : "Geen show_panel hiervoor, en zeg niets over het scherm.";
 
       // Which notes the newest pass read, so the briefing can say what it was
       // about rather than only how many facts it was. Measured from the run

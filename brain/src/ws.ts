@@ -12,12 +12,15 @@ import { parseClientMessage, type ServerMessage, type PipelineStage } from "@jar
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { packSummary } from "./agent.js";
+import { mergeDeskSlots } from "./desk.js";
 import { loadConfig } from "./config.js";
 import { Conversation } from "./conversation.js";
+import { interfaceLanguage, language } from "./language.js";
 import { runHealthChecks, specsFor } from "./health.js";
 import { screenGone } from "./screens.js";
 import { addLiveSession } from "./live.js";
 import { memory } from "./memory/store.js";
+import { FocusGate, panelOfDisplay } from "./focus.js";
 import { onPlanUsage, planUsage } from "./plan.js";
 import { METRICS_INTERVAL_MS, readMetrics } from "./metrics.js";
 import { tileFeed } from "./tiles.js";
@@ -54,19 +57,33 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     // The context panel, fed by the figures the packs put on their own answers.
     // Nothing is asked of any pack and nothing is asked of the model: the tiles
     // ride along on results this process already sees.
+    // Lights the matching standing desk panel when a turn talks about it.
+    // Briefing and ordinary answers both raise focus; the gate de-dupes.
+    const focus = new FocusGate(send);
+
+    // Declared before the tile sink so the sink can ask whether a turn is open
+    // without reading a binding that does not exist yet.
+    let conversation!: Conversation;
+
     const noteFacts = tileFeed((source, topic, tiles) => {
       send({ kind: "tiles", source, topic: topic.id, topicLabel: topic.label, tiles });
+      // Standing watchers also flow through here; only light a panel while a
+      // turn is actually being answered, not on the once-a-minute refresh.
+      if (conversation.busy) focus.focus(topic.id);
     });
 
-    const conversation = new Conversation(
+    conversation = new Conversation(
       {
         onText: (turnId, text, opening) =>
           send({ kind: "text", turnId, text, ...(opening === true ? { opening: true } : {}) }),
         onActivity: (turnId, label) =>
           send({ kind: "activity", turnId, label, stage: stageFor(label) }),
         onToolResult: noteFacts,
-        onDisplay: (turnId, id, payload, dismiss, cue) =>
-          send({ kind: "display", turnId, id, payload, dismiss, cue }),
+        onDisplay: (turnId, id, payload, dismiss, cue) => {
+          send({ kind: "display", turnId, id, payload, dismiss, cue });
+          const panel = panelOfDisplay(payload);
+          if (panel !== null) focus.focus(panel, cue);
+        },
         onVoice: (turnId, available, reason, lang, fx) =>
           send({
             kind: "voice",
@@ -81,9 +98,15 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             ? { kind: "audio", turnId, seq, data }
             : { kind: "audio", turnId, seq, data, alignment }),
         onAudioDone: (turnId) => send({ kind: "audio_done", turnId }),
-        onDone: (turnId, durationMs, expectsReply) =>
-          send({ kind: "done", turnId, durationMs, expectsReply }),
-        onError: (turnId, message) => send({ kind: "error", turnId, message }),
+        onSection: (_turnId, topic, chars) => focus.section(topic, chars),
+        onDone: (turnId, durationMs, expectsReply, briefing) => {
+          send({ kind: "done", turnId, durationMs, expectsReply, ...(briefing === true ? { briefing: true } : {}) });
+          focus.unfocus();
+        },
+        onError: (turnId, message) => {
+          send({ kind: "error", turnId, message });
+          focus.unfocus();
+        },
       },
       { idleMs: config.sessionIdleMs, maxTurns: config.sessionMaxTurns },
     );
@@ -98,10 +121,33 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
 
     send({ kind: "ready", sessionId: null, version: brainVersion() });
 
+    // Standing desk windows: core defaults plus whatever started packs declared.
+    void packSummary()
+      .then((packs) => {
+        const slots = mergeDeskSlots(packs.desk);
+        send({
+          kind: "desk",
+          slots: slots.map((slot) => ({
+            topic: slot.topic,
+            label: slot.label,
+            ...(slot.briefing === true ? { briefing: true } : {}),
+          })),
+        });
+      })
+      .catch((error: unknown) => console.error("desk slots failed:", error));
+
     // The plan's pill: what is known now, and every change after.
     const known = planUsage();
     if (known !== null) send({ kind: "usage", usage: known });
     const forgetPlan = onPlanUsage((usage) => send({ kind: "usage", usage }));
+
+    // The language switch: where it stands, and every flip after, whichever
+    // page flipped it.
+    send({ kind: "lang", lang: language().current });
+    const forgetLang = language().onChange((lang) => send({ kind: "lang", lang }));
+    // The screen's own language, which only changes when somebody asks for it.
+    send({ kind: "ui_lang", lang: interfaceLanguage().current });
+    const forgetScreenLang = interfaceLanguage().onChange((lang) => send({ kind: "ui_lang", lang }));
 
     // Ask every dependency whether it actually answers, and tell the HUD.
     // "ready" alone only ever proved the websocket; a dead bridge or an
@@ -110,7 +156,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     void packSummary()
       .then((packs) =>
         runHealthChecks(
-          specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes),
+          specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes, packs.delegate),
         ),
       )
       .then((checks) => send({ kind: "health", checks }))
@@ -166,12 +212,19 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       }
 
       if (message.kind === "say") {
-        void conversation.say(message.turnId, message.text, message.lang ?? config.speechLang);
+        void conversation.say(message.turnId, message.text, message.lang);
+        return;
+      }
+
+      if (message.kind === "set_lang") {
+        // Logged, and the lines for it recorded, by the listener in index.ts.
+        language().set(message.lang);
         return;
       }
 
       if (message.kind === "cancel") {
         conversation.cancel(message.turnId);
+        focus.unfocus();
         return;
       }
 
@@ -211,7 +264,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             listener?.close();
             listener = null;
           },
-        });
+        }, language().current);
         return;
       }
 
@@ -239,6 +292,8 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       clearInterval(watchTimer);
       forgetLiveSession();
       forgetPlan();
+      forgetLang();
+      forgetScreenLang();
       listener?.close();
       conversation.close();
     };
