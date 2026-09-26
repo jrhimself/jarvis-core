@@ -840,6 +840,10 @@ registerProcessor('mic-tap', MicTap);
         return;
       }
 
+      // A window with no turn was not asked for: the brain put it up itself, so
+      // there is no turn to match it against.
+      if (m.kind === 'display' && !m.turnId) { handleDisplay(m); return; }
+
       if (!turn || m.turnId !== turn.id) return;
       if (m.kind === 'display') handleDisplay(m);
       else if (m.kind === 'voice') onVoice(m);

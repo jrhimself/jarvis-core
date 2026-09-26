@@ -315,7 +315,11 @@ export type ServerMessage =
     }
   | {
       kind: "display";
-      turnId: string;
+      /**
+       * Absent when nothing was asked: a window the brain put up on its own,
+       * which the HUD must not drop for belonging to a turn it does not know.
+       */
+      turnId?: string;
       /** Identifies this item, so it can be replaced or cleared later. */
       id: string;
       payload: DisplayPayload;

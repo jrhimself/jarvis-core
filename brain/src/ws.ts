@@ -114,10 +114,13 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     // One microphone per connection, opened on demand and closed with it.
     let listener: Listener | null = null;
 
-    // What lets the brain speak between questions. Registered for as long as
-    // the page is open and forgotten with it, so a line meant for a HUD that
-    // closed an hour ago goes nowhere rather than into a dead socket.
-    const forgetLiveSession = addLiveSession((text) => send({ kind: "announce", text }));
+    // What lets the brain speak and show something between questions. Registered
+    // for as long as the page is open and forgotten with it, so a line meant for
+    // a HUD that closed an hour ago goes nowhere rather than into a dead socket.
+    const forgetLiveSession = addLiveSession({
+      say: (text) => send({ kind: "announce", text }),
+      show: (id, payload, dismiss) => send({ kind: "display", id, payload, dismiss }),
+    });
 
     send({ kind: "ready", sessionId: null, version: brainVersion() });
 

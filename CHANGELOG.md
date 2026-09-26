@@ -15,6 +15,33 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.2.0] - 2026-09-26
+
+Somebody at the door is the one thing worth seeing that nobody asks about. JARVIS could already show
+a camera, but only inside a turn: a question first, an answer around it, and the picture up by the
+time the visitor had given up. Now the door shows itself.
+
+### Added
+
+- `JARVIS_DOOR_WATCH`: cameras paired with the sensors that mean somebody is in front of them, as
+  `camera.x=binary_sensor.a,binary_sensor.b`, several separated by `;`. A trigger puts that camera on
+  the HUD straight away — no question, no turn, nothing said out loud — and it stays for two minutes.
+  Pairing by room was the obvious alternative and does not work: a doorbell and its camera routinely
+  belong to no room at all in the registry, and a watch that resolves to nothing looks configured.
+- The trigger is an edge, not a state: a `binary_sensor` counts on the way into `on`, an `event.*`
+  entity on any new timestamp, and the state a feed replays when it connects counts for nothing. One
+  camera shows again at most once every fifteen seconds, so a ring that moves the button, the motion
+  sensor and the person detection at once is one window rather than three.
+- A display may now belong to no turn. The HUD kept only what belonged to the turn it had open, which
+  is the right default for a page that anything can write to; a window the brain put up by itself now
+  passes that filter, the same way an unprompted line already could. It replaces itself on its id, so
+  a second ring updates the picture in place.
+
+### Changed
+
+- `show_camera` and the door watch build the same card through one function, so the tool's still,
+  refresh and stream relay cannot drift away from what goes up by itself.
+
 ## [2.1.0] - 2026-09-25
 
 JARVIS closes the gaps he runs into himself. Until now, a request he could not carry out ended with an
