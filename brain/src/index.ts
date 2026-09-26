@@ -11,9 +11,11 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:https";
 import { join } from "node:path";
 
-import { locale, timeZone, usingHostZone } from "@jarvis/shared";
+import { locale, timeZone, usingHostZone, type HomeProvider } from "@jarvis/shared";
 
 import { loadConfig } from "./config.js";
+import { parseDoorWatch, startDoorWatch } from "./door.js";
+import { createHome } from "./home/index.js";
 import { startCheckpointing } from "./memory/checkpoint.js";
 import { warmEmbeddings } from "./memory/embedding.js";
 import { serveMedia } from "./media.js";
@@ -167,6 +169,30 @@ async function main(): Promise<void> {
   startCheckpointing(store, config.memoryPath);
   const stopProactive = startProactive(config, store);
 
+  // The door, on its own connection and only when a deployment named one. The
+  // observation layer holds a house too, but it holds it only from `observe`
+  // upwards, and a camera that goes up by itself is worth having in a
+  // deployment that watches nothing else.
+  const doorWatches = parseDoorWatch(process.env["JARVIS_DOOR_WATCH"]);
+  let doorHome: HomeProvider | null = null;
+  let stopDoorWatch: () => void = () => {};
+  if (doorWatches.length > 0) {
+    doorHome = createHome(config);
+    if (doorHome === null) {
+      console.error("door watch: configured, but this deployment has no house to watch");
+    } else {
+      const house = doorHome;
+      void house
+        .connect()
+        .then(() => startDoorWatch(house, doorWatches))
+        .then((stop) => {
+          stopDoorWatch = stop;
+          console.log(`door watch: ${doorWatches.length} camera(s) armed`);
+        })
+        .catch((error: unknown) => console.error("door watch: could not start:", error));
+    }
+  }
+
   // The probes used to run only when a browser connected, which is the one
   // moment their verdict is least needed: the tool calls that pay for a dead
   // dependency come from a turn, and a turn can arrive over Telegram with no
@@ -260,6 +286,8 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     console.log(`jarvis brain: ${signal} received, shutting down`);
     stopProactive();
+    stopDoorWatch();
+    doorHome?.close();
     if (lookTimer !== null) clearInterval(lookTimer);
     hangUp?.();
     chat?.close();

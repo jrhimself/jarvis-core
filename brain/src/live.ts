@@ -15,8 +15,15 @@
  * there.
  */
 
+import type { DisplayDismiss, DisplayPayload } from "@jarvis/shared";
+
 /** An open HUD, as far as this module cares. */
-export type LiveSession = (text: string) => void;
+export interface LiveSession {
+  /** Say a line out loud, in a turn the HUD opens for it. */
+  say: (text: string) => void;
+  /** Put a window on screen that belongs to no turn. */
+  show: (id: string, payload: DisplayPayload, dismiss: DisplayDismiss) => void;
+}
 
 /**
  * The sessions currently connected, oldest first.
@@ -49,11 +56,36 @@ export function speakUnprompted(text: string): boolean {
   if (newest === undefined) return false;
 
   try {
-    newest(spoken);
+    newest.say(spoken);
   } catch (error: unknown) {
     // A socket that died between the check and the write is not this caller's
     // problem: the message it carries also went to Telegram.
     console.error("could not speak to the HUD:", error);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Puts a window on the most recently opened HUD, unasked.
+ *
+ * The same one-page rule as speech: the newest connection is the screen
+ * somebody is in front of. Reusing an id replaces the card in place, which is
+ * what makes a second ring within the minute look like the same window rather
+ * than a pile of them.
+ */
+export function showUnprompted(
+  id: string,
+  payload: DisplayPayload,
+  dismiss: DisplayDismiss,
+): boolean {
+  const newest = [...sessions].at(-1);
+  if (newest === undefined) return false;
+
+  try {
+    newest.show(id, payload, dismiss);
+  } catch (error: unknown) {
+    console.error("could not show anything on the HUD:", error);
     return false;
   }
   return true;
