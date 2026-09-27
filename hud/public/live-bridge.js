@@ -880,10 +880,11 @@
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') input.blur();
     });
+    input.addEventListener('blur', closeCompose);
     /* The page opens ready to type. Not on a touch screen: there focus pops
-       the keyboard over the desk, and the talk button is the way in. The boot
-       animation keeps the footer out of reach for a moment, so it is asked
-       again once the brain is there, if nothing else took the focus. */
+       the keyboard over the desk, and the compose button is the way in. The
+       boot animation keeps the footer out of reach for a moment, so it is
+       asked again once the brain is there, if nothing else took the focus. */
     const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
     function focusAsk() {
       if (touch) return;
@@ -941,33 +942,45 @@
   window.addEventListener('blur', markAway);
   window.addEventListener('focus', markBack);
 
-  /* ---------- Hold to talk ----------
-     A phone has no space bar, so this button is what the space bar is: hold to
-     listen, let go to send. The phone breakpoint is the only thing that shows
-     it. Holding it while JARVIS talks interrupts him. */
-  function wireTalk(l) {
+  /* ---------- Compose ----------
+     A phone has no space bar and the field sits under the panels, so this
+     button is the way into it: tap, and the field comes up with the keyboard.
+     The phone breakpoint is the only thing that shows the button. The tap is
+     also the gesture a phone demands before any audio may play, so the audio
+     context is resumed here. */
+  let composing = false;
+
+  function keyboardHeight() {
+    const vv = window.visualViewport;
+    if (!vv) return 0;
+    return Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  }
+
+  function trackKeyboard() {
+    document.documentElement.style.setProperty('--kb', keyboardHeight() + 'px');
+  }
+
+  function closeCompose() {
+    if (!composing) return;
+    composing = false;
+    document.body.classList.remove('composing');
+    document.documentElement.style.removeProperty('--kb');
+    if (window.visualViewport) window.visualViewport.removeEventListener('resize', trackKeyboard);
+  }
+
+  function wireCompose(l) {
     const btn = document.getElementById('btn-talk');
-    if (!btn) return;
-    let holding = false;
-    btn.addEventListener('pointerdown', function (e) {
-      e.preventDefault();
-      if (holding) return;
-      holding = true;
-      btn.classList.add('held');
-      try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    const input = document.getElementById('ask');
+    if (!btn || !input) return;
+    btn.addEventListener('click', function () {
+      /* An answer in progress is left alone: sending the field cancels it. */
       l.resumeAudio();
-      if (l.mode === 'thinking' || l.mode === 'speaking') l.cancelTurn();
-      l.startListen();
+      composing = true;
+      document.body.classList.add('composing');
+      trackKeyboard();
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', trackKeyboard);
+      input.focus();
     });
-    function end() {
-      if (!holding) return;
-      holding = false;
-      btn.classList.remove('held');
-      if (l.mode === 'listening') l.flushUtterance();
-    }
-    btn.addEventListener('pointerup', end);
-    btn.addEventListener('pointercancel', end);
-    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
 
   function init() {
@@ -990,7 +1003,7 @@
     });
     wire(l);
     wireAsk(l);
-    wireTalk(l);
+    wireCompose(l);
     window.JarvisCoreLink = l;
     l.connect();
     return l;

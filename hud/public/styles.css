@@ -1768,7 +1768,7 @@ html.is-focusing .footer {
   .wx-icon * { animation: none !important; opacity: 1 !important; }
 }
 
-/* ===== Hold to talk (phone only) ===== */
+/* ===== Compose (phone only) ===== */
 .btn-talk { display: none; }
 @media (max-width: 720px), (max-height: 520px) and (pointer: coarse) {
   .btn-talk {
@@ -1785,26 +1785,47 @@ html.is-focusing .footer {
     border: 1px solid hsla(var(--hue), 90%, 60%, 0.5);
     background: hsla(var(--hue), 90%, 20%, 0.85);
     color: hsla(var(--hue), 100%, 75%, 1);
-    touch-action: none;
+    touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     transition: transform 0.15s, box-shadow 0.2s, background 0.2s, border-color 0.2s;
   }
+  /* a caret on a baseline: this button opens the field, it does not listen */
   .btn-talk i {
-    width: 15px;
-    height: 22px;
-    border-radius: 8px;
+    position: relative;
+    width: 2px;
+    height: 19px;
     background: currentColor;
-    box-shadow: 0 0 14px hsla(var(--hue), 100%, 60%, 0.55);
+    box-shadow: 0 0 12px hsla(var(--hue), 100%, 60%, 0.55);
   }
-  .btn-talk.held {
-    transform: scale(0.94);
-    color: #ff8f8f;
-    background: hsla(0, 90%, 30%, 0.85);
-    border-color: hsla(0, 90%, 60%, 0.7);
-    box-shadow: 0 0 30px hsla(0, 90%, 60%, 0.35);
+  .btn-talk i::after {
+    content: '';
+    position: absolute;
+    left: -9px;
+    right: -9px;
+    bottom: -6px;
+    height: 2px;
+    background: currentColor;
+    opacity: 0.7;
   }
+  .btn-talk:active { transform: scale(0.94); }
   /* under 16px iOS zooms the page in when the field takes focus */
   .ask input { font-size: 16px; }
   /* room under the last panel so the button never covers it */
   .hud { padding-bottom: 96px; }
+
+  /* While typing the field leaves the footer and rides above the keyboard;
+     --kb is what the keyboard takes, measured by the page. */
+  body.composing .ask {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--kb, 0px) + env(safe-area-inset-bottom));
+    z-index: 70;
+    padding: 10px 14px;
+    background: hsla(calc(var(--hue) + 10), 45%, 8%, 0.96);
+    border-top: 1px solid hsla(var(--hue), 80%, 60%, 0.35);
+    backdrop-filter: blur(10px);
+  }
+  body.composing .ask input { width: 100%; }
+  body.composing .btn-talk { display: none; }
 }

@@ -44,7 +44,7 @@
     'Composer · synthesizing': 'Antwoord · wordt opgesteld',
     'TTS · through-orb waveform': 'Stem · spreekt',
     'Close': 'Sluiten',
-    'Hold to talk': 'Vasthouden om te praten',
+    'Type a command': 'Typ een opdracht',
     'Chart': 'Grafiek',
     'Image': 'Afbeelding',
     'Live': 'Live',
