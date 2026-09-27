@@ -948,56 +948,87 @@
      The phone breakpoint is the only thing that shows the button. The tap is
      also the gesture a phone demands before any audio may play, so the audio
      context is resumed here. */
+  const PHONE = '(max-width: 720px), (max-height: 520px) and (pointer: coarse)';
   let composing = false;
-  let kbFrame = null;
-  let kbNow = -1;
+  let vvFrame = null;
+  let vvSeen = '';
 
-  /* What the keyboard takes, in the page's own coordinates. A fixed element
-     hangs off the layout viewport, which the keyboard does not shrink, so the
-     lift is the difference with the visual viewport -- including how far that
-     one has been scrolled away, which is what iOS does to bring a focused
-     field into view. Measured per frame while the field is open: the scroll
-     and the resize arrive separately and mid-animation, and reading one
-     without the other puts the field halfway up the screen. */
-  function keyboardHeight() {
-    const vv = window.visualViewport;
-    if (!vv) return 0;
-    return Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  function onPhone() {
+    return window.matchMedia ? matchMedia(PHONE).matches : false;
   }
 
-  function trackKeyboard() {
-    const kb = keyboardHeight();
-    if (kb !== kbNow) {
-      kbNow = kb;
-      document.documentElement.style.setProperty('--kb', kb + 'px');
+  /* Where the phone is actually looking. The window is fixed, so it hangs off
+     the layout viewport, which the keyboard does not shrink; the visual
+     viewport is both shrunk by the keyboard and scrolled away to reveal the
+     focused field. Those two numbers go to the CSS, which puts the window over
+     what is on screen. Read per frame while it is open: the scroll and the
+     resize arrive separately and mid-animation, and one without the other
+     leaves the field halfway up the screen. */
+  function trackViewport() {
+    const vv = window.visualViewport;
+    const top = vv ? Math.round(vv.offsetTop) : 0;
+    const height = Math.round(vv ? vv.height : window.innerHeight);
+    const seen = top + ':' + height;
+    if (seen !== vvSeen) {
+      vvSeen = seen;
+      const style = document.documentElement.style;
+      style.setProperty('--vv-top', top + 'px');
+      style.setProperty('--vv-h', height + 'px');
+      document.body.classList.toggle('kb-up', window.innerHeight - height - top > 40);
     }
-    kbFrame = composing ? requestAnimationFrame(trackKeyboard) : null;
+    vvFrame = composing ? requestAnimationFrame(trackViewport) : null;
   }
 
   function closeCompose() {
     if (!composing) return;
     composing = false;
     document.body.classList.remove('composing');
-    document.documentElement.style.removeProperty('--kb');
-    if (kbFrame !== null) cancelAnimationFrame(kbFrame);
-    kbFrame = null;
-    kbNow = -1;
+    document.body.classList.remove('kb-up');
+    document.documentElement.style.removeProperty('--vv-top');
+    document.documentElement.style.removeProperty('--vv-h');
+    if (vvFrame !== null) cancelAnimationFrame(vvFrame);
+    vvFrame = null;
+    vvSeen = '';
+  }
+
+  /* One field, in the footer on a desk and in the window on a phone. Moving it
+     rather than keeping a second one means the wiring above holds for both. */
+  function placeField() {
+    const form = document.getElementById('ask-form');
+    const sheet = document.getElementById('compose-sheet');
+    const footer = document.querySelector('.footer');
+    if (!form || !sheet || !footer) return;
+    const home = onPhone() ? sheet : footer;
+    if (form.parentElement !== home) {
+      if (home === footer) footer.insertBefore(form, footer.querySelector('.footer-spacer'));
+      else home.appendChild(form);
+    }
+    if (!onPhone()) closeCompose();
   }
 
   function wireCompose(l) {
     const btn = document.getElementById('btn-talk');
     const input = document.getElementById('ask');
+    const veil = document.getElementById('compose-veil');
     if (!btn || !input) return;
+    placeField();
+    if (window.matchMedia) {
+      const mq = matchMedia(PHONE);
+      if (mq.addEventListener) mq.addEventListener('change', placeField);
+      else if (mq.addListener) mq.addListener(placeField);
+    }
     btn.addEventListener('click', function () {
       /* An answer in progress is left alone: sending the field cancels it. */
       l.resumeAudio();
       composing = true;
       document.body.classList.add('composing');
-      trackKeyboard();
-      /* The field is already where it needs to be, so the page must not be
-         scrolled to reveal it: that is what moved the desk under the reader. */
+      trackViewport();
+      /* The window is already over what is on screen, so the page must not be
+         scrolled to reveal the field: that is what moved the desk away. */
       try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
     });
+    /* tapping the room behind the window puts it away */
+    if (veil) veil.addEventListener('click', function () { input.blur(); });
   }
 
   function init() {

@@ -1769,7 +1769,8 @@ html.is-focusing .footer {
 }
 
 /* ===== Compose (phone only) ===== */
-.btn-talk { display: none; }
+.btn-talk,
+.compose-sheet { display: none; }
 @media (max-width: 720px), (max-height: 520px) and (pointer: coarse) {
   .btn-talk {
     display: grid;
@@ -1832,34 +1833,55 @@ html.is-focusing .footer {
 
   /* The field is never part of the page here: scrolled to the bottom or not,
      the button is the only way in, so the footer keeps nothing of its own.
-     --kb is what the keyboard takes, measured by the page; the field waits a
-     screen below it and slides up rather than appearing. */
+     What opens instead is a window over the desk. It is fixed, so it hangs off
+     the layout viewport, which a phone keyboard does not shrink -- the page
+     measures the visual viewport and hands it over as --vv-top and --vv-h, and
+     the window then covers exactly what the phone is showing, wherever the
+     reader happens to be. The field sits at the bottom of that. */
   .footer {
     padding: 0;
     border-top: none;
   }
-  .ask {
+  .compose-sheet {
+    display: block;
     position: fixed;
     left: 0;
-    right: 0;
-    bottom: env(safe-area-inset-bottom);
+    width: 100%;
+    top: var(--vv-top, 0px);
+    height: var(--vv-h, 100%);
     z-index: 70;
-    padding: 10px 14px;
+    pointer-events: none;
+  }
+  .compose-veil {
+    position: absolute;
+    inset: 0;
+    background: hsla(calc(var(--hue) + 10), 50%, 4%, 0.55);
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+  .compose-sheet .ask {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: block;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
     background: hsla(calc(var(--hue) + 10), 45%, 8%, 0.96);
     border-top: 1px solid hsla(var(--hue), 80%, 60%, 0.35);
-    backdrop-filter: blur(10px);
-    transform: translateY(120%);
+    box-shadow: 0 -14px 34px hsla(220, 70%, 2%, 0.55);
+    transform: translateY(115%);
     opacity: 0;
-    pointer-events: none;
     transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.25, 1), opacity 0.2s ease;
   }
+  /* the keyboard ends where the window does, so the home-indicator gap under
+     the field would be a second gap */
+  body.kb-up .compose-sheet .ask { padding-bottom: 10px; }
   .ask input { width: 100%; }
-  /* One transform carries both moves: the slide in, and the keyboard growing
-     under it. Animating `bottom` instead would jump the second time. */
-  body.composing .ask {
-    transform: translateY(calc(-1 * var(--kb, 0px)));
+  body.composing .compose-sheet { pointer-events: auto; }
+  body.composing .compose-veil { opacity: 1; }
+  body.composing .compose-sheet .ask {
+    transform: none;
     opacity: 1;
-    pointer-events: auto;
   }
   /* the button steps aside for the field instead of blinking out */
   body.composing .btn-talk {
@@ -1870,5 +1892,5 @@ html.is-focusing .footer {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ask, .btn-talk { transition: none !important; }
+  .ask, .btn-talk, .compose-veil { transition: none !important; }
 }
