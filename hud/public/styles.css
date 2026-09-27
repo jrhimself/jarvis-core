@@ -1787,25 +1787,42 @@ html.is-focusing .footer {
     color: hsla(var(--hue), 100%, 75%, 1);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    transition: transform 0.15s, box-shadow 0.2s, background 0.2s, border-color 0.2s;
+    opacity: 1;
+    transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.25, 1), opacity 0.18s ease,
+      box-shadow 0.2s, background 0.2s, border-color 0.2s;
   }
-  /* a caret on a baseline: this button opens the field, it does not listen */
+  /* a keyboard: this button opens the field, it does not listen */
   .btn-talk i {
     position: relative;
-    width: 2px;
+    width: 27px;
     height: 19px;
+    border: 1.5px solid currentColor;
+    border-radius: 4px;
+    filter: drop-shadow(0 0 7px hsla(var(--hue), 100%, 60%, 0.5));
+  }
+  .btn-talk i::before {
+    content: '';
+    position: absolute;
+    left: 3.5px;
+    top: 4px;
+    width: 2px;
+    height: 2px;
+    border-radius: 1px;
     background: currentColor;
-    box-shadow: 0 0 12px hsla(var(--hue), 100%, 60%, 0.55);
+    box-shadow:
+      4.5px 0 currentColor, 9px 0 currentColor, 13.5px 0 currentColor, 18px 0 currentColor,
+      2px 4.5px currentColor, 6.5px 4.5px currentColor, 11px 4.5px currentColor, 15.5px 4.5px currentColor;
   }
   .btn-talk i::after {
     content: '';
     position: absolute;
-    left: -9px;
-    right: -9px;
-    bottom: -6px;
+    left: 6px;
+    right: 6px;
+    bottom: 2.5px;
     height: 2px;
+    border-radius: 1px;
     background: currentColor;
-    opacity: 0.7;
+    opacity: 0.85;
   }
   .btn-talk:active { transform: scale(0.94); }
   /* under 16px iOS zooms the page in when the field takes focus */
@@ -1813,19 +1830,45 @@ html.is-focusing .footer {
   /* room under the last panel so the button never covers it */
   .hud { padding-bottom: 96px; }
 
-  /* While typing the field leaves the footer and rides above the keyboard;
-     --kb is what the keyboard takes, measured by the page. */
-  body.composing .ask {
+  /* The field is never part of the page here: scrolled to the bottom or not,
+     the button is the only way in, so the footer keeps nothing of its own.
+     --kb is what the keyboard takes, measured by the page; the field waits a
+     screen below it and slides up rather than appearing. */
+  .footer {
+    padding: 0;
+    border-top: none;
+  }
+  .ask {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: calc(var(--kb, 0px) + env(safe-area-inset-bottom));
+    bottom: env(safe-area-inset-bottom);
     z-index: 70;
     padding: 10px 14px;
     background: hsla(calc(var(--hue) + 10), 45%, 8%, 0.96);
     border-top: 1px solid hsla(var(--hue), 80%, 60%, 0.35);
     backdrop-filter: blur(10px);
+    transform: translateY(120%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.25, 1), opacity 0.2s ease;
   }
-  body.composing .ask input { width: 100%; }
-  body.composing .btn-talk { display: none; }
+  .ask input { width: 100%; }
+  /* One transform carries both moves: the slide in, and the keyboard growing
+     under it. Animating `bottom` instead would jump the second time. */
+  body.composing .ask {
+    transform: translateY(calc(-1 * var(--kb, 0px)));
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* the button steps aside for the field instead of blinking out */
+  body.composing .btn-talk {
+    opacity: 0;
+    transform: translateY(8px) scale(0.85);
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask, .btn-talk { transition: none !important; }
 }
