@@ -949,7 +949,16 @@
      also the gesture a phone demands before any audio may play, so the audio
      context is resumed here. */
   let composing = false;
+  let kbFrame = null;
+  let kbNow = -1;
 
+  /* What the keyboard takes, in the page's own coordinates. A fixed element
+     hangs off the layout viewport, which the keyboard does not shrink, so the
+     lift is the difference with the visual viewport -- including how far that
+     one has been scrolled away, which is what iOS does to bring a focused
+     field into view. Measured per frame while the field is open: the scroll
+     and the resize arrive separately and mid-animation, and reading one
+     without the other puts the field halfway up the screen. */
   function keyboardHeight() {
     const vv = window.visualViewport;
     if (!vv) return 0;
@@ -957,7 +966,12 @@
   }
 
   function trackKeyboard() {
-    document.documentElement.style.setProperty('--kb', keyboardHeight() + 'px');
+    const kb = keyboardHeight();
+    if (kb !== kbNow) {
+      kbNow = kb;
+      document.documentElement.style.setProperty('--kb', kb + 'px');
+    }
+    kbFrame = composing ? requestAnimationFrame(trackKeyboard) : null;
   }
 
   function closeCompose() {
@@ -965,7 +979,9 @@
     composing = false;
     document.body.classList.remove('composing');
     document.documentElement.style.removeProperty('--kb');
-    if (window.visualViewport) window.visualViewport.removeEventListener('resize', trackKeyboard);
+    if (kbFrame !== null) cancelAnimationFrame(kbFrame);
+    kbFrame = null;
+    kbNow = -1;
   }
 
   function wireCompose(l) {
@@ -978,7 +994,6 @@
       composing = true;
       document.body.classList.add('composing');
       trackKeyboard();
-      if (window.visualViewport) window.visualViewport.addEventListener('resize', trackKeyboard);
       input.focus();
     });
   }
