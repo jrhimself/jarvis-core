@@ -994,7 +994,9 @@
       composing = true;
       document.body.classList.add('composing');
       trackKeyboard();
-      input.focus();
+      /* The field is already where it needs to be, so the page must not be
+         scrolled to reveal it: that is what moved the desk under the reader. */
+      try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
     });
   }
 
