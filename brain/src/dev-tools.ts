@@ -37,6 +37,7 @@ import { SelfDevelopment } from "./dev/run.js";
 import { answerFirst, lookUp } from "./dev/stand-in.js";
 import { language } from "./language.js";
 import { DAILY_GAPS, GAP_ATTEMPTS, type DevTask } from "./dev/store.js";
+import { describeTarget } from "./dev/trial.js";
 
 /** What was proposed, so a later turn can carry out that and nothing else. */
 export interface PendingDevAction {
@@ -408,6 +409,11 @@ export function createDevServer(
         lines.push("Note: there is no GitHub token, so a branch can be pushed but no pull request opened.");
       }
 
+      const onTrial = await dev.trial();
+      if (onTrial !== null) {
+        lines.push(`On trial since ${onTrial.at}: ${describeTarget(onTrial.target)}, not merged. end_trial takes it off.`);
+      }
+
       const deployed = await dev.lastDeployResult();
       if (deployed !== null) {
         lines.push(
@@ -560,10 +566,49 @@ export function createDevServer(
     { annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true } },
   );
 
+  const tryLive = tool(
+    "try_pull_request",
+    "Put a finished task's pull request live before it is merged, so the user can try the " +
+      "ability right away. It is merged on top of what runs now, the suite runs, and you restart " +
+      "in a minute or two; if anything fails nothing changes and you hear why. Needs his yes: when " +
+      "you offered it out loud, his yes in this question is enough. One pull request on trial at a " +
+      "time. Say that it is being put live and that you will be back in a moment, then stop.",
+    {
+      task: z.number().int().describe("The task number, as dev_status or the offer gives it"),
+      confirmed: z.boolean().default(false).describe("True only when the user said yes to trying it"),
+    },
+    async (args) => {
+      if (!args.confirmed) return refused("He has not said yes to trying it. Ask first.");
+      const tried = await dev.tryLive(args.task, new Date());
+      return tried.ok
+        ? ok(
+            `Asked to put ${describeTarget(tried.target)} live. The suite runs first; you restart in a ` +
+              "minute or two and say how it went. Say that in one sentence and stop.",
+          )
+        : refused(tried.error);
+    },
+    { annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } },
+  );
+
+  const endTrial = tool(
+    "end_trial",
+    "Take the pull request that is on trial off again and go back to the code from before it. " +
+      "Use it when the user says the trial should stop, or it misbehaves. No yes needed: this " +
+      "only undoes something he tried. You restart in a minute or two.",
+    {},
+    async () => {
+      const ended = await dev.endTrial(new Date());
+      return ended.ok
+        ? ok(`Taking ${describeTarget(ended.trial.target)} off; you restart in a minute or two. Say so and stop.`)
+        : refused(ended.error);
+    },
+    { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true } },
+  );
+
   return createSdkMcpServer({
     name: DEV_SERVER_NAME,
     version: "1.0.0",
-    tools: [propose, start, gap, status, steer, proposeMerge, approveMerge, runner, reply, abandon],
+    tools: [propose, start, gap, status, steer, proposeMerge, approveMerge, runner, reply, abandon, tryLive, endTrial],
   });
 }
 

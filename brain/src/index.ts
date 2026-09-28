@@ -39,6 +39,7 @@ import {
 } from "./dev/runners.js";
 import { delegatedDevTasks, endDelegated } from "./dev/store.js";
 import { pullRequestIn, spokenReady } from "./dev/notify.js";
+import { pullRequestTarget, rememberOffer } from "./dev/trial.js";
 import { notify, spoken } from "./notify.js";
 import { warmRecordedLines } from "./conversation.js";
 import { language } from "./language.js";
@@ -128,9 +129,14 @@ async function main(): Promise<void> {
       refreshBoard();
       // Out loud, to whichever screen is open: the chat has the whole message,
       // and this is the sentence that makes him go and read it.
+      // A pull request whose repository is known can be tried before it is
+      // merged, and the sentence offers that; the offer waits for the answer.
       if (ended !== null) {
-        void notify([spoken], { spoken: spokenReady(topicOf(ended), pullRequestIn(summary)) }).catch(
-          (error: unknown) => console.error("runners: could not say a job is done:", error),
+        const tryable = pullRequestTarget(summary) !== null;
+        const said = spokenReady(topicOf(ended), pullRequestIn(summary), tryable);
+        if (tryable) rememberOffer(store.devConnection(), ended.id, said, new Date());
+        void notify([spoken], { spoken: said }).catch((error: unknown) =>
+          console.error("runners: could not say a job is done:", error),
         );
       }
     },

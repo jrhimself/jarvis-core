@@ -36,6 +36,21 @@ misunderstanding.
 - JARVIS says it out loud when a pull request is ready: his own small fix, and a runner's job that
   ends with a DONE line ("Pull request 6, for search the full mail history, is ready for you to look
   at."). Until now a waiting pull request was only written to the chat.
+- Trying a pull request before it is merged. The ready sentence ends with "Shall I put it live so
+  you can try it?", and the offer is put in front of the next question so a plain "yes" is
+  understood. `try_pull_request` asks the root side to fetch that pull request, of this repository
+  or of a pack, merge it onto what runs now, run the suite and the types, and restart; any failure
+  leaves everything as it was and is said out loud. `end_trial` takes it off again. One trial at a
+  time; `data/trial.json` says which, and `dev_status` reports it. After the restart JARVIS says
+  that it is live.
+
+### Security
+
+- `scripts/self-deploy.sh` accepts three new request lines besides a commit hash on `origin/main`:
+  `try core <n>`, `try pack <id> <n>` and `untry`. This is the only way unmerged code runs. The brain
+  names a pull request number, never a commit or a path; the root side fetches it from origin itself
+  and puts it through the same suite and type checks. The owner's yes is enforced by the tool that
+  writes the request, not by the root side.
 
 ### Changed
 

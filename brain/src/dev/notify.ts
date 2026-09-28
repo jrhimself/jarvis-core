@@ -111,9 +111,9 @@ export function pullRequestIn(summary: string): number | null {
  * adds is finished and unused. One sentence, and what it is about first, so
  * it can be understood from across the room.
  */
-export function spokenReady(topic: string, pullRequest: number | null): string {
+export function spokenReady(topic: string, pullRequest: number | null, offerTrial = false): string {
   const about = topic.charAt(0).toLowerCase() + topic.slice(1);
-  return pullRequest === null
-    ? `The work on ${about} is done; the details are in the chat.`
-    : `Pull request ${pullRequest}, for ${about}, is ready for you to look at.`;
+  if (pullRequest === null) return `The work on ${about} is done; the details are in the chat.`;
+  const ready = `Pull request ${pullRequest}, for ${about}, is ready for you to look at.`;
+  return offerTrial ? `${ready} Shall I put it live so you can try it?` : ready;
 }

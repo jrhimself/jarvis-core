@@ -69,6 +69,7 @@ import { interfaceLanguage, language, languageBlock, languageHook, languageNote,
 import { createLanguageServer, LANGUAGE_SERVER_NAME, LANGUAGE_TOOLS } from "./language-tools.js";
 import { gapHook } from "./gap-check.js";
 import { jobLine } from "./dev/board.js";
+import { takeTrialOffer } from "./dev/trial.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
@@ -100,6 +101,16 @@ const insightConfigured = proactiveAtLeast(config.proactive, "observe");
 const persona = loadPersona();
 const dev = new SelfDevelopment(config, store.devConnection(), channelsFor(home, config));
 const devConfigured = config.devRepo !== "";
+// A trial that went live (or came off) restarted this process; the new one
+// says how it went, once.
+if (devConfigured) {
+  void dev
+    .announceTrial({
+      get: () => store.setting("dev.trial-told"),
+      set: (value) => store.setSetting("dev.trial-told", value),
+    })
+    .catch((error: unknown) => console.error("could not announce the trial:", error));
+}
 
 if (!haConfigured) {
   console.warn("Home Assistant is not configured (HA_URL / HA_TOKEN); running without it.");
@@ -680,6 +691,12 @@ ${text}`;
     // fresh session that turn's language change opened.
     const offer = takeOffer(this.lang, store);
     if (offer !== "") asked = `${offer}
+${asked}`;
+    // The offer to try a pull request that was made out loud, unprompted, for
+    // the question that answers it -- which starts from a session that never
+    // heard it.
+    const trialOffer = devConfigured ? takeTrialOffer(store.devConnection(), new Date()) : "";
+    if (trialOffer !== "") asked = `${trialOffer}
 ${asked}`;
     // The request for a briefing, restated against the question: the one
     // sentence the once-a-day gate must never be allowed to answer.

@@ -50,6 +50,15 @@ import { refreshBoard, topicOf } from "./board.js";
 import { escapeHtml, failureMessage, reviewMessage, spokenFailure, spokenReady } from "./notify.js";
 import { forget } from "./runners.js";
 import {
+  currentTrial,
+  describeTarget,
+  pullRequestTarget,
+  rememberOffer,
+  requestTrial,
+  type PullTarget,
+  type Trial,
+} from "./trial.js";
+import {
   awaitingDevTask,
   createDevTask,
   delegatedDevTasks,
@@ -274,6 +283,111 @@ export class SelfDevelopment {
     updateDevTask(this.db, id, { state: "abandoned", detail: `dropped: ${reason}` }, now);
     refreshBoard();
     return { ok: true, task, closed };
+  }
+
+  /**
+   * The pull request a task left behind, and which repository it is in.
+   *
+   * A small fix records its own; a runner's is read from what it said when
+   * it was done, which names the repository when it is not this one.
+   */
+  targetOf(task: DevTask): PullTarget | null {
+    const linked = task.prUrl === null ? null : pullRequestTarget(task.prUrl);
+    if (linked !== null) return linked;
+    if (task.size === "small" && task.prNumber !== null) return { repo: "core", number: task.prNumber };
+    return pullRequestTarget(task.detail);
+  }
+
+  /** What runs on trial now, if anything. */
+  async trial(): Promise<Trial | null> {
+    return currentTrial(this.config.dataDir);
+  }
+
+  /**
+   * Asks the root side to put a task's pull request live on top of what runs.
+   *
+   * Refused while another one is on trial. The restart that follows ends this
+   * process; the next one says how it went (`announceTrial`). A trial that
+   * fails never restarts anything, so that outcome is watched for here.
+   */
+  async tryLive(id: number, now: Date): Promise<{ ok: true; target: PullTarget } | { ok: false; error: string }> {
+    const task = devTask(this.db, id);
+    if (task === null) return { ok: false, error: `There is no task ${id}.` };
+    const target = this.targetOf(task);
+    if (target === null) {
+      return {
+        ok: false,
+        error: `Task ${id} does not say which pull request it made. Ask the user for the repository and number.`,
+      };
+    }
+    const running = await this.trial();
+    if (running !== null) {
+      return {
+        ok: false,
+        error:
+          `${describeTarget(running.target)} is on trial already. Take it off first with end_trial, ` +
+          "or merge it; only one runs on trial at a time.",
+      };
+    }
+    const asked = await requestTrial(this.config.dataDir, target);
+    if (!asked.ok) return asked;
+    this.#watchTrial(describeTarget(target), now);
+    return { ok: true, target };
+  }
+
+  /** Asks the root side to take the trial off again. */
+  async endTrial(now: Date): Promise<{ ok: true; trial: Trial } | { ok: false; error: string }> {
+    const running = await this.trial();
+    if (running === null) return { ok: false, error: "Nothing is on trial." };
+    const asked = await requestTrial(this.config.dataDir, null);
+    if (!asked.ok) return asked;
+    this.#watchTrial(`taking ${describeTarget(running.target)} off`, now);
+    return { ok: true, trial: running };
+  }
+
+  /**
+   * Says it when a trial request failed.
+   *
+   * A trial that works restarts the brain, and the new process says so. One
+   * that fails -- a conflict, a red suite -- leaves this process running and
+   * says nothing, so it is looked for: the root side's answer, newer than the
+   * request, within the time the suite can take.
+   */
+  #watchTrial(what: string, since: Date): void {
+    const started = since.getTime() - 2000;
+    const until = since.getTime() + 20 * 60_000;
+    const timer = setInterval(() => {
+      void (async () => {
+        const result = await this.lastDeployResult();
+        const at = result === null ? NaN : Date.parse(result.at);
+        if (result !== null && at >= started) {
+          clearInterval(timer);
+          if (!result.ok) await this.tell(`${what} did not work, at "${result.step}": ${result.detail}`);
+          return;
+        }
+        if (Date.now() > until) clearInterval(timer);
+      })();
+    }, 15_000);
+    timer.unref();
+  }
+
+  /**
+   * After a restart: says what a trial just did, once.
+   *
+   * Waits a little first, because the page that should hear it reconnects a
+   * few seconds after the brain is back.
+   */
+  async announceTrial(seen: { get: () => string | null; set: (value: string) => void }): Promise<void> {
+    const result = await this.lastDeployResult();
+    if (result === null || !result.ok || !["trying", "untried"].includes(result.step)) return;
+    if (seen.get() === result.at || Date.now() - Date.parse(result.at) > 10 * 60_000) return;
+    seen.set(result.at);
+    const trial = await this.trial();
+    const text =
+      result.step === "trying" && trial !== null
+        ? `${describeTarget(trial.target)} is live now, on trial. Try it, and tell me if it should come off again.`
+        : "The trial is over; the code from before it is running again.";
+    setTimeout(() => void this.tell(text.charAt(0).toUpperCase() + text.slice(1)), 20_000).unref();
   }
 
   /** Every job that is still open: running here, waiting for a yes, or with a runner. */
@@ -520,10 +634,14 @@ export class SelfDevelopment {
     );
 
     // Said out loud as well as written: the owner wants to hear the moment
-    // there is something to look at, not find it in the chat hours later.
+    // there is something to look at, not find it in the chat hours later. The
+    // sentence ends in the offer to try it, and the offer is kept for the
+    // question that answers it.
     const task = devTask(this.db, id);
+    const said = spokenReady(topicOf({ gap: task?.gap ?? null, instruction }), pr.value.number, true);
+    rememberOffer(this.db, id, said, now());
     await notify(this.channels, {
-      spoken: spokenReady(topicOf({ gap: task?.gap ?? null, instruction }), pr.value.number),
+      spoken: said,
       written: reviewMessage({ instruction, prUrl: pr.value.url, summary, stat }),
     });
   }
