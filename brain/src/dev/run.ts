@@ -46,8 +46,8 @@ import {
   openPullRequest,
   type GitHubConfig,
 } from "./github.js";
-import { refreshBoard } from "./board.js";
-import { escapeHtml, failureMessage, reviewMessage, spokenFailure } from "./notify.js";
+import { refreshBoard, topicOf } from "./board.js";
+import { escapeHtml, failureMessage, reviewMessage, spokenFailure, spokenReady } from "./notify.js";
 import { forget } from "./runners.js";
 import {
   awaitingDevTask,
@@ -519,10 +519,11 @@ export class SelfDevelopment {
       now(),
     );
 
-    // Written only: a pull request waiting to be reviewed is read when there is
-    // time for it, and saying it out loud would interrupt about something that
-    // can wait. A fix that fell over is the other case, and does speak.
+    // Said out loud as well as written: the owner wants to hear the moment
+    // there is something to look at, not find it in the chat hours later.
+    const task = devTask(this.db, id);
     await notify(this.channels, {
+      spoken: spokenReady(topicOf({ gap: task?.gap ?? null, instruction }), pr.value.number),
       written: reviewMessage({ instruction, prUrl: pr.value.url, summary, stat }),
     });
   }

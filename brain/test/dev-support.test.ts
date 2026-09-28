@@ -18,7 +18,7 @@ import { test } from "node:test";
 
 import { isCommitSha, readDeployResult } from "../dist/dev/deploy.js";
 import { readPullRequest } from "../dist/dev/github.js";
-import { escapeHtml, failureMessage, reviewMessage, spokenFailure } from "../dist/dev/notify.js";
+import { escapeHtml, failureMessage, pullRequestIn, reviewMessage, spokenFailure, spokenReady } from "../dist/dev/notify.js";
 import { titleFor } from "../dist/dev/run.js";
 import { abilityInstruction, describeTask, gapBrake } from "../dist/dev-tools.js";
 import { workerPrompt } from "../dist/dev/worker.js";
@@ -326,4 +326,19 @@ test("a missing ability becomes a job to build it, not to answer the request", (
   assert.match(job, /as parameters rather than written into the code/);
   assert.match(job, /put the answer in your DONE line too/);
   assert.doesNotMatch(abilityInstruction("read the clock", "time?", false), /DONE line/);
+});
+
+test("the pull request a runner names is found in either spelling", () => {
+  assert.equal(pullRequestIn("Opened PR #6 on a pack repository (v0.8.0) adding a tool"), 6);
+  assert.equal(pullRequestIn("Pull request https://github.com/o/r/pull/19 (feat/x) is open"), 19);
+  assert.equal(pullRequestIn("pull request 7 adds the tool"), 7);
+  assert.equal(pullRequestIn("The runner found the answer: 14:58."), null);
+});
+
+test("ready work is said in one sentence, topic first", () => {
+  assert.equal(
+    spokenReady("Search the full mail history", 6),
+    "Pull request 6, for search the full mail history, is ready for you to look at.",
+  );
+  assert.equal(spokenReady("Read the clock", null), "The work on read the clock is done; the details are in the chat.");
 });

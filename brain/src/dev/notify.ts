@@ -90,3 +90,30 @@ export function failureMessage(task: {
 export function spokenFailure(task: { instruction: string; detail: string }): string {
   return `The fix for "${task.instruction}" did not come about: ${task.detail}.`;
 }
+
+/**
+ * The pull request a runner's summary names, if it names one.
+ *
+ * Runners write their DONE line in their own words -- "Opened PR #6 on ...",
+ * "Pull request https://.../pull/19 adds ..." -- so both spellings count.
+ */
+export function pullRequestIn(summary: string): number | null {
+  const found = /\/pull\/(\d+)|\b(?:PR|pull request)\s*#?\s*(\d+)/i.exec(summary);
+  if (found === null) return null;
+  return Number(found[1] ?? found[2]);
+}
+
+/**
+ * The sentence said out loud when work is ready to be looked at.
+ *
+ * Spoken because the owner asked for it: a pull request that is only written
+ * down is found when somebody opens the chat, and until then the ability it
+ * adds is finished and unused. One sentence, and what it is about first, so
+ * it can be understood from across the room.
+ */
+export function spokenReady(topic: string, pullRequest: number | null): string {
+  const about = topic.charAt(0).toLowerCase() + topic.slice(1);
+  return pullRequest === null
+    ? `The work on ${about} is done; the details are in the chat.`
+    : `Pull request ${pullRequest}, for ${about}, is ready for you to look at.`;
+}

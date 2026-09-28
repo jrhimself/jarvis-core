@@ -33,6 +33,14 @@ misunderstanding.
 - The end-of-turn check is also shown the jobs that are still open. When the exchange shows one rests
   on a misunderstanding or is no longer wanted, the turn is sent back to drop it, in the same single
   nudge as a turn that gave up. The deployment block says the same in words.
+- JARVIS says it out loud when a pull request is ready: his own small fix, and a runner's job that
+  ends with a DONE line ("Pull request 6, for search the full mail history, is ready for you to look
+  at."). Until now a waiting pull request was only written to the chat.
+
+### Changed
+
+- A runner that died without reporting is closed as well, not only marked failed, so the delegate
+  can clear the job directory it left behind.
 
 ### Fixed
 

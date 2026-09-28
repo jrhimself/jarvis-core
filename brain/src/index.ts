@@ -38,12 +38,14 @@ import {
   type RunnerSeam,
 } from "./dev/runners.js";
 import { delegatedDevTasks, endDelegated } from "./dev/store.js";
+import { pullRequestIn, spokenReady } from "./dev/notify.js";
+import { notify, spoken } from "./notify.js";
 import { warmRecordedLines } from "./conversation.js";
 import { language } from "./language.js";
 import { configurePlanStore, loadPlanUsage } from "./plan.js";
 import { attachWebsocket } from "./ws.js";
 import { healthWithBoard, lastHealth, publishHealth, runHealthChecks, specsFor } from "./health.js";
-import { boardSource, boardWatched, forgetRunner, onBoard, refreshBoard, useBoardSource } from "./dev/board.js";
+import { boardSource, boardWatched, forgetRunner, onBoard, refreshBoard, topicOf, useBoardSource } from "./dev/board.js";
 
 /** How often every dependency is asked whether it still answers. */
 /** How often delegated runners that went quiet are looked in on. */
@@ -122,8 +124,15 @@ async function main(): Promise<void> {
     },
     consider: (report, question) => consider(store, report, question),
     finished: (slot, summary) => {
-      endDelegated(store.devConnection(), slot, { state: "finished", detail: summary }, new Date());
+      const ended = endDelegated(store.devConnection(), slot, { state: "finished", detail: summary }, new Date());
       refreshBoard();
+      // Out loud, to whichever screen is open: the chat has the whole message,
+      // and this is the sentence that makes him go and read it.
+      if (ended !== null) {
+        void notify([spoken], { spoken: spokenReady(topicOf(ended), pullRequestIn(summary)) }).catch(
+          (error: unknown) => console.error("runners: could not say a job is done:", error),
+        );
+      }
     },
   };
 
@@ -259,6 +268,10 @@ async function main(): Promise<void> {
             async (job) => {
               endDelegated(db, job.slot, { state: "failed", detail: "the runner stopped without saying it was done" }, new Date());
               forgetRunner(job.slot);
+              // A runner that died still leaves its job directory behind, and
+              // closing the slot is what clears it; a slot that is already gone
+              // is only tidied.
+              void closeSlot(job.slot).catch(() => undefined);
               refreshBoard();
               // A job from weeks ago that nobody closed off is tidied quietly;
               // only one that was still news is worth a message.
