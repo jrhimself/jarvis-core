@@ -74,6 +74,33 @@ export function showVia(sink: DisplaySink): PackDisplay {
 }
 
 /**
+ * What a camera looks like on screen.
+ *
+ * Shared with the door watch, which puts the same card up without a tool call:
+ * the still is fetched through the brain because the camera wants a credential
+ * the page does not have, and the moving picture is relayed for the same reason.
+ * Two places building this by hand is how one of them ends up frozen.
+ */
+export async function cameraCard(
+  home: HomeProvider,
+  entityId: string,
+  title: string,
+  live = true,
+): Promise<DisplayPayload> {
+  const still = home.cameraStill?.(entityId);
+  if (still === undefined) throw new MediaFetchError("There is no camera to show here.");
+  const stored = await fetchAndStore(still.url, still.headers);
+  const moving = live ? home.cameraStream?.(entityId) : undefined;
+  return {
+    type: "image",
+    url: stored.url,
+    alt: title,
+    ...(live ? { refreshMs: 2000 } : {}),
+    ...(moving === undefined ? {} : { stream: putStream(moving.url, moving.headers) }),
+  };
+}
+
+/**
  * The word the item waits for, offered to every display tool.
  *
  * It is the same field on all of them because the assistant should not have to
@@ -334,22 +361,9 @@ export function createDisplayServer(sink: DisplaySink, home: HomeProvider | null
       anchor: anchorField,
     },
     async (args) => {
-      const still = home?.cameraStill?.(args.entity_id);
-      if (still === undefined) return failed("There is no camera to show here.");
+      if (home === null) return failed("There is no camera to show here.");
       try {
-        const stored = await fetchAndStore(still.url, still.headers);
-        const moving = args.live ? home?.cameraStream?.(args.entity_id) : undefined;
-        show(
-          {
-            type: "image",
-            url: stored.url,
-            alt: args.alt,
-            ...(args.live ? { refreshMs: 2000 } : {}),
-            ...(moving === undefined ? {} : { stream: putStream(moving.url, moving.headers) }),
-          },
-          undefined,
-          args.anchor,
-        );
+        show(await cameraCard(home, args.entity_id, args.alt, args.live), undefined, args.anchor);
         return ok(SHOWN);
       } catch (error) {
         if (error instanceof MediaFetchError) return failed(error.message);

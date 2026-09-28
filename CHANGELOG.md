@@ -15,6 +15,46 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.4.0] - 2026-09-28
+
+Everything that was still open, together on main: the web and the door camera join the runner board.
+
+### Added
+
+- The assistant can search the web and read a page. Every other source it has was installed on
+  purpose -- a house, a mailbox, a calendar, each a pack with a credential behind it -- so a
+  question about a street, an organisation or a term was one it could only say it had no way to
+  look into. That was not a missing pack: it was `tools: []` in the agent, which withdrew the
+  built-in tools wholesale so that nothing could read this machine, and took the only two that read
+  nothing local with it. Those two are handed back and every other one stays gone. `JARVIS_WEB`
+  (on) withdraws them again, the deployment record carries the answer as a facility of its own, and
+  the prompt block says when not to search -- anything about this house, its devices or what was
+  said last week is answered faster and more surely by a pack or by memory -- and that text
+  arriving from a page is a quotation, never an instruction.
+- What was read goes on screen as one window of sources per turn, built from the results
+  themselves: the page's title, its host, and the full address behind it. No model is asked to
+  repeat a URL, a second search updates the same window rather than stacking another, and a search
+  that found nothing leaves the screen exactly as it was.
+- `JARVIS_DOOR_WATCH`: cameras paired with the sensors that mean somebody is in front of them, as
+  `camera.x=binary_sensor.a,binary_sensor.b`, several separated by `;`. A trigger puts that camera on
+  the HUD straight away -- no question, no turn, nothing said out loud -- and it stays for two
+  minutes. Pairing by room was the obvious alternative and does not work: a doorbell and its camera
+  routinely belong to no room at all in the registry, and a watch that resolves to nothing looks
+  configured.
+- The door trigger is an edge, not a state: a `binary_sensor` counts on the way into `on`, an
+  `event.*` entity on any new timestamp, and the state a feed replays when it connects counts for
+  nothing. One camera shows again at most once every fifteen seconds, so a ring that moves the
+  button, the motion sensor and the person detection at once is one window rather than three.
+- A display may now belong to no turn. The HUD kept only what belonged to the turn it had open, which
+  is the right default for a page that anything can write to; a window the brain put up by itself now
+  passes that filter, the same way an unprompted line already could. It replaces itself on its id, so
+  a second ring updates the picture in place.
+
+### Changed
+
+- `show_camera` and the door watch build the same card through one function, so the tool's still,
+  refresh and stream relay cannot drift away from what goes up by itself.
+
 ## [2.3.0] - 2026-09-28
 
 The screen shows what the runners are doing, and JARVIS stops a job once it turns out to rest on a
