@@ -37,14 +37,20 @@ AS_SERVICE=(runuser -u "$USER" --)
 # name, and it should not be anybody's.
 MERGE_AS=(-c user.name="JARVIS trial" -c user.email="trial@jarvis.invalid")
 
+FINISHED=false
 finish() {
   local ok=$1 step=$2 detail=$3
+  FINISHED=true
   printf '{"sha":"%s","ok":%s,"step":"%s","at":"%s","detail":"%s"}\n' \
     "${SHA:-}" "$ok" "$step" "$(date -Is)" "${detail//\"/\'}" > "$RESULT"
   chown "$USER:$USER" "$RESULT" 2>/dev/null
   [ "$ok" = "true" ] || echo "self-deploy failed at $step: $detail" >&2
   exit $([ "$ok" = "true" ] && echo 0 || echo 1)
 }
+
+# A script that dies halfway -- an unset variable, a command that is not there
+# -- still leaves an answer, or the brain waits for one that never comes.
+trap '[ "$FINISHED" = true ] || finish false crash "self-deploy stopped unexpectedly"' EXIT
 
 git_as() { "${AS_SERVICE[@]}" git "$@"; }
 
@@ -95,14 +101,16 @@ rm -f "$REQUEST"
 cd "$REPO" || finish false repo "no checkout at $REPO"
 
 # ---------------------------------------------------------------- trials
-if [[ "$LINE" =~ ^try\ core\ ([0-9]{1,6})$ || "$LINE" =~ ^try\ pack\ ([a-z0-9][a-z0-9-]{0,39})\ ([0-9]{1,6})$ ]]; then
+KIND=""
+# Each form matched on its own: a later =~ empties BASH_REMATCH.
+if [[ "$LINE" =~ ^try\ core\ ([0-9]{1,6})$ ]]; then
+  KIND=core PACK="" PR=${BASH_REMATCH[1]} DIR=$REPO
+elif [[ "$LINE" =~ ^try\ pack\ ([a-z0-9][a-z0-9-]{0,39})\ ([0-9]{1,6})$ ]]; then
+  KIND=pack PACK=${BASH_REMATCH[1]} PR=${BASH_REMATCH[2]} DIR=$REPO/packs/$PACK
+fi
+if [ -n "$KIND" ]; then
   [ -f "$TRIAL" ] && finish false busy "another pull request is on trial; take it off first"
-  if [[ "$LINE" =~ ^try\ core ]]; then
-    KIND=core PACK="" PR=${BASH_REMATCH[1]} DIR=$REPO
-  else
-    KIND=pack PACK=${BASH_REMATCH[1]} PR=${BASH_REMATCH[2]} DIR=$REPO/packs/$PACK
-    [ -d "$DIR/.git" ] || finish false pack "no pack checkout named $PACK"
-  fi
+  [ "$KIND" = core ] || [ -d "$DIR/.git" ] || finish false pack "no pack checkout named $PACK"
   BASE=$(git_as -C "$DIR" rev-parse HEAD)
   git_as -C "$DIR" fetch --quiet origin "pull/$PR/head" \
     || finish false fetch "could not fetch pull request $PR"
