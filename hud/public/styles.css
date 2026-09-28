@@ -1717,6 +1717,13 @@ html.is-focusing .footer {
    something of the owner, so it is the one that stands out; a job whose slot
    went idle without saying it was done is dimmed and flagged. */
 .fit-item.runner .t { color: var(--cyan); }
+.fit-item.runner .body { white-space: normal; }
+.fit-item.runner .sub {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .fit-item.runner-asking .t,
 .fit-item.runner-asking .sub { color: var(--orange); }
 .fit-item.runner-stopped .t,
