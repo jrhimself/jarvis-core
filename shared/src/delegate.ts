@@ -38,7 +38,7 @@ export type Closed = { ok: true } | { ok: false; error: string };
  * Somewhere to send work that is too big to do here.
  *
  * `slots` are the places a job can land, named by number because that is what
- * the user hears: "slot vier is bezig" is a sentence, "the second delegation
+ * the user hears: "slot four is busy" is a sentence, "the second delegation
  * target" is not. An implementation with a single destination reports `[1]`.
  */
 export interface Delegate {
@@ -51,11 +51,32 @@ export interface Delegate {
   /** Which slots are idle, or null when the far side could not be reached. */
   free(): Promise<number[] | null>;
 
+  /**
+   * Whether the far side answers, for the health panel.
+   *
+   * Resolves with what answered and throws with why it did not, like any
+   * probe. Optional: a delegate without it is asked through `free()`, which
+   * can say that the far side is gone but not why -- and "why" is the part
+   * that decides whether to wait or to go and fix a setting. A channel that
+   * nobody asks after is a channel whose failure is found by the one request
+   * that needed it, which is the worst moment to find it.
+   */
+  check?(): Promise<string>;
+
   /** Hands the job on. Resolves with the slot it landed in. */
   send(task: DelegatedTask): Promise<Delegated>;
 
   /** The last few lines of what a slot is doing. */
   tail(slot: number, lines: number): Promise<RunnerOutput>;
+
+  /**
+   * Types a message into a slot's runner: an answer to the question it ended
+   * its turn on, JARVIS' own or the owner's.
+   *
+   * Optional: a delegate that cannot reach back into a job it started leaves
+   * every question with the owner, to be answered at the runner itself.
+   */
+  reply?(slot: number, text: string): Promise<Closed>;
 
   /**
    * Gives a slot back once its job is over.
@@ -73,7 +94,45 @@ export const NO_DELEGATE: Delegate = {
   available: false,
   slots: [],
   free: async () => [],
-  send: async () => ({ ok: false, error: "Er is niets om dit aan door te geven." }),
-  tail: async () => ({ ok: false, error: "Er draait hier geen runner." }),
-  kill: async () => ({ ok: false, error: "Er draait hier geen runner." }),
+  send: async () => ({ ok: false, error: "There is nothing to hand this on to." }),
+  tail: async () => ({ ok: false, error: "No runner runs here." }),
+  kill: async () => ({ ok: false, error: "No runner runs here." }),
 };
+
+/**
+ * One delegation slot as the screen shows it.
+ *
+ * `busy` is what the far side says, and null when it could not be asked; `job`
+ * is what this assistant handed that slot and has not seen end. The two are
+ * kept apart because they can disagree -- a slot busy with nothing JARVIS
+ * knows of is somebody else's, and a job on an idle slot is one that ended
+ * without saying so -- and the disagreement is worth seeing.
+ */
+export interface RunnerRow {
+  slot: number;
+  busy: boolean | null;
+  job?: {
+    /** The dev task's number, the one `abandon_dev_task` takes. */
+    id: number;
+    /** What it is about, in one line. */
+    topic: string;
+    /** When it was handed on, ISO 8601. */
+    since: string;
+    /** Set when JARVIS started it himself to learn something he lacked. */
+    learning?: boolean;
+  };
+  /** What the last judged screen of the runner meant. */
+  note?: {
+    state: "working" | "asking" | "done";
+    /** The question it asked, or what it said it did. */
+    text?: string;
+    /** When that screen was judged, ISO 8601. */
+    at: string;
+  };
+}
+
+/** Every delegation slot, and whether the far side could be asked at all. */
+export interface RunnerBoard {
+  reachable: boolean;
+  runners: RunnerRow[];
+}

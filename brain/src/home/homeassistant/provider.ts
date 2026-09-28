@@ -326,6 +326,14 @@ export class HomeAssistant implements HomeProvider {
     };
   }
 
+  /** Where the camera's MJPEG stream can be fetched, bearer token included. */
+  cameraStream(id: string): CameraStill {
+    return {
+      url: `${this.#url}/api/camera_proxy_stream/${encodeURIComponent(id)}`,
+      headers: { Authorization: `Bearer ${this.#token}` },
+    };
+  }
+
   /** The calendars Home Assistant exposes, in the order it lists them. */
   async calendars(): Promise<HomeCalendar[]> {
     const response = await this.#rest("/api/calendars");

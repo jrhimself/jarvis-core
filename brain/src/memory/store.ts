@@ -762,7 +762,10 @@ export class MemoryStore {
   search(query: string, limit = 8): Fact[] {
     const terms = query
       .toLowerCase()
-      .replace(/["'()*]/g, " ")
+      // Only letters and digits reach FTS5: its query syntax gives meaning to
+      // much more than quotes and brackets, and a slash or a colon in a
+      // sentence was a syntax error rather than a search.
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
       .split(/\s+/)
       .filter((t) => t.length > 2);
 
@@ -891,6 +894,22 @@ export class MemoryStore {
       .all(limit) as unknown as Array<{ pattern: string; recipe: string }>;
   }
 
+  /**
+   * The exchanges since a moment, oldest first, for reading back.
+   *
+   * The newest win when there are more than the limit: a transcript that stops
+   * before the last thing said is the wrong half to keep.
+   */
+  turnsSince(iso: string, limit = 200): Array<{ at: string; asked: string; answered: string }> {
+    return this.#db
+      .prepare(
+        `SELECT at, asked, answered FROM
+           (SELECT id, at, asked, answered FROM turns WHERE at >= ? ORDER BY id DESC LIMIT ?)
+         ORDER BY id`,
+      )
+      .all(iso, limit) as unknown as Array<{ at: string; asked: string; answered: string }>;
+  }
+
   /** Exchanges that no distillation pass has looked at yet. */
   pendingTurns(limit = 40): Array<{ id: number; at: string; asked: string; answered: string }> {
     return this.#db
@@ -973,7 +992,10 @@ export class MemoryStore {
   searchSessions(query: string, limit = 5): Session[] {
     const terms = query
       .toLowerCase()
-      .replace(/["'()*]/g, " ")
+      // Only letters and digits reach FTS5: its query syntax gives meaning to
+      // much more than quotes and brackets, and a slash or a colon in a
+      // sentence was a syntax error rather than a search.
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
       .split(/\s+/)
       .filter((t) => t.length > 2);
     if (terms.length === 0) return [];
@@ -1253,6 +1275,27 @@ export class MemoryStore {
       )
       .all(iso, limit) as unknown as Array<{ path: string; ingested_at: string }>;
     return rows.map((row) => ({ path: row.path, ingestedAt: row.ingested_at }));
+  }
+
+  /**
+   * The facts a pass wrote: claimed by a note read in the window, and written
+   * after it opened.
+   *
+   * The second condition is what keeps it to that night. A note read again
+   * still claims everything it said the night before, and those facts were not
+   * learned twice.
+   */
+  corpusFactsBetween(since: string, until: string, limit = 40): Fact[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT DISTINCT f.* FROM corpus_files c
+           JOIN corpus_facts cf ON cf.path = c.path
+           JOIN facts f ON f.id = cf.fact_id
+         WHERE c.ingested_at > ? AND c.ingested_at <= ? AND f.updated_at > ?
+         ORDER BY f.id LIMIT ?`,
+      )
+      .all(since, until, since, limit) as unknown as FactRow[];
+    return rows.map(toFact);
   }
 
   /** The most recent passes, newest first. */

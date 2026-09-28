@@ -11,9 +11,11 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:https";
 import { join } from "node:path";
 
-import { locale, timeZone, usingHostZone } from "@jarvis/shared";
+import { locale, timeZone, usingHostZone, type HomeProvider } from "@jarvis/shared";
 
 import { loadConfig } from "./config.js";
+import { parseDoorWatch, startDoorWatch } from "./door.js";
+import { createHome } from "./home/index.js";
 import { startCheckpointing } from "./memory/checkpoint.js";
 import { warmEmbeddings } from "./memory/embedding.js";
 import { serveMedia } from "./media.js";
@@ -28,16 +30,51 @@ import { Telegram } from "./telegram.js";
 import { handlePress } from "./proactive/suggest.js";
 import { packSummary } from "./agent.js";
 import { serveRunnerReport } from "./dev/report-endpoint.js";
-import { handleRunnerPress, supervise } from "./dev/runners.js";
+import {
+  consider,
+  goneMessage,
+  handleRunnerPress,
+  handleRunnerReply,
+  lookIn,
+  supervise,
+  type RunnerSeam,
+} from "./dev/runners.js";
+import { delegatedDevTasks, endDelegated } from "./dev/store.js";
+import { pullRequestIn, spokenReady } from "./dev/notify.js";
+import { pullRequestTarget, rememberOffer } from "./dev/trial.js";
+import { notify, spoken } from "./notify.js";
 import { warmRecordedLines } from "./conversation.js";
+import { language } from "./language.js";
+import { configurePlanStore, loadPlanUsage } from "./plan.js";
 import { attachWebsocket } from "./ws.js";
-import { runHealthChecks, specsFor } from "./health.js";
+import { healthWithBoard, lastHealth, publishHealth, runHealthChecks, specsFor } from "./health.js";
+import { boardSource, boardWatched, forgetRunner, onBoard, refreshBoard, topicOf, useBoardSource } from "./dev/board.js";
 
 /** How often every dependency is asked whether it still answers. */
+/** How often delegated runners that went quiet are looked in on. */
+const RUNNER_LOOK_MS = 10 * 60_000;
+
+/** A job older than this that turns out to have stopped is tidied without a message. */
+const RUNNER_NEWS_MS = 48 * 3_600_000;
+
 const HEALTH_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * How often the runner board is rebuilt while a page is watching it.
+ *
+ * Every change this process makes rebuilds it at once; this is for the ones it
+ * does not see -- a runner closed by hand at the other machine, a session that
+ * died. One SSH login a minute, and none while no page is open.
+ */
+const BOARD_INTERVAL_MS = 60_000;
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // Last known plan usage, so a cold websocket still has numbers for the pill
+  // before any turn has refreshed them this process.
+  configurePlanStore(config.dataDir);
+  loadPlanUsage();
 
   let cert: Buffer;
   let key: Buffer;
@@ -72,6 +109,41 @@ async function main(): Promise<void> {
   const bot = listening ? new Telegram(config.suggestToken) : null;
   const chat = bot === null ? null : new Chat(bot, config.suggestChat);
 
+  // What the runner supervisor can do over the delegate seam, which is the
+  // pack's business rather than core's: close a slot, type into it, and mark
+  // the job's record when the runner says it is done.
+  const closeSlot = async (slot: number) => {
+    const closed = await (await packSummary()).delegate.kill(slot);
+    if (closed.ok) forgetRunner(slot);
+    refreshBoard();
+    return closed;
+  };
+  const runnerSeam: RunnerSeam = {
+    reply: async (slot, text) => {
+      const delegate = (await packSummary()).delegate;
+      return delegate.reply === undefined
+        ? { ok: false, error: "this delegate cannot pass a message to a runner" }
+        : delegate.reply(slot, text);
+    },
+    consider: (report, question) => consider(store, report, question),
+    finished: (slot, summary) => {
+      const ended = endDelegated(store.devConnection(), slot, { state: "finished", detail: summary }, new Date());
+      refreshBoard();
+      // Out loud, to whichever screen is open: the chat has the whole message,
+      // and this is the sentence that makes him go and read it.
+      // A pull request whose repository is known can be tried before it is
+      // merged, and the sentence offers that; the offer waits for the answer.
+      if (ended !== null) {
+        const tryable = pullRequestTarget(summary) !== null;
+        const said = spokenReady(topicOf(ended), pullRequestIn(summary), tryable);
+        if (tryable) rememberOffer(store.devConnection(), ended.id, said, new Date());
+        void notify([spoken], { spoken: said }).catch((error: unknown) =>
+          console.error("runners: could not say a job is done:", error),
+        );
+      }
+    },
+  };
+
   const server = createServer({ cert, key }, (req, res) => {
     // Images the assistant fetched come from memory, not from disk.
     if (serveMedia(req, res)) return;
@@ -84,7 +156,7 @@ async function main(): Promise<void> {
     if (
       serveRunnerReport(req, res, config.runnerToken, (report) => {
         if (bot === null) return;
-        void supervise(store, bot, config.suggestChat, report);
+        void supervise(store, bot, config.suggestChat, report, closeSlot, runnerSeam);
       })
     ) {
       return;
@@ -104,6 +176,14 @@ async function main(): Promise<void> {
   void warmRecordedLines().catch((error: unknown) => {
     console.warn("voice: could not record the opening lines:", error);
   });
+  // A language nobody spoke before has no recorded lines yet; a switch asked
+  // for in conversation needs them as much as the start does.
+  language().onChange((lang) => {
+    console.log(`language: switched to ${lang}`);
+    void warmRecordedLines(lang).catch((error: unknown) =>
+      console.warn("language: could not record the lines:", error),
+    );
+  });
 
   // Loading the model and indexing older facts takes a few seconds; neither
   // should hold up the server, and both are ready long before anyone speaks.
@@ -120,6 +200,30 @@ async function main(): Promise<void> {
   startCheckpointing(store, config.memoryPath);
   const stopProactive = startProactive(config, store);
 
+  // The door, on its own connection and only when a deployment named one. The
+  // observation layer holds a house too, but it holds it only from `observe`
+  // upwards, and a camera that goes up by itself is worth having in a
+  // deployment that watches nothing else.
+  const doorWatches = parseDoorWatch(process.env["JARVIS_DOOR_WATCH"]);
+  let doorHome: HomeProvider | null = null;
+  let stopDoorWatch: () => void = () => {};
+  if (doorWatches.length > 0) {
+    doorHome = createHome(config);
+    if (doorHome === null) {
+      console.error("door watch: configured, but this deployment has no house to watch");
+    } else {
+      const house = doorHome;
+      void house
+        .connect()
+        .then(() => startDoorWatch(house, doorWatches))
+        .then((stop) => {
+          stopDoorWatch = stop;
+          console.log(`door watch: ${doorWatches.length} camera(s) armed`);
+        })
+        .catch((error: unknown) => console.error("door watch: could not start:", error));
+    }
+  }
+
   // The probes used to run only when a browser connected, which is the one
   // moment their verdict is least needed: the tool calls that pay for a dead
   // dependency come from a turn, and a turn can arrive over Telegram with no
@@ -129,13 +233,26 @@ async function main(): Promise<void> {
   const checkHealth = (): void => {
     void packSummary()
       .then((packs) =>
-        runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes)),
+        runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
       )
+      .then(publishHealth)
       .catch((error: unknown) => console.error("health checks failed:", error));
   };
   checkHealth();
   const healthTimer = setInterval(checkHealth, HEALTH_INTERVAL_MS);
   healthTimer.unref();
+
+  // The runner board, and the delegate's health row kept in step with it: the
+  // row is a count of free slots, and the board knows that count sooner.
+  useBoardSource(boardSource(store.devConnection(), async () => (await packSummary()).delegate));
+  onBoard((board) => {
+    const checks = lastHealth();
+    if (checks !== null) publishHealth(healthWithBoard(checks, board));
+  });
+  const boardTimer = setInterval(() => {
+    if (boardWatched()) refreshBoard();
+  }, BOARD_INTERVAL_MS);
+  boardTimer.unref();
 
   let hangUp: (() => void) | null = null;
 
@@ -146,19 +263,62 @@ async function main(): Promise<void> {
         if (press.chatId !== config.suggestChat) return;
         // Closing a delegated slot travels back over the same seam the job left
         // by, which is the pack's business rather than core's.
-        const closed = await handleRunnerPress(
-          bot,
-          async (slot) => (await packSummary()).delegate.kill(slot),
-          press,
-        );
+        const closed = await handleRunnerPress(bot, closeSlot, press);
         if (closed) return;
         await handlePress(db, bot, press);
       },
       said: async (said) => {
+        // A reply to a runner's question goes to that runner, not to the chat.
+        if (said.chatId === config.suggestChat && (await handleRunnerReply(bot, runnerSeam.reply, said))) {
+          return;
+        }
         await chat.said(said);
       },
     });
     console.log("telegram: listening for answers and questions");
+  }
+
+  // Runners that went quiet without reporting are looked in on from here: one
+  // stuck on a prompt never ends a turn, and one that died never reports.
+  let lookTimer: NodeJS.Timeout | null = null;
+  if (bot !== null) {
+    const look = () => {
+      const db = store.devConnection();
+      const watched = delegatedDevTasks(db).map((task) => ({
+        slot: task.slot ?? -1,
+        task: task.instruction,
+        since: Date.parse(task.createdAt),
+      }));
+      if (watched.length === 0) return;
+      void packSummary()
+        .then((packs) =>
+          lookIn(
+            watched,
+            packs.delegate.slots,
+            (slot, lines) => packs.delegate.tail(slot, lines),
+            (report) => supervise(store, bot, config.suggestChat, report, closeSlot, runnerSeam),
+            async (job) => {
+              endDelegated(db, job.slot, { state: "failed", detail: "the runner stopped without saying it was done" }, new Date());
+              forgetRunner(job.slot);
+              // A runner that died still leaves its job directory behind, and
+              // closing the slot is what clears it; a slot that is already gone
+              // is only tidied.
+              void closeSlot(job.slot).catch(() => undefined);
+              refreshBoard();
+              // A job from weeks ago that nobody closed off is tidied quietly;
+              // only one that was still news is worth a message.
+              if (Date.now() - job.since < RUNNER_NEWS_MS) {
+                await bot.send(config.suggestChat, goneMessage(job.slot, job.task));
+              }
+            },
+            Date.now(),
+          ),
+        )
+        .catch((error: unknown) => console.error("runners: could not look in:", error));
+    };
+    look();
+    lookTimer = setInterval(look, RUNNER_LOOK_MS);
+    lookTimer.unref();
   }
 
   server.listen(config.port, () => {
@@ -176,6 +336,10 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     console.log(`jarvis brain: ${signal} received, shutting down`);
     stopProactive();
+    stopDoorWatch();
+    doorHome?.close();
+    if (lookTimer !== null) clearInterval(lookTimer);
+    clearInterval(boardTimer);
     hangUp?.();
     chat?.close();
     server.close(() => process.exit(0));

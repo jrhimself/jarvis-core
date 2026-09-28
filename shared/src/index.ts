@@ -15,6 +15,7 @@ export * from "./pack.js";
 export * from "./time.js";
 
 import type { HudTile } from "./pack.js";
+import type { RunnerBoard } from "./delegate.js";
 
 /** Messages sent by the HUD to the brain. */
 export type ClientMessage =
@@ -46,8 +47,18 @@ export type ClientMessage =
       text: string;
       /** Client-generated id, echoed back on every message of the answer. */
       turnId: string;
-      /** Which language to pronounce it in. Defaults to Dutch. */
+      /** Which language to pronounce it in. Defaults to the current one. */
       lang?: SpeechLang;
+    }
+  | {
+      /**
+       * Switch the language JARVIS speaks, listens and answers in.
+       *
+       * For the whole deployment, not for this page: the choice is kept by the
+       * brain and every open HUD hears about it as a `lang` message.
+       */
+      kind: "set_lang";
+      lang: SpeechLang;
     }
   | {
       kind: "cancel";
@@ -91,6 +102,12 @@ export type DisplayPayload =
       caption?: string;
       /** Set for a camera: re-fetch this often, in milliseconds. */
       refreshMs?: number;
+      /**
+       * A live camera: a path on the brain that streams the moving picture
+       * (MJPEG), for as long as the page keeps it open. `url` stays the still
+       * to show until the first frame arrives, and if the stream cannot be had.
+       */
+      stream?: string;
     }
   | {
       type: "panel";
@@ -120,6 +137,26 @@ export type DisplayPayload =
        * a property of the list and not of the screen.
        */
       quiet?: boolean;
+      /**
+       * The rows are in the order they will be spoken about.
+       *
+       * A window of the mails the assistant chose is such a list: it was drawn
+       * from what he is about to say, in that order. The gold then walks down
+       * it rather than jumping to whichever row the sentence resembles most,
+       * and a row it would otherwise have missed -- a mail described in words
+       * that are in neither its sender nor its subject -- lights when the one
+       * after it does, so every row has its blink, once, in the right order.
+       */
+      ordered?: boolean;
+      /**
+       * The figure the window opens with, when it is not the number of rows.
+       *
+       * A mail window after "nothing new since the last briefing" holds the
+       * older mails that still want an answer: the figure is 0, what was said
+       * about new mail, and `label` says what the rows are ("3 require your
+       * attention"). Without it the HUD counts the rows.
+       */
+      figure?: { value: number; label?: string };
     }
   | {
       type: "chart";
@@ -132,6 +169,73 @@ export type DisplayPayload =
       type: "text";
       title?: string;
       body: string;
+    }
+  | {
+      /**
+       * The weather as a picture rather than a table.
+       *
+       * A forecast read out loud is one sentence; the same forecast looked at
+       * is a sky, a temperature and whether to take a coat, and none of those
+       * is a row in a table. So the pack that read it hands over the readings
+       * and the HUD draws them the way a weather app does: the sky as an icon
+       * with the temperature it is now beside it, the condition in words under
+       * that, today's high and low, when the sun rises and sets, and the days
+       * after as a row of tiles along the bottom.
+       *
+       * Every reading is optional. Providers disagree about what a day
+       * contains, and a missing one is left out of the drawing rather than
+       * drawn as a question mark. `condition` is Home Assistant's enum
+       * (`sunny`, `partlycloudy`, `rainy`, ...), which is the one vocabulary a
+       * house already speaks; `summary` is that condition in words, in
+       * whichever language is being spoken, for the caption.
+       */
+      type: "weather";
+      title: string;
+      /** The units the figures carry, e.g. "°C", "km/h", "mm". */
+      units: { temperature: string; windSpeed?: string; precipitation?: string };
+      /**
+       * The weather this minute, when the provider has it: the big number on
+       * the card. Left out, today's high stands in for it.
+       */
+      now?: { temperature?: number; condition?: string; summary?: string };
+      /** When the sun rises and sets, as clocks: "07:25", "19:35". */
+      sun?: { rise?: string; set?: string };
+      /**
+       * Today first, then the days after. Today is drawn large; the days after
+       * are the tiles along the bottom, so a pack sends the days it wants
+       * seen there, not only the ones that were asked about.
+       */
+      days: Array<{
+        /** "vandaag", "tomorrow", "wo" -- whatever the caller calls the day. */
+        label: string;
+        condition?: string;
+        summary?: string;
+        high?: number;
+        low?: number;
+        /** 0-100. */
+        precipitationChance?: number;
+        /** In `units.precipitation`. */
+        precipitation?: number;
+        /** In `units.windSpeed`. */
+        windSpeed?: number;
+        /** Short compass point, e.g. "ZW" or "SW". */
+        windDirection?: string;
+        /** Degrees the wind comes from, for drawing the arrow. */
+        windBearing?: number;
+      }>;
+      /**
+       * Today by the hour, from now to the end of the day, when the provider
+       * forecasts by the hour. The tiles along the bottom are made of these
+       * when there are no days after today to make them of.
+       */
+      hours?: Array<{
+        /** "14:00". */
+        label: string;
+        temperature?: number;
+        precipitation?: number;
+        precipitationChance?: number;
+        condition?: string;
+      }>;
     };
 
 /**
@@ -169,7 +273,15 @@ export type DisplayDismiss =
 export interface DisplayCue {
   /** Characters of the answer already written when this was pushed. */
   chars: number;
-  /** Word or short phrase to wait for, matched case-insensitively. */
+  /**
+   * Word or short phrase to wait for, matched case-insensitively.
+   *
+   * Several may be given, separated by `|`, and the first of them to be said
+   * releases the item: a deployment that can be switched between languages
+   * says "agenda" one morning and "calendar" the next, and a window that only
+   * knew the Dutch word waited through the whole English briefing and went up
+   * when it was over, under no sentence at all.
+   */
   anchor?: string;
 }
 
@@ -204,7 +316,11 @@ export type ServerMessage =
     }
   | {
       kind: "display";
-      turnId: string;
+      /**
+       * Absent when nothing was asked: a window the brain put up on its own,
+       * which the HUD must not drop for belonging to a turn it does not know.
+       */
+      turnId?: string;
       /** Identifies this item, so it can be replaced or cleared later. */
       id: string;
       payload: DisplayPayload;
@@ -224,7 +340,7 @@ export type ServerMessage =
       available: boolean;
       /** Why not, when it cannot — safe to show to the user. */
       reason?: string;
-      /** Which language this turn is pronounced in. Absent means Dutch. */
+      /** Which language this turn is pronounced in. Absent means the current one. */
       lang?: SpeechLang;
       /** Post-processing the HUD should put the audio through. */
       fx?: SpeechFx;
@@ -258,8 +374,21 @@ export type ServerMessage =
        */
       kind: "announce";
       text: string;
-      /** Absent means Dutch, like everywhere else. */
+      /** Absent means the current language, like everywhere else. */
       lang?: SpeechLang;
+    }
+  | {
+      /**
+       * Standing desk windows: which subjects stay on the HUD, and which of
+       * those the morning briefing should cover. Sent when a page connects so
+       * a newly installed pack can appear without a hard-coded list in the HUD.
+       */
+      kind: "desk";
+      slots: readonly {
+        topic: string;
+        label: string;
+        briefing?: boolean;
+      }[];
     }
   | {
       /**
@@ -285,6 +414,22 @@ export type ServerMessage =
       tiles: HudTile[];
     }
   | {
+      /**
+       * The language JARVIS speaks now. Sent when the page connects and again
+       * whenever it is switched, from this page or any other.
+       */
+      kind: "lang";
+      lang: SpeechLang;
+    }
+  | {
+      /**
+       * The language the screen is drawn in. Sent when the page connects and
+       * whenever it is switched; apart from the voice's, English until asked.
+       */
+      kind: "ui_lang";
+      lang: SpeechLang;
+    }
+  | {
       /** Whether the brain can transcribe; false means the browser should. */
       kind: "listen";
       available: boolean;
@@ -306,6 +451,41 @@ export type ServerMessage =
        * microphone open longer than it would after a plain statement.
        */
       expectsReply: boolean;
+      /**
+       * True when this turn was the morning briefing (a tool was called with
+       * `briefing: true`). The HUD folds the stage back to the standing desk.
+       * Already sent at runtime; declared here so clients can rely on it.
+       */
+      briefing?: boolean;
+    }
+  | {
+      /**
+       * Which standing desk panel the spoken answer is about right now.
+       *
+       * Emitted when a display or tool-tiles push maps to a desk topic, so an
+       * always-visible /v2 desk can light the right panel without guessing from
+       * prose. `panel` is a desk topic id: the core five (`weather`, `agenda`,
+       * `mail`, `work`, `notes`) plus any pack topic declared on `desk`. Optional
+       * `cue` mirrors the display cue when focus was driven by a cued display,
+       * so the HUD can wait for the same spoken word before lighting up.
+       */
+      kind: "focus";
+      panel: string;
+      cue?: DisplayCue;
+      /**
+       * Raised by a section marker in the answer rather than by a tool or a
+       * display: `cue.chars` is exactly where the part about `panel` begins,
+       * with no anchor to wait for. Once a turn has one, it has them for every
+       * part, and focus from anything else in that turn is noise.
+       */
+      section?: true;
+    }
+  | {
+      /**
+       * Clear panel focus. Sent when the turn that raised focus ends (done,
+       * error, or cancel), so a lit panel does not stay lit into the next one.
+       */
+      kind: "unfocus";
     }
   | {
       kind: "error";
@@ -347,6 +527,14 @@ export type ServerMessage =
       /** How much of the claude.ai plan is spent, as far as the brain has heard. */
       kind: "usage";
       usage: PlanUsage;
+    }
+  | {
+      /**
+       * What every delegation slot is doing: sent when a page connects and
+       * again whenever a job is handed on, judged, dropped or ended.
+       */
+      kind: "runners";
+      board: RunnerBoard;
     };
 
 /** One of the plan's metered windows. */
@@ -424,6 +612,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     return lang === undefined
       ? { kind: "say", text, turnId }
       : { kind: "say", text, turnId, lang };
+  }
+
+  if (value["kind"] === "set_lang") {
+    const { lang } = value;
+    if (lang !== "nl" && lang !== "en") return null;
+    return { kind: "set_lang", lang };
   }
 
   if (value["kind"] === "listen_start") return { kind: "listen_start" };

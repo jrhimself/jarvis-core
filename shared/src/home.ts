@@ -203,6 +203,13 @@ export interface HomeProvider {
   /** Where a still of this camera can be fetched. Present when `capabilities.camera`. */
   cameraStill?(id: string): CameraStill;
 
+  /**
+   * Where this camera's moving picture can be fetched, as an MJPEG stream
+   * (`multipart/x-mixed-replace`). Optional even with a camera: without it a
+   * live camera is a still that is fetched again.
+   */
+  cameraStream?(id: string): CameraStill;
+
   /** The calendars to ask about. Present when `capabilities.calendar`. */
   calendars?(): Promise<HomeCalendar[]>;
 }

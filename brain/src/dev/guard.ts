@@ -102,34 +102,34 @@ export type Verdict =
  * Small or big, from the shape alone.
  *
  * First match wins and the order is roughly widest-first, so the reason JARVIS
- * says out loud is the most informative one: "dat zit niet in mijn eigen code"
- * says more than "dat raakt vijf bestanden" when both are true.
+ * says out loud is the most informative one: "it is not in my own code"
+ * says more than "it touches five files" when both are true.
  */
 export function classify(shape: TaskShape): Verdict {
   if (shape.repo !== "jarvis") {
-    return { size: "big", reason: "dat zit niet in mijn eigen code" };
+    return { size: "big", reason: "it is not in my own code" };
   }
   if (shape.needsOutsideWork) {
-    return { size: "big", reason: "daar is werk buiten deze machine voor nodig" };
+    return { size: "big", reason: "it needs work outside this machine" };
   }
   if (shape.needsNewDependency) {
-    return { size: "big", reason: "daar is een nieuw pakket voor nodig" };
+    return { size: "big", reason: "it needs a new package" };
   }
   if (shape.needsNewSecret) {
-    return { size: "big", reason: "daar is een nieuwe sleutel of token voor nodig" };
+    return { size: "big", reason: "it needs a new key or token" };
   }
   // A shape with no files is not a small plan, it is no plan. Every check below
   // reads the file list, so an empty one would sail past all of them -- the one
   // honest answer that must not default to "small".
   if (shape.files.length === 0) {
-    return { size: "big", reason: "ik kan niet zeggen welke bestanden dit raakt" };
+    return { size: "big", reason: "I cannot tell which files it touches" };
   }
   const blocked = protectedAmong(shape.files);
   if (blocked.length > 0) {
-    return { size: "big", reason: `dat raakt beschermde code (${blocked.join(", ")})` };
+    return { size: "big", reason: `it touches protected code (${blocked.join(", ")})` };
   }
   if (shape.files.length > MAX_FILES) {
-    return { size: "big", reason: `dat raakt ${shape.files.length} bestanden` };
+    return { size: "big", reason: `it touches ${shape.files.length} files` };
   }
   return { size: "small" };
 }
@@ -145,13 +145,13 @@ export function classify(shape: TaskShape): Verdict {
 export function escalation(changed: readonly string[]): string | null {
   const blocked = protectedAmong(changed);
   if (blocked.length > 0) {
-    return `de wijziging raakte beschermde code (${blocked.join(", ")})`;
+    return `the change touched protected code (${blocked.join(", ")})`;
   }
   if (changed.length > MAX_FILES) {
-    return `de wijziging raakte ${changed.length} bestanden, meer dan een kleine fix mag`;
+    return `the change touched ${changed.length} files, more than a small fix may`;
   }
   if (changed.length === 0) {
-    return "er is niets gewijzigd";
+    return "nothing was changed";
   }
   return null;
 }
@@ -159,10 +159,10 @@ export function escalation(changed: readonly string[]): string | null {
 /** Whether another small fix may start right now. */
 export function budgetVerdict(doneToday: number, oneRunning: boolean): Verdict {
   if (oneRunning) {
-    return { size: "big", reason: "ik ben al met een andere fix bezig" };
+    return { size: "big", reason: "I am already working on another fix" };
   }
   if (doneToday >= DAILY_LIMIT) {
-    return { size: "big", reason: `ik heb er vandaag al ${doneToday} zelf gedaan` };
+    return { size: "big", reason: `I have already done ${doneToday} myself today` };
   }
   return { size: "small" };
 }

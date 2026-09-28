@@ -17,7 +17,14 @@ import { setTimeout } from "node:timers/promises";
 import { reconcile, openAnomalies } from "../dist/proactive/detect.js";
 import { SELF_RULES } from "../dist/proactive/rules.js";
 import type { SelfReading } from "../dist/proactive/self.js";
-import { JOBS, SHIPPED_TIMERS, expectedJobs, inspect, judge } from "../dist/proactive/self.js";
+import {
+  JOBS,
+  SHIPPED_TIMERS,
+  expectedJobs,
+  inspect,
+  judge,
+  parseExpiries,
+} from "../dist/proactive/self.js";
 import { beat, heartbeats, metricAt, pruneMetrics, recordMetric } from "../dist/proactive/store.js";
 import { proactiveDb, tempDir } from "./helpers.ts";
 
@@ -63,6 +70,7 @@ function healthy(over: Partial<SelfReading> = {}): SelfReading {
     git: { dirty: false, synced: true },
     missingConfig: [],
     timeZone: { zone: "Europe/Amsterdam", fromHost: false },
+    expiries: [],
     ...over,
   };
 }
@@ -401,4 +409,38 @@ test("a self pass does not close what the house pass opened", () => {
   const open = openAnomalies(db);
   assert.equal(open.length, 1);
   assert.equal(open[0]?.fingerprint, "problem:binary_sensor.waterlek");
+});
+
+test("expiry dates are read as name=YYYY-MM-DD pairs, and a bad date is kept", () => {
+  const read = parseExpiries(" model=2027-08-23, github = 2026-12-01 ,=2026-01-01, typo=2027-02-31,");
+  assert.deepEqual(
+    read.map((e) => [e.name, e.date?.toISOString().slice(0, 10) ?? null]),
+    [
+      ["model", "2027-08-23"],
+      ["github", "2026-12-01"],
+      ["typo", null],
+    ],
+  );
+  assert.deepEqual(parseExpiries(""), []);
+});
+
+test("a credential far from expiring says nothing", () => {
+  assert.deepEqual(fingerprints(healthy({ expiries: parseExpiries("model=2027-08-23") })), []);
+});
+
+test("a credential within a month of expiring is a finding of its own", () => {
+  const reading = healthy({ expiries: parseExpiries("model=2026-09-12,other=2027-01-01") });
+  assert.deepEqual(fingerprints(reading), ["invariant:expiry:model"]);
+  assert.match(judge(reading, NOW)[0]?.detail ?? "", /model expires on 2026-09-12, in 21 days/);
+});
+
+test("an expired credential says so, with how long ago", () => {
+  const found = judge(healthy({ expiries: parseExpiries("model=2026-08-20") }), NOW);
+  assert.match(found[0]?.detail ?? "", /model expired on 2026-08-20, 2 days ago/);
+});
+
+test("a date that does not parse is a finding, not silence", () => {
+  const reading = healthy({ expiries: parseExpiries("model=23-08-2027") });
+  assert.deepEqual(fingerprints(reading), ["invariant:expiry:model"]);
+  assert.match(judge(reading, NOW)[0]?.detail ?? "", /not a YYYY-MM-DD date/);
 });

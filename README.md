@@ -10,16 +10,13 @@ It was built for one house and is written to be built for another. The parts tha
 the persona, the seeds, the credentials, the tools that talk to systems only one person has — live
 outside this repository by design.
 
-![The JARVIS HUD in standby](docs/images/hud.png)
+![The JARVIS HUD](docs/images/hud.png)
 
-![The first of the tour's seven steps](docs/images/hud-tour.png)
-
-The screen at rest, and the same screen a minute later with the tour running. The transcript and the
-four stages of the pipeline sit on the left, the context panel on the right holds the latest readings
-of the agenda, the mail and the weather above the state of the machine, and in the middle is the
-space where windows open when the assistant has something to show — a camera still, a chart, a note.
-The orb changes colour with what it is doing; in the second picture it is listening, and the first
-card of the tour says what the space bar, Enter and the button at the bottom right are for.
+The desk. Every subject has a panel that is always on screen — the weather, the agenda and the facts
+on the left, the mail, the pull requests and the state of the machine on the right — and the orb in
+the middle changes colour with what it is doing: listening, thinking, speaking. The command line at
+the bottom has the cursor as the page opens and takes a typed question; with the field left
+(Escape), the space bar takes a spoken one.
 
 ## Overview
 
@@ -105,18 +102,28 @@ it. Mail, read-only, with newsletters filtered out and a judgement about which m
 reply.
 
 **The screen.** Anything worth looking at goes on the display surface where the orb sits: a camera
-still or feed, an image it fetched, a sensor panel, a chart, a note. The browser never fetches a
+still or feed, an image it fetched, a sensor panel, a chart, a note, the weather as a picture. The browser never fetches a
 source itself — everything is pulled server-side with whatever credential it needs and handed to the
 page as an opaque path, so the house's token stays out of the browser. `show_camera` is only
 registered when there is a house that says it has cameras: the assistant reads its tool list as a
 list of promises, and a promise it discovers is empty halfway through an answer has already been
 made out loud.
 
-Each of those appears at the moment it is being talked about rather than the moment its tool
-answered — a window may name a word to wait for, and is held until the voice reaches it. The one
-before it does not disappear: it shrinks into a row underneath, four in view at most. A morning
-briefing that covers the house, the mail and the agenda therefore ends with all three side by side,
-in the order they were spoken.
+A display that belongs to a desk subject lands in that subject's panel; anything else — a camera,
+an image, a chart — opens as a card over the desk and goes when the next question starts, or when it
+is closed, which the brain is told so it can be asked for again in words. Panels light at the moment
+they are being talked about rather than the moment their tool answered: the model marks where each
+part of an answer begins, the brain strips the marks before anything is spoken and tells the page
+the exact character, and the panel opens as the voice reaches it. A morning briefing therefore walks
+the desk panel by panel, in the order it is spoken, and any panel is a click from full size.
+
+**The web.** Search it, and read a page off it. It is the one source here that comes with no pack
+and no credential behind it, which is why it belongs to core: everything else the assistant knows
+had to be installed and pointed at something first, and a question about a street, an organisation
+or a term is one that nothing installed can answer. Two built-in tools and no others — every
+remaining one reads this machine, and those stay withdrawn. What was read goes up as a window of
+sources, taken from the results themselves rather than from the model, so an answer can be held
+against what it was taken from. `JARVIS_WEB=off` withdraws both again.
 
 **Itself.** What it noticed about the house and about its own jobs (`anomalies`), what earlier
 conversations were about, what it remembers and why, what every model call cost, and what the last
@@ -137,27 +144,17 @@ persona described a house assistant and nothing in the prompt contradicted it, w
 screen read *not configured*. The assistant can now say which of the four installation steps has not
 been taken, and is told not to name a pack or a repository that does not appear in its own record.
 
-**Whatever is being talked about.** The context panel is a standing sheet, one block per subject:
-the weather, the mail, the agenda, each replaced only by a newer reading of itself. Core notices
-which server and which tool a turn is calling into and files the figures under the subject rather
-than under the pack, so the house answering about the weather and the house answering about the
-agenda are two blocks rather than one that keeps overwriting itself. This costs no tool call and
-nothing about it is left to the model — the readings come out of the pack's own code.
+**Whatever is being talked about.** Every panel on the desk holds the latest reading of its own
+subject, replaced only by a newer reading of itself. Core notices which server and which tool a turn
+is calling into and files the figures under the subject rather than under the pack, so the house
+answering about the weather and the house answering about the agenda fill two panels rather than one
+that keeps overwriting itself. Packs can add subjects of their own, which appear as a strip under the
+orb. This costs no tool call and nothing about it is left to the model — the readings come out of
+the pack's own code. The panels are kept in the browser, so opening the page again shows what was
+last known before the brain has said anything.
 
-A block goes up when JARVIS reaches its subject, not when its tool answered: the readings wait for
-the word, glow gold as they land, stay marked for fifteen seconds and then go out slowly. The same
-gold marks the row of a window he is talking about right now — out of a list of twelve mails, the
-one the sentence is about. Nothing on the panel scrolls: it is trimmed to its column, so what falls
-off the bottom is what the conversation has moved past. The sheet is kept in the browser, so
-closing the page and opening it again picks the conversation up where it was.
-
-**Explain itself, once.** The first time the HUD is opened it asks whether to show you around, and
-takes no for an answer permanently; the button in the header runs it again. Seven steps name each
-panel, say what the pipeline's milliseconds are, what an em dash on a meter means, and — from the
-same health probes the pills use — what this particular install can actually reach. It is a script
-in the page, not a conversation: no model is asked anything, so it works identically with no packs,
-no house, no microphone and no API key, which is the machine most likely to need it. What it cannot
-show it leaves out rather than describes.
+**On a phone.** The desk becomes one column, and a button in the corner does what the space bar
+does: hold to talk, let go to send. Holding it while JARVIS speaks interrupts him.
 
 ## What it remembers, and how it learns
 
@@ -210,8 +207,8 @@ facts go with it unless another note vouches for them.
 a note. There is a starting point in [examples/seeds/](examples/seeds/).
 
 **Corrections are cheap.** Every change to a fact keeps a revision, so a wrong distillation can be
-read back and restored from the HUD's memory panel, which is gated by `JARVIS_MEMORY_PANEL`
-(`off`, `read`, `edit`). It ships at `read`: restoring a revision is a write, and writes wait until
+read back and restored through the memory API (`/api/memory`), which is gated by
+`JARVIS_MEMORY_PANEL` (`off`, `read`, `edit`). It ships at `read`: restoring a revision is a write, and writes wait until
 the port is somewhere only you can reach.
 
 **Everything is metered.** Every call to a model — turn, distillation, consolidation, recipes,
@@ -230,6 +227,17 @@ node dist/prompt-size-cli.js                # what the system prompt currently w
 
 Ask for a capability that is missing — or watch it run into the gap on its own — and it can close it.
 What happens next depends on a verdict it does not get to make about itself.
+
+A gap it runs into is closed without being asked. When a request cannot be carried out with any tool
+it has, `close_gap` starts the work at once, and the work is always to learn the ability behind the
+request -- "look up current local news", not "what is happening on this street" -- so the next request
+of that kind is answered without help. A small fix is written here; anything bigger goes to a runner,
+which builds the ability and sends the answer to the request as well when it finds it on the way.
+JARVIS then says in one sentence what he cannot do yet and that he is learning it. Something the owner asks for as a change to what already works
+still goes through `propose_dev_task` and a spoken yes. Nothing either door starts is merged or
+deployed without that yes. The brakes are numbers, kept in the task table rather than in the
+conversation: one attempt per gap at a time, two per gap a week, eight gaps a day. Past them, the gap
+goes to the owner as a question.
 
 A **small fix** is written here. A `git worktree` is cut from `origin/main` so the live checkout is
 never edited in place, and a worker is started in it with five tools: read, write, edit, glob, grep.
@@ -251,6 +259,18 @@ task as well, so `dev_status` can still answer "waarom ging dat mis" the next mo
 Anything **too big** is handed to whatever a pack offers as a `Delegate`. With nothing offered — the
 default — the verdict is written down and said out loud, which is what a capability gap already does.
 A gap worth recording but not worth building now is written down the same way and left there.
+
+A delegated runner is supervised rather than left to its own devices. Each time it ends a turn, its
+machine reports the last screen to `POST /runner/report`. A small model reads that screen as done,
+asking or working. A question goes to JARVIS first. He answers it on the stronger model when the
+answer follows from the brief, from what he knows, or from ordinary engineering judgement. The answer
+is typed into the runner through the delegate's `reply`, and the owner is told what was asked and
+answered. What is the owner's to decide — taste, money, access, anything that cannot be undone — or
+what JARVIS is unsure of goes to the owner's chat. A reply to that message goes back into the runner.
+After five answers in one job, or the same question twice, the owner hears of it instead. Runners
+that stay quiet for half an hour are looked in on from this side, because one stuck on a prompt never
+ends a turn. A job whose runner has disappeared is marked as failed. A job the runner declared done
+has its slot closed, and its record says what the runner left behind.
 
 Which of the two it is comes from `brain/src/dev/guard.ts`, from a described shape — which
 repository, which files, does this need a package, a secret, another machine — and never from asking
@@ -338,11 +358,11 @@ This is a TypeScript monorepo:
 
 - `brain/` — Node 22 service handling transcription, agent logic, the memory, the proactive watcher,
   self-development, the pack loader, and the websocket server that drives the HUD.
-- `hud/` — Browser front-end rendering the display, microphone capture, audio playback, and the
-  canvas where the orb sits. Today that is one self-contained file, `hud/public/index.html`, with
-  its styles and script inline: the page loads off the static server with nothing built. `hud/src/`
-  is the workspace that file gets taken apart into when it has earned it, and holds one empty entry
-  point until then.
+- `hud/` — Browser front-end: the desk, microphone capture, audio playback, and the canvas where
+  the orb sits. Plain files in `hud/public/`, loaded off the static server with nothing built:
+  `core-link.js` owns the websocket, the microphone and the voice; `live-bridge.js` turns what it
+  hears into panels and cards; `app.js` draws the desk and the orb. `hud/src/` holds one empty entry
+  point until something there needs a build step.
 - `shared/` — Types shared between brain and HUD: the websocket protocol, the house seam, the pack
   contract, the delegate seam.
 - `packs/*` — Where packs are installed, each one a checkout of its own and none of them tracked
@@ -386,8 +406,9 @@ capability is simply not offered.
 | `JARVIS_FISH_MODEL`, `JARVIS_FISH_VOICE_ID`, `JARVIS_FISH_VOICE_ID_EN` | Which Fish model (`s2.1-pro-free` by default; `s2.1-pro` is the same model with guarantees, paid per byte) and which Fish voice reads Dutch and English. Empty voices leave Fish's own default. `JARVIS_FISH_ENDPOINT` moves the socket, for a proxy or a test; nothing else needs it. `JARVIS_FISH_LATENCY` is `normal` (the sentence is synthesised whole, stress and melody right, first audio after about three seconds) or `balanced` (a second to the first word, at the prosody's expense); `JARVIS_FISH_NORMALIZE` (on) has Fish write numbers and times out before reading them. |
 | `JARVIS_VOICE_STABILITY`, `JARVIS_VOICE_SIMILARITY`, `JARVIS_VOICE_SPEED` | How the voice reads: even against expressive, how closely it holds its own timbre, and its pace. Fractions, defaulting to `0.4`, `0.75` and `1.0`. |
 | `JARVIS_VOICE_TIMBRE` | How far the browser colours the voice, `0`-`100`. `0` is the voice as it came. Filtering happens in the page, so it costs no credit and no latency. |
-| `JARVIS_SPEECH_LANG` | The language this deployment is spoken to and answers in: `nl` (default) or `en`. It decides which of the two voices above reads an answer, which language the microphone is transcribed as, and what a line put through `say` is spoken in when the caller names no language of its own. It translates nothing: what the assistant writes is the persona's business, and a persona that writes Dutch while this says English will be read out with an accent, so the two are set together. |
+| `JARVIS_SPEECH_LANG` | The language a deployment starts in: `en` (default) or `nl`. From there it changes when somebody asks for it -- "switch to Dutch" -- and never because a question arrives in another language; it is kept in the deployment's own database (`settings`, key `speech.lang`), so it survives a restart and never touches a file. After a switch JARVIS asks whether the screen should follow; the screen's language is a setting of its own (`ui.lang`, English until asked). The current language decides what the assistant answers in -- the model is told so at the very top of its instructions, above the persona, whatever language the persona and the memory are written in -- which of the two voices above reads the answer, what the microphone is transcribed as, which spoken lines below are used, and what a line put through `say` is spoken in when the caller names no language of its own. A switch takes effect from the next question, which starts a fresh conversation. |
 | `JARVIS_MEMORY_PANEL` | `off`, `read` (default) or `edit` — how much of the memory the HUD may see and change. Not `edit` by default on purpose: the control surface has no authentication of its own, so anything that reaches the port would be able to rewrite and delete what the assistant knows. |
+| `JARVIS_WEB` | Whether the assistant may search the web and read a page (`on` by default; `off` withdraws both tools). These are the only built-in tools it is given: the rest read this machine, and are refused whatever this is set to. On by default because it needs no credential and no pack, so the alternative is an assistant that says it cannot look something up when it can. What a page says is quoted back, never acted on — the prompt says so in as many words, because a fetched page is somebody else's writing arriving in the middle of a conversation. |
 | `JARVIS_TIMEZONE`, `JARVIS_LOCALE` | The zone every weekday, hour and spoken time is worked out in, and the language dates and numbers are written in. Unset, the zone is the machine's own and the locale is `nl-NL`; the zone in use is printed at every startup. Getting this wrong is silent — a behavioural baseline still builds, it is just about different hours — so a machine whose clock is UTC while the house is not opens a finding about itself until the zone is named. |
 | `JARVIS_PORT`, `JARVIS_CERT_DIR` | Where it listens, and the TLS certificate and key. |
 | `JARVIS_MEMORY_PATH`, `JARVIS_DATA_DIR` | The memory database, and the runtime state around it. |
@@ -396,18 +417,22 @@ capability is simply not offered.
 | `JARVIS_PROACTIVE` | `off` (default), `observe`, `suggest`, `announce`. A ladder: each step includes the ones before it. At `off` no connection is opened and no timer armed. |
 | `JARVIS_TELEGRAM_TOKEN`, `JARVIS_TELEGRAM_CHAT` | The bot findings are put to, and the one chat whose answers -- and questions -- are taken. A message typed at the bot is answered as an ordinary turn, so this is a second way in as well as a way out. Both empty leaves `suggest` with nothing to say: everything is still detected and written down, and nobody is asked about any of it. Telegram because a long poll needs no inbound port, no domain and no certificate. |
 | `JARVIS_SUGGEST_PER_DAY`, `JARVIS_QUIET_FROM`, `JARVIS_QUIET_TO` | How many findings may be put in a rolling day (6), and the local hours nobody is to be spoken to in (21 to 7). Equal hours mean never quiet. |
+| `HOUSE_OPS_WEBHOOK_URL`, `HOUSE_OPS_WEBHOOK_KEY` | When set, ripe anomalies are POSTed as JSON to House Ops for triage (Bearer key when non-empty) and Telegram is skipped for those findings. Unset keeps the previous Telegram path so a host without these variables does not go silent. If the webhook fails, escalate-hint rows may fall back to Telegram when it is configured. |
 | `JARVIS_SESSION_IDLE_MIN`, `JARVIS_SESSION_MAX_TURNS` | When a conversation is dropped (20 minutes, 30 turns). |
 | `JARVIS_MODEL`, `JARVIS_ESCALATE_MODEL` | What turns run on (`sonnet`), and what a turn is raised to once a tool has failed or building work has started. Empty escalation keeps every turn on the one model. Raising is per turn and mid-turn: the answer that follows a failed tool call is the one that gets the stronger model, and the next ordinary question goes back. |
 | `JARVIS_FALLBACK_MODEL` | Tried when the primary model is overloaded. The primary is retried at the start of every turn, so an outage does not demote the conversation for good. |
+| `JARVIS_BRIEFING_CACHE_HOURS` | How long the last briefing is said again from memory instead of fetched again (`2`; `0` keeps none). The turn in which a tool was called with `briefing: true` is the briefing; `briefing_again` puts its windows back and hands the text over. |
 | `JARVIS_MAX_STEPS`, `JARVIS_MAX_TURN_USD` | Brakes on a single question: how many steps it may take (16; `0` removes the limit) and what it may cost in dollars (`0`, meaning no limit). A turn that trips one is answered with the stopped sentence and the conversation continues. |
-| `JARVIS_STOPPED_SENTENCE` | What is said when a brake stopped a turn. Spoken, so it belongs to the deployment's language. |
-| `JARVIS_LIMIT_SENTENCE`, `JARVIS_PLAN_WARN_PCT` | What is said when the claude.ai plan is spent, in place of the SDK's own line about weekly limits; `{reset}` becomes the hour the window opens again, or a weekday and an hour, and the sentence carrying it is dropped when that is not known. From `JARVIS_PLAN_WARN_PCT` (75) of a window onwards the model is told, ahead of each question, to economise and to say nothing about it. The HUD's Plan pill shows both windows as percentages, or the binding one when only that is known. |
-| `JARVIS_THINKING_LINES`, `JARVIS_THINKING_AFTER_MS` | What is said while a slow turn is still fetching, and how long it may work in silence first (2000 ms). Written as one line separated by `|`, because these are sentences and a comma belongs inside one; one is picked at random, never the same one two turns running. They are recorded once by the configured voice at startup and kept as PCM under `data/voice-lines/`, keyed on voice, model, speed and words, so a slow turn is acknowledged from disk while the voice's socket makes the first sentence of the answer; change the voice and they are recorded again. The clock runs from the question, restarted by every word the assistant says before the answer proper begins, and stopped for good by the first word it says about what a tool came back with. So a question answered straight away never hears any of this, and a greeting followed by twenty seconds of fetching does. An empty list, or zero, turns it off. Spoken, so they belong to the deployment's language. |
+| `JARVIS_STOPPED_SENTENCE` | What is said when a brake stopped a turn. Spoken, so it belongs to a language: `_EN` and `_NL` suffixes set each one, and the unsuffixed name counts for the language the deployment starts in. Every language has a built-in sentence. |
+| `JARVIS_LIMIT_SENTENCE`, `JARVIS_PLAN_WARN_PCT` | What is said when the claude.ai plan is spent, in place of the SDK's own line about weekly limits; `{reset}` becomes the hour the window opens again, or a weekday and an hour, and the sentence carrying it is dropped when that is not known. Suffixed per language like the stopped sentence. From `JARVIS_PLAN_WARN_PCT` (75) of a window onwards the model is told, ahead of each question, to economise and to say nothing about it. |
+| `JARVIS_THINKING_LINES`, `JARVIS_THINKING_AFTER_MS` | What is said while a slow turn is still fetching, and how long it may work in silence first (2000 ms). Written as one line separated by `|`, because these are sentences and a comma belongs inside one; one is picked at random, never the same one two turns running. They are recorded once by the configured voice at startup and kept as PCM under `data/voice-lines/`, keyed on voice, model, speed and words, so a slow turn is acknowledged from disk while the voice's socket makes the first sentence of the answer; change the voice and they are recorded again. The clock runs from the question, restarted by every word the assistant says before the answer proper begins, and stopped for good by the first word it says about what a tool came back with. So a question answered straight away never hears any of this, and a greeting followed by twenty seconds of fetching does. An empty list, or zero, turns it off. Spoken, so they belong to a language: `JARVIS_THINKING_LINES_EN` and `_NL` set each one, the unsuffixed name counts for the starting language, and a language switched to for the first time has its lines recorded then. |
 | `JARVIS_DEV_REPO`, `JARVIS_DEV_WORKTREES` | The checkout self-development branches from, and where its throwaway worktrees are made. The latter must be in the unit's `ReadWritePaths`. |
 | `JARVIS_GITHUB_REPO`, `GITHUB_TOKEN_JARVIS` | Repository and fine-grained token used to open and merge pull requests. Contents and pull-requests write on that one repository, nothing else. Without the token everything up to the push still works. |
 | `JARVIS_COMMIT_EMAIL` | The address a self-written commit is authored with. Unset, git's own configuration decides. |
 | `JARVIS_RUNNER_TOKEN` | The bearer token a machine running delegated jobs reports quiet panes with, at `POST /runner/report`. Empty, the route does not exist at all: a delegated slot then stays open until somebody closes it by hand, which is the behaviour of a deployment that delegates nowhere. |
+| `JARVIS_CREDENTIAL_EXPIRY` | When the credentials this deployment runs on stop working, as `name=YYYY-MM-DD` pairs separated by commas (`model_token=2027-08-23,github=2026-12-01`). For tokens whose expiry cannot be read back, like a long-lived model token. The hourly self check raises `invariant:expiry:<name>` from 30 days before the date, and at once for a date it cannot read. Empty checks nothing. |
 | `JARVIS_WATCH_IGNORE_PLATFORMS` | Integrations the watcher ignores outright, as the entity registry spells them, comma-separated. A vehicle integration and outdoor cameras are the usual entries: a sleeping car reports every door unavailable, and rain on a lens is motion. Empty watches everything. |
+| `JARVIS_DOOR_WATCH` | Cameras that put themselves on screen when a sensor beside them moves, as `camera.x=binary_sensor.a,binary_sensor.b`, several separated by `;`. A doorbell is the case it exists for: the picture is worth seeing while somebody is still standing there, and a question first costs exactly those seconds. An `event.*` entity counts as pressed on any new timestamp, a `binary_sensor` on the edge into `on`; the state a feed replays when it connects is not a trigger, and one camera shows again at most once every fifteen seconds, so a ring that moves three sensors is one window. The window stays two minutes, replaces itself rather than stacking, and needs no proactive mode — but a page has to be open, and nothing is said out loud. Empty watches nothing. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Subscription OAuth token from `claude setup-token`. Never set `ANTHROPIC_API_KEY` in the same environment; the SDK prefers it and billing switches to per-token. |
 
 A pack reads its own settings, straight from the environment: they are set in the same env file and
@@ -607,7 +632,7 @@ purpose. A changed persona has to reach the host some other way.
 - [docs/operations.md](docs/operations.md) — running it: the deploy paths, the credentials, the
   state and its retention, the schedules, and the known gaps.
 - [docs/packs.md](docs/packs.md) — writing a pack: the contract, the two rules no type enforces,
-  what belongs in the context panel, and a checklist to build against.
+  what belongs on the desk, and a checklist to build against.
 - [AGENTS.md](AGENTS.md) — working in this repository: the private paths, what to run before a
   commit, and what is enforced in code rather than in prose.
 - [examples/pack](examples/pack) — the smallest pack that loads, and what to change to make it

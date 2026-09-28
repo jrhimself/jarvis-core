@@ -12,7 +12,14 @@ import { test } from "node:test";
 
 import { parseClientMessage } from "@jarvis/shared";
 
-test("a say without a language is Dutch by omission", () => {
+test("a language switch names one of the languages, or is refused", () => {
+  assert.deepEqual(parseClientMessage({ kind: "set_lang", lang: "nl" }), { kind: "set_lang", lang: "nl" });
+  assert.deepEqual(parseClientMessage({ kind: "set_lang", lang: "en" }), { kind: "set_lang", lang: "en" });
+  assert.equal(parseClientMessage({ kind: "set_lang", lang: "de" }), null);
+  assert.equal(parseClientMessage({ kind: "set_lang" }), null);
+});
+
+test("a say without a language leaves it to the brain", () => {
   const parsed = parseClientMessage({ kind: "say", text: "Goedemorgen.", turnId: "t1" });
   assert.deepEqual(parsed, { kind: "say", text: "Goedemorgen.", turnId: "t1" });
 });

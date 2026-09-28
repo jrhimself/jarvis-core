@@ -53,11 +53,18 @@ export interface Said {
   chatId: string;
   text: string;
   messageId: number;
+  /** The message this one answers, when it was sent as a reply. */
+  replyTo?: number;
 }
 
 interface Update {
   update_id: number;
-  message?: { message_id: number; chat: { id: number }; text?: string };
+  message?: {
+    message_id: number;
+    chat: { id: number };
+    text?: string;
+    reply_to_message?: { message_id: number };
+  };
   callback_query?: {
     id: string;
     data?: string;
@@ -235,6 +242,7 @@ export class Telegram {
         chatId: String(message.chat.id),
         text: message.text,
         messageId: message.message_id,
+        ...(message.reply_to_message === undefined ? {} : { replyTo: message.reply_to_message.message_id }),
       });
     }
   }

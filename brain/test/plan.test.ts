@@ -13,7 +13,11 @@ import {
   limitSentence,
   notePlanEvent,
   notePlanReport,
+  notePlanReportAsked,
   onPlanUsage,
+  PLAN_REPORT_BACKOFF_MS,
+  PLAN_REPORT_INTERVAL_MS,
+  planReportDue,
   planContextBlock,
   planUsage,
   spokenHour,
@@ -77,6 +81,13 @@ test("the SDK's report fills both windows and is refused when the token may not 
   assert.deepEqual(bindingWindow(usage), { utilization: 38, resetsAt: "2026-09-16T15:00:00Z" });
 });
 
+test("the reset is said in the language being spoken, not the locale's", () => {
+  amsterdam(() => {
+    assert.equal(describeReset(new Date(TONIGHT * 1000), NOW, "nl"), "2 uur vannacht");
+    assert.equal(describeReset(new Date(TONIGHT * 1000), NOW, "en"), "2:00 a.m. tonight");
+  });
+});
+
 test("the reset is an hour tonight and a weekday later in the week", () => {
   amsterdam(() => {
     // NOW is two in the afternoon in Amsterdam.
@@ -125,4 +136,21 @@ test("the deployment's sentence gets the reset time, or loses the sentence that 
   );
   assert.equal(limitSentence(template, null, NOW), "Je zit aan je limiet. Ik kan nu even niets opzoeken.");
   forgetPlanUsage();
+});
+
+test("the plan report is asked for once per interval, and not for an hour after a refusal", () => {
+  forgetPlanUsage();
+  const t0 = NOW.getTime();
+  assert.equal(planReportDue(t0), true);
+
+  notePlanReportAsked(true, t0);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_INTERVAL_MS - 1), false);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_INTERVAL_MS), true);
+
+  notePlanReportAsked(false, t0);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_INTERVAL_MS), false);
+  assert.equal(planReportDue(t0 + PLAN_REPORT_BACKOFF_MS), true);
+
+  forgetPlanUsage();
+  assert.equal(planReportDue(t0), true);
 });

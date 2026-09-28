@@ -12,17 +12,22 @@ import { parseClientMessage, type ServerMessage, type PipelineStage } from "@jar
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { packSummary } from "./agent.js";
+import { mergeDeskSlots } from "./desk.js";
 import { loadConfig } from "./config.js";
 import { Conversation } from "./conversation.js";
-import { runHealthChecks, specsFor } from "./health.js";
+import { interfaceLanguage, language } from "./language.js";
+import { lastHealth, onHealth, publishHealth, runHealthChecks, specsFor } from "./health.js";
+import { lastBoard, onBoard, refreshBoard } from "./dev/board.js";
 import { screenGone } from "./screens.js";
 import { addLiveSession } from "./live.js";
 import { memory } from "./memory/store.js";
+import { FocusGate, panelOfDisplay } from "./focus.js";
 import { onPlanUsage, planUsage } from "./plan.js";
 import { METRICS_INTERVAL_MS, readMetrics } from "./metrics.js";
 import { tileFeed } from "./tiles.js";
 import { brainVersion } from "./version.js";
 import { Listener } from "./voice/scribe.js";
+import { isWebTool } from "./web.js";
 
 /**
  * How often a pack's standing readings are taken.
@@ -38,6 +43,9 @@ const WATCH_INTERVAL_MS = 60 * 1000;
 /** Activity labels that belong to a stage other than the default one. */
 function stageFor(label: string): PipelineStage {
   if (label.startsWith("mcp__")) return "tool";
+  // The web tools carry no server prefix, being the SDK's own, and a search is
+  // the most visible fetch there is -- the pipeline should not file it as thought.
+  if (isWebTool(label)) return "tool";
   if (label.startsWith("memory")) return "memory";
   return "llm";
 }
@@ -54,19 +62,33 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     // The context panel, fed by the figures the packs put on their own answers.
     // Nothing is asked of any pack and nothing is asked of the model: the tiles
     // ride along on results this process already sees.
+    // Lights the matching standing desk panel when a turn talks about it.
+    // Briefing and ordinary answers both raise focus; the gate de-dupes.
+    const focus = new FocusGate(send);
+
+    // Declared before the tile sink so the sink can ask whether a turn is open
+    // without reading a binding that does not exist yet.
+    let conversation!: Conversation;
+
     const noteFacts = tileFeed((source, topic, tiles) => {
       send({ kind: "tiles", source, topic: topic.id, topicLabel: topic.label, tiles });
+      // Standing watchers also flow through here; only light a panel while a
+      // turn is actually being answered, not on the once-a-minute refresh.
+      if (conversation.busy) focus.focus(topic.id);
     });
 
-    const conversation = new Conversation(
+    conversation = new Conversation(
       {
         onText: (turnId, text, opening) =>
           send({ kind: "text", turnId, text, ...(opening === true ? { opening: true } : {}) }),
         onActivity: (turnId, label) =>
           send({ kind: "activity", turnId, label, stage: stageFor(label) }),
         onToolResult: noteFacts,
-        onDisplay: (turnId, id, payload, dismiss, cue) =>
-          send({ kind: "display", turnId, id, payload, dismiss, cue }),
+        onDisplay: (turnId, id, payload, dismiss, cue) => {
+          send({ kind: "display", turnId, id, payload, dismiss, cue });
+          const panel = panelOfDisplay(payload);
+          if (panel !== null) focus.focus(panel, cue);
+        },
         onVoice: (turnId, available, reason, lang, fx) =>
           send({
             kind: "voice",
@@ -81,9 +103,15 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             ? { kind: "audio", turnId, seq, data }
             : { kind: "audio", turnId, seq, data, alignment }),
         onAudioDone: (turnId) => send({ kind: "audio_done", turnId }),
-        onDone: (turnId, durationMs, expectsReply) =>
-          send({ kind: "done", turnId, durationMs, expectsReply }),
-        onError: (turnId, message) => send({ kind: "error", turnId, message }),
+        onSection: (_turnId, topic, chars) => focus.section(topic, chars),
+        onDone: (turnId, durationMs, expectsReply, briefing) => {
+          send({ kind: "done", turnId, durationMs, expectsReply, ...(briefing === true ? { briefing: true } : {}) });
+          focus.unfocus();
+        },
+        onError: (turnId, message) => {
+          send({ kind: "error", turnId, message });
+          focus.unfocus();
+        },
       },
       { idleMs: config.sessionIdleMs, maxTurns: config.sessionMaxTurns },
     );
@@ -91,30 +119,73 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     // One microphone per connection, opened on demand and closed with it.
     let listener: Listener | null = null;
 
-    // What lets the brain speak between questions. Registered for as long as
-    // the page is open and forgotten with it, so a line meant for a HUD that
-    // closed an hour ago goes nowhere rather than into a dead socket.
-    const forgetLiveSession = addLiveSession((text) => send({ kind: "announce", text }));
+    // What lets the brain speak and show something between questions. Registered
+    // for as long as the page is open and forgotten with it, so a line meant for
+    // a HUD that closed an hour ago goes nowhere rather than into a dead socket.
+    const forgetLiveSession = addLiveSession({
+      say: (text) => send({ kind: "announce", text }),
+      show: (id, payload, dismiss) => send({ kind: "display", id, payload, dismiss }),
+    });
 
     send({ kind: "ready", sessionId: null, version: brainVersion() });
+
+    // Standing desk windows: core defaults plus whatever started packs declared.
+    void packSummary()
+      .then((packs) => {
+        const slots = mergeDeskSlots(packs.desk);
+        send({
+          kind: "desk",
+          slots: slots.map((slot) => ({
+            topic: slot.topic,
+            label: slot.label,
+            ...(slot.briefing === true ? { briefing: true } : {}),
+          })),
+        });
+      })
+      .catch((error: unknown) => console.error("desk slots failed:", error));
 
     // The plan's pill: what is known now, and every change after.
     const known = planUsage();
     if (known !== null) send({ kind: "usage", usage: known });
     const forgetPlan = onPlanUsage((usage) => send({ kind: "usage", usage }));
 
+    // The language switch: where it stands, and every flip after, whichever
+    // page flipped it.
+    send({ kind: "lang", lang: language().current });
+    const forgetLang = language().onChange((lang) => send({ kind: "lang", lang }));
+    // The screen's own language, which only changes when somebody asks for it.
+    send({ kind: "ui_lang", lang: interfaceLanguage().current });
+    const forgetScreenLang = interfaceLanguage().onChange((lang) => send({ kind: "ui_lang", lang }));
+
     // Ask every dependency whether it actually answers, and tell the HUD.
     // "ready" alone only ever proved the websocket; a dead bridge or an
     // expired mail token should be visible before the first question, not
     // during it.
-    void packSummary()
-      .then((packs) =>
-        runHealthChecks(
-          specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes),
-        ),
-      )
-      .then((checks) => send({ kind: "health", checks }))
-      .catch((error: unknown) => console.error("health checks failed:", error));
+    //
+    // The verdicts the clock last found are sent at once, and every set after
+    // them as it comes; only a page that arrives before the first round has
+    // run makes the probes run for it.
+    const forgetHealth = onHealth((checks) => send({ kind: "health", checks }));
+    const knownHealth = lastHealth();
+    if (knownHealth !== null) {
+      send({ kind: "health", checks: knownHealth });
+    } else {
+      void packSummary()
+        .then((packs) =>
+          runHealthChecks(
+            specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes, packs.delegate),
+          ),
+        )
+        .then(publishHealth)
+        .catch((error: unknown) => console.error("health checks failed:", error));
+    }
+
+    // What each runner is doing: the last board now, a fresh one in a moment,
+    // and every one after.
+    const forgetBoard = onBoard((board) => send({ kind: "runners", board }), true);
+    const knownBoard = lastBoard();
+    if (knownBoard !== null) send({ kind: "runners", board: knownBoard });
+    refreshBoard();
 
     // The readings that go stale while they are on screen. They arrive by the
     // same path a tool's own figures do -- same shape, same subject, same
@@ -166,12 +237,19 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       }
 
       if (message.kind === "say") {
-        void conversation.say(message.turnId, message.text, message.lang ?? config.speechLang);
+        void conversation.say(message.turnId, message.text, message.lang);
+        return;
+      }
+
+      if (message.kind === "set_lang") {
+        // Logged, and the lines for it recorded, by the listener in index.ts.
+        language().set(message.lang);
         return;
       }
 
       if (message.kind === "cancel") {
         conversation.cancel(message.turnId);
+        focus.unfocus();
         return;
       }
 
@@ -211,7 +289,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             listener?.close();
             listener = null;
           },
-        });
+        }, language().current);
         return;
       }
 
@@ -239,6 +317,10 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       clearInterval(watchTimer);
       forgetLiveSession();
       forgetPlan();
+      forgetHealth();
+      forgetBoard();
+      forgetLang();
+      forgetScreenLang();
       listener?.close();
       conversation.close();
     };

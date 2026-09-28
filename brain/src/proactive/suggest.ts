@@ -39,6 +39,7 @@ import { languageOf, ruleName, say, word } from "./phrases.js";
 import { locale } from "@jarvis/shared";
 import type { Button, Press } from "../telegram.js";
 import { localSlot } from "./baselines.js";
+import { buildAnomalyPayload, postHouseOpsWebhook } from "./house-ops-webhook.js";
 
 const HOUR_MS = 3600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -132,15 +133,26 @@ export interface OfferReport {
  *
  * Ordered by how long a condition has held, so a cap that bites drops the
  * newest rather than the best established.
+ *
+ * When `HOUSE_OPS_WEBHOOK_URL` is set, ripe findings go there and Telegram is
+ * skipped. Quiet hours still mark `sleep` on the payload but do not hold the
+ * post back -- House Ops decides whether to ping. The daily Telegram cap is also
+ * skipped in that mode. If the webhook fails, high-severity / escalate rows
+ * may fall back to Telegram when a bot is configured; otherwise the attempt is
+ * undelivered and retried next pass. With the URL unset, behaviour is unchanged.
  */
 export async function offer(
   db: DatabaseSync,
-  bot: Sender,
+  bot: Sender | null,
   config: Config,
   now = new Date(),
 ): Promise<OfferReport> {
   const report: OfferReport = { offered: 0, held: 0 };
-  if (config.suggestChat === "") return report;
+  const webhookUrl = config.houseOpsWebhookUrl ?? "";
+  const useWebhook = webhookUrl !== "";
+  const canTelegram = bot !== null && config.suggestChat !== "";
+
+  if (!useWebhook && !canTelegram) return report;
 
   const asleep = isQuiet(now, config.quietFrom, config.quietTo);
   const snoozed = snoozedSubjects(db, now);
@@ -150,14 +162,50 @@ export async function offer(
     if (!anomaly.ripe) continue;
     if (alreadySuggested(db, anomaly.id)) continue;
 
-    if (asleep || room <= 0 || snoozed.has(anomaly.subject)) {
+    // Telegram path keeps quiet hours and the daily cap. Webhook path does not:
+    // sleep becomes a flag for House Ops, and the cap was a Telegram courtesy.
+    if (snoozed.has(anomaly.subject)) {
+      report.held += 1;
+      continue;
+    }
+    if (!useWebhook && (asleep || room <= 0)) {
       report.held += 1;
       continue;
     }
 
     const body = render(anomaly);
     const id = recordSuggestion(db, anomaly.id, body, now);
-    const messageId = await bot.send(config.suggestChat, body, buttonsFor(id));
+
+    if (useWebhook) {
+      const payload = buildAnomalyPayload(anomaly, id, asleep, now);
+      const ok = await postHouseOpsWebhook(webhookUrl, config.houseOpsWebhookKey, payload);
+      if (ok) {
+        markDelivered(db, id, "house-ops-webhook", 0, now);
+        report.offered += 1;
+        continue;
+      }
+
+      console.error(
+        `proactive: house-ops webhook failed for anomaly ${anomaly.id} (severity=${payload.severity}, escalate=${payload.escalate})`,
+      );
+
+      if (payload.escalate && canTelegram) {
+        const messageId = await bot!.send(config.suggestChat, body, buttonsFor(id));
+        if (messageId === null) {
+          markUndeliverable(db, id);
+          continue;
+        }
+        markDelivered(db, id, config.suggestChat, messageId, now);
+        report.offered += 1;
+        room -= 1;
+        continue;
+      }
+
+      markUndeliverable(db, id);
+      continue;
+    }
+
+    const messageId = await bot!.send(config.suggestChat, body, buttonsFor(id));
 
     if (messageId === null) {
       markUndeliverable(db, id);

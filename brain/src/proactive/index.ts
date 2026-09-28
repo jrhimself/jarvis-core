@@ -197,19 +197,18 @@ export function startProactive(config: Config, store: MemoryStore): () => void {
   let rollup: Rollup | null = null;
   let nightly: NodeJS.Timeout | null = null;
   let hourly: NodeJS.Timeout | null = null;
-  // A bot needs a token and somewhere to send. Without either, everything below
-  // still runs and writes its findings down; what stops is the asking. The
-  // listening half is not started here: one poller per token, and the token has
-  // two users.
-  const bot =
-    proactiveAtLeast(config.proactive, "suggest") &&
-    config.suggestToken !== "" &&
-    config.suggestChat !== ""
-      ? new Telegram(config.suggestToken)
-      : null;
+  // Asking needs somewhere to send: Telegram, the House Ops webhook, or both.
+  // Without either, everything below still runs and writes its findings down;
+  // what stops is the asking. The listening half is not started here: one
+  // poller per token, and the token has two users.
+  const canSuggest = proactiveAtLeast(config.proactive, "suggest");
+  const canTelegram =
+    canSuggest && config.suggestToken !== "" && config.suggestChat !== "";
+  const canWebhook = canSuggest && (config.houseOpsWebhookUrl ?? "") !== "";
+  const bot = canTelegram ? new Telegram(config.suggestToken) : null;
 
   const speak =
-    bot === null
+    !canTelegram && !canWebhook
       ? null
       : async (db: DatabaseSync): Promise<void> => {
           const said = await offer(db, bot, config);

@@ -16,7 +16,11 @@ import { DatabaseSync } from "node:sqlite";
 import {
   awaitingDevTask,
   createDevTask,
+  delegatedDevTasks,
   devTask,
+  endDelegated,
+  gapAttempts,
+  gapsToday,
   lastFailedDevTask,
   latestDevTasks,
   migrateDev,
@@ -196,4 +200,35 @@ test("the history reads newest first", () => {
   createDevTask(db, { instruction: "eerste", size: "small", state: "merged" }, AT);
   createDevTask(db, { instruction: "tweede", size: "small", state: "merged" }, AT);
   assert.deepEqual(latestDevTasks(db, 5).map((task) => task.instruction), ["tweede", "eerste"]);
+});
+
+test("a gap is kept on the row and counted per gap for the week", () => {
+  const db = devDb();
+  createDevTask(db, { instruction: "clock", size: "small", state: "failed", gap: "read-the-clock" }, AT);
+  createDevTask(db, { instruction: "clock again", size: "big", state: "delegated", gap: "read-the-clock" }, AT);
+  createDevTask(db, { instruction: "camera", size: "big", state: "delegated", gap: "doorbell" }, AT);
+  createDevTask(db, { instruction: "asked for", size: "small", state: "running" }, AT);
+
+  const clock = gapAttempts(db, "read-the-clock", AT);
+  assert.equal(clock.length, 2);
+  assert.equal(clock[0]?.gap, "read-the-clock");
+  assert.equal(gapAttempts(db, "read-the-clock", new Date(AT.getTime() + 8 * 24 * 3_600_000)).length, 0);
+  // Work the owner asked for is not a gap, and does not count against the day.
+  assert.equal(gapsToday(db, AT), 3);
+});
+
+test("a runner's ending lands on the newest job in its slot only", () => {
+  const db = devDb();
+  const older = createDevTask(db, { instruction: "old", size: "big", state: "delegated" }, AT);
+  updateDevTask(db, older, { slot: 11 }, AT);
+  const newer = createDevTask(db, { instruction: "new", size: "big", state: "delegated" }, AT);
+  updateDevTask(db, newer, { slot: 11 }, AT);
+  assert.equal(delegatedDevTasks(db).length, 2);
+
+  const ended = endDelegated(db, 11, { state: "finished", detail: "PR 3 is open" }, AT);
+  assert.equal(ended?.id, newer);
+  assert.equal(devTask(db, newer)?.state, "finished");
+  assert.equal(devTask(db, newer)?.detail, "PR 3 is open");
+  assert.equal(devTask(db, older)?.state, "delegated");
+  assert.equal(endDelegated(db, 12, { state: "failed", detail: "gone" }, AT), null);
 });

@@ -12,7 +12,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import type { MemoryStore } from "../dist/memory/store.js";
-import { renderRun } from "../dist/memory/tools.js";
+import { factsPanel, renderRun } from "../dist/memory/tools.js";
+import { panelOfDisplay } from "../dist/focus.js";
 import {
   ingestCorpus,
   parseProposals,
@@ -324,4 +325,54 @@ test("a pass is dated in Amsterdam, not in the container's UTC", () => {
     scanned: 149, read: 0, written: 0, skipped: 0, retired: 0, gone: 0, failed: 0,
     factsBefore: 628, factsAfter: 628,
   }), /04:07/);
+});
+
+test("the Facts window shows the facts the newest pass learned, not how many", () => {
+  const night = {
+    at: "2026-09-25T02:07:00.000Z",
+    scanned: 150, read: 6, written: 2, skipped: 0, retired: 16, gone: 0, failed: 0,
+    factsBefore: 812, factsAfter: 798,
+  };
+  const still = { ...night, read: 0, written: 0, retired: 0 };
+  const fact = (id: number, subject: string, body: string) => ({
+    id, kind: "voorkeur" as const, subject, body, core: false, source: "owner" as const,
+    createdAt: night.at, updatedAt: night.at, hits: 0, lastUsedAt: null,
+  });
+  const learned = [
+    fact(1, "Telefoon opladen", "Laadt zijn telefoon op voor het slapen."),
+    fact(2, "Kantoorlampen", "Gaan aan bij unlock."),
+  ];
+
+  const panel = factsPanel(night, learned);
+  assert.ok(panel !== null && panel.type === "panel");
+  assert.equal(panel.title, "Facts");
+  assert.equal(panel.figure, undefined, "no count on top of the facts");
+  assert.deepEqual(panel.rows, [
+    { label: "Telefoon opladen", value: "Laadt zijn telefoon op voor het slapen." },
+    { label: "Kantoorlampen", value: "Gaan aan bij unlock." },
+  ]);
+  // The window opens on the notes section marker; a title that stopped
+  // mapping to that topic would leave it shut.
+  assert.equal(panelOfDisplay(panel), "notes");
+
+  assert.equal(factsPanel(still, learned), null, "a quiet night puts nothing on screen");
+  assert.equal(factsPanel(night, []), null, "nothing learned, nothing to show");
+  assert.equal(factsPanel(undefined, []), null);
+});
+
+test("a pass's facts are the ones its notes wrote that night, not what they said before", async () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const store = tempStore();
+  const older = store.remember({ kind: "voorkeur", subject: "Oud feit", body: "Al bekend." });
+  store.recordCorpusFile("a.md", "h1", [older.id]);
+  await tick();
+  const since = new Date().toISOString();
+  await tick();
+  const fresh = store.remember({ kind: "voorkeur", subject: "Nieuw feit", body: "Net geleerd." });
+  store.recordCorpusFile("a.md", "h2", [older.id, fresh.id]);
+  await tick();
+
+  const learned = store.corpusFactsBetween(since, new Date().toISOString());
+  store.close();
+  assert.deepEqual(learned.map((f) => f.subject), ["Nieuw feit"]);
 });

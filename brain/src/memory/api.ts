@@ -14,6 +14,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { Config } from "../config.js";
+import { language } from "../language.js";
+import { withoutMarkers } from "../sections.js";
 import type { Fact, MemoryStore } from "./store.js";
 import { index } from "./tools.js";
 
@@ -248,7 +250,7 @@ export function serveMemoryApi(
     sendJson(res, 200, {
       memoryPanel: config.memoryPanel,
       voiceTimbre: config.voiceTimbre,
-      speechLang: config.speechLang,
+      speechLang: language().current,
     });
     return true;
   }
@@ -259,6 +261,26 @@ export function serveMemoryApi(
       return true;
     }
     handleUsage(res, store, url);
+    return true;
+  }
+
+  // Today's conversation, for the transcript drawer. It is what was said to
+  // and by the assistant, so it is exactly as private as the memory panel and
+  // follows the same switch.
+  if (path === "/api/transcript") {
+    if (config.memoryPanel === "off") {
+      sendError(res, 404, "Not found");
+      return true;
+    }
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      sendError(res, 405, "Method not allowed");
+      return true;
+    }
+    sendJson(res, 200, {
+      turns: store
+        .turnsSince(since(0))
+        .map((turn) => ({ ...turn, answered: withoutMarkers(turn.answered).trim() })),
+    });
     return true;
   }
 
