@@ -15,163 +15,17 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
-## [2.4.0] - 2026-09-28
-
-Everything that was still open, together on main: the web and the door camera join the runner board.
-
-### Added
-
-- The assistant can search the web and read a page. Every other source it has was installed on
-  purpose -- a house, a mailbox, a calendar, each a pack with a credential behind it -- so a
-  question about a street, an organisation or a term was one it could only say it had no way to
-  look into. That was not a missing pack: it was `tools: []` in the agent, which withdrew the
-  built-in tools wholesale so that nothing could read this machine, and took the only two that read
-  nothing local with it. Those two are handed back and every other one stays gone. `JARVIS_WEB`
-  (on) withdraws them again, the deployment record carries the answer as a facility of its own, and
-  the prompt block says when not to search -- anything about this house, its devices or what was
-  said last week is answered faster and more surely by a pack or by memory -- and that text
-  arriving from a page is a quotation, never an instruction.
-- What was read goes on screen as one window of sources per turn, built from the results
-  themselves: the page's title, its host, and the full address behind it. No model is asked to
-  repeat a URL, a second search updates the same window rather than stacking another, and a search
-  that found nothing leaves the screen exactly as it was.
-- `JARVIS_DOOR_WATCH`: cameras paired with the sensors that mean somebody is in front of them, as
-  `camera.x=binary_sensor.a,binary_sensor.b`, several separated by `;`. A trigger puts that camera on
-  the HUD straight away -- no question, no turn, nothing said out loud -- and it stays for two
-  minutes. Pairing by room was the obvious alternative and does not work: a doorbell and its camera
-  routinely belong to no room at all in the registry, and a watch that resolves to nothing looks
-  configured.
-- The door trigger is an edge, not a state: a `binary_sensor` counts on the way into `on`, an
-  `event.*` entity on any new timestamp, and the state a feed replays when it connects counts for
-  nothing. One camera shows again at most once every fifteen seconds, so a ring that moves the
-  button, the motion sensor and the person detection at once is one window rather than three.
-- A display may now belong to no turn. The HUD kept only what belonged to the turn it had open, which
-  is the right default for a page that anything can write to; a window the brain put up by itself now
-  passes that filter, the same way an unprompted line already could. It replaces itself on its id, so
-  a second ring updates the picture in place.
-
-### Changed
-
-- `show_camera` and the door watch build the same card through one function, so the tool's still,
-  refresh and stream relay cannot drift away from what goes up by itself.
-
-## [2.3.0] - 2026-09-28
-
-The screen shows what the runners are doing, and JARVIS stops a job once it turns out to rest on a
-misunderstanding.
-
-### Added
-
-- The System window lists the runners: one row per slot with the job's topic, whether it is working,
-  asking something (highlighted), done or stopped, how long it has been going, whether JARVIS started
-  it himself to learn something, and the task number. Idle slots share one line. The board is
-  rebuilt as soon as a job is handed on, judged, dropped or ended, and every minute while a page is
-  open for changes made elsewhere.
-- `abandon_dev_task`, a tool that drops an open job and closes the runner that works on it. It does
-  not ask first: a job built on a misunderstanding was never the user's request. A job whose pull
-  request is already waiting is only marked; the pull request stays for the user to close.
-- The end-of-turn check is also shown the jobs that are still open. When the exchange shows one rests
-  on a misunderstanding or is no longer wanted, the turn is sent back to drop it, in the same single
-  nudge as a turn that gave up. The deployment block says the same in words.
-- JARVIS says it out loud when a pull request is ready: his own small fix, and a runner's job that
-  ends with a DONE line ("Pull request 6, for search the full mail history, is ready for you to look
-  at."). Until now a waiting pull request was only written to the chat.
-- Trying a pull request before it is merged. The ready sentence ends with "Shall I put it live so
-  you can try it?", and the offer is put in front of the next question so a plain "yes" is
-  understood. `try_pull_request` asks the root side to fetch that pull request, of this repository
-  or of a pack, merge it onto what runs now, run the suite and the types, and restart; any failure
-  leaves everything as it was and is said out loud. `end_trial` takes it off again. One trial at a
-  time; `data/trial.json` says which, and `dev_status` reports it. After the restart JARVIS says
-  that it is live.
-
-### Security
-
-- `scripts/self-deploy.sh` accepts three new request lines besides a commit hash on `origin/main`:
-  `try core <n>`, `try pack <id> <n>` and `untry`. This is the only way unmerged code runs. The brain
-  names a pull request number, never a commit or a path; the root side fetches it from origin itself
-  and puts it through the same suite and type checks. The owner's yes is enforced by the tool that
-  writes the request, not by the root side.
-
-### Changed
-
-- A runner that died without reporting is closed as well, not only marked failed, so the delegate
-  can clear the job directory it left behind.
-
-### Fixed
-
-- The health rows, the delegate's included, only reached a page when it connected. The five-minute
-  probes now reach every open page, and the delegate's count of free slots follows the runner board
-  instead of waiting for the next probe. A page opened in the morning said every slot was free while
-  two runners were at work.
-
-## [2.1.0] - 2026-09-25
-
-JARVIS closes the gaps he runs into himself. Until now, a request he could not carry out ended with an
-honest sentence about what he lacked. Asked for the time, he said he could not check the clock, and
-that was the end of it. Now that is where the work starts.
-
-### Added
-
-- `close_gap`, a tool that starts learning a missing ability without asking first. It always
-  builds. It is given the general ability behind the request ("look up current local news"),
-  not the request itself. A small fix is written here and becomes a pull request; anything bigger
-  goes to a runner, which builds the ability and, when it can, answers the request along the way.
-  A runner that only looks the answer up leaves JARVIS as unable as before, so it is told in so
-  many words that the ability is the job. Nothing it starts is merged or deployed without the
-  owner's yes.
-- The answer first. When the gap is a question, `close_gap` also looks it up at once, in a
-  short model run that can search and read the web and do nothing else. It waits up to 40 seconds,
-  so JARVIS says the answer first and learns in the background. An answer that comes later is
-  spoken and sent to the chat on its own. The ability itself is still built: the lookup is a
-  stand-in for today, not the capability.
-- Abilities are built as generically as possible. The runner is told to build the widest ability
-  the request is one case of, with places, topics, devices and names as parameters.
-- Brakes on unasked work, kept in the task table: one attempt per gap at a time, two per gap a week,
-  and eight gaps a day. Past them, the tool refuses and says why, and the gap goes to the owner as a
-  question. Tasks carry the gap they belong to in a new `gap` column.
-- Runner questions are answered by JARVIS first. A question he can answer from the brief, from what he
-  knows, or from ordinary engineering judgement is typed into the runner, and the owner is told what
-  was asked and answered. A question that is the owner's to decide, or that JARVIS is unsure of, goes
-  to the owner's chat. A reply to that message is passed back into the runner. After five answers in
-  one job, or the same question twice, the owner is asked instead.
-- A check on turns that give up anyway. When a turn ends without closing a gap, a small model
-  reads the question and the answer. If the answer says, in any language, that JARVIS cannot do
-  it or does not know, the turn is sent back once to call `close_gap` and say what it started.
-  The prompt alone was not enough. Asked what the council was doing to a village's roads, JARVIS
-  said nothing he had could reach the council, and stopped. A second stop in the same turn is
-  always let go, so the check cannot loop.
-- `runner_reply`, for passing the owner's spoken answer or correction to a runner.
-- `reply()` on the `Delegate` seam, optional. A delegate without it leaves every question with the
-  owner, as before.
-- Runners that have said nothing for half an hour are looked in on every ten minutes. A changed
-  screen is judged like a report. A runner that is no longer running is marked as failed and reported;
-  a job that stopped more than two days ago is tidied without a message.
-- A delegated job the runner declared done is now recorded as `finished`, together with what the
-  runner said it left behind. `dev_status` lists the jobs that are with runners.
-
-### Changed
-
-- The deployment block no longer tells the model to stop at "I cannot". On a deployment that can
-  build, it gets an order to follow: try what it has, close what is missing, and ask the owner only
-  what is the owner's to decide. It is also told when to stop. A deployment without self-development
-  keeps the old, honest wording.
-- Owner requests go through `propose_dev_task` as before. That tool now points at `close_gap` for
-  gaps JARVIS found himself.
-- Everything the self-development machinery says is in English: tool answers, guard reasons, task
-  details, the written notices and the spoken failure. The owner's name falls back to "the user".
-
-### Fixed
-
-- A question with a slash, a colon or other punctuation in it made memory search throw
-  (`fts5: syntax error`) instead of searching. Only letters and digits reach the full-text
-  query now, for facts and for conversations alike.
-
-## [2.0.0] - 2026-09-25
+## [2.0.0] - 2026-09-28
 
 A new HUD, and a major version because of it: the page at `/` is a different page. The first HUD,
 its tour, its context panel and its memory panel are gone. `JARVIS_SPEECH_LANG` also changes its
 default from `nl` to `en`; a deployment that relied on the Dutch default sets
 `JARVIS_SPEECH_LANG=nl`, or asks JARVIS to switch.
+
+The same release also makes JARVIS close the gaps he runs into himself, shows on the screen what the
+runners are doing, lets him stop a job that rests on a misunderstanding and put a pull request live
+for a try before it is merged, lets him search the web and read a page, and puts a door camera up by
+itself when somebody is at the door.
 
 ### Added
 
@@ -231,6 +85,91 @@ default from `nl` to `en`; a deployment that relied on the Dutch default sets
 - `JARVIS_CREDENTIAL_EXPIRY` lists when the deployment's credentials run out, as `name=YYYY-MM-DD`
   pairs. The hourly self check reports `invariant:expiry:<name>` from thirty days before, and
   reports a date it cannot read rather than going quiet.
+- `close_gap`, a tool that starts learning a missing ability without asking first. It always
+  builds. It is given the general ability behind the request ("look up current local news"),
+  not the request itself. A small fix is written here and becomes a pull request; anything bigger
+  goes to a runner, which builds the ability and, when it can, answers the request along the way.
+  A runner that only looks the answer up leaves JARVIS as unable as before, so it is told in so
+  many words that the ability is the job. Nothing it starts is merged or deployed without the
+  owner's yes.
+- The answer first. When the gap is a question, `close_gap` also looks it up at once, in a
+  short model run that can search and read the web and do nothing else. It waits up to 40 seconds,
+  so JARVIS says the answer first and learns in the background. An answer that comes later is
+  spoken and sent to the chat on its own. The ability itself is still built: the lookup is a
+  stand-in for today, not the capability.
+- Abilities are built as generically as possible. The runner is told to build the widest ability
+  the request is one case of, with places, topics, devices and names as parameters.
+- Brakes on unasked work, kept in the task table: one attempt per gap at a time, two per gap a week,
+  and eight gaps a day. Past them, the tool refuses and says why, and the gap goes to the owner as a
+  question. Tasks carry the gap they belong to in a new `gap` column.
+- Runner questions are answered by JARVIS first. A question he can answer from the brief, from what he
+  knows, or from ordinary engineering judgement is typed into the runner, and the owner is told what
+  was asked and answered. A question that is the owner's to decide, or that JARVIS is unsure of, goes
+  to the owner's chat. A reply to that message is passed back into the runner. After five answers in
+  one job, or the same question twice, the owner is asked instead.
+- A check on turns that give up anyway. When a turn ends without closing a gap, a small model
+  reads the question and the answer. If the answer says, in any language, that JARVIS cannot do
+  it or does not know, the turn is sent back once to call `close_gap` and say what it started.
+  The prompt alone was not enough. Asked what the council was doing to a village's roads, JARVIS
+  said nothing he had could reach the council, and stopped. A second stop in the same turn is
+  always let go, so the check cannot loop.
+- `runner_reply`, for passing the owner's spoken answer or correction to a runner.
+- `reply()` on the `Delegate` seam, optional. A delegate without it leaves every question with the
+  owner, as before.
+- Runners that have said nothing for half an hour are looked in on every ten minutes. A changed
+  screen is judged like a report. A runner that is no longer running is marked as failed and reported;
+  a job that stopped more than two days ago is tidied without a message.
+- A delegated job the runner declared done is now recorded as `finished`, together with what the
+  runner said it left behind. `dev_status` lists the jobs that are with runners.
+- The System window lists the runners: one row per slot with the job's topic, whether it is working,
+  asking something (highlighted), done or stopped, how long it has been going, whether JARVIS started
+  it himself to learn something, and the task number. Idle slots share one line. The board is
+  rebuilt as soon as a job is handed on, judged, dropped or ended, and every minute while a page is
+  open for changes made elsewhere.
+- `abandon_dev_task`, a tool that drops an open job and closes the runner that works on it. It does
+  not ask first: a job built on a misunderstanding was never the user's request. A job whose pull
+  request is already waiting is only marked; the pull request stays for the user to close.
+- The end-of-turn check is also shown the jobs that are still open. When the exchange shows one rests
+  on a misunderstanding or is no longer wanted, the turn is sent back to drop it, in the same single
+  nudge as a turn that gave up. The deployment block says the same in words.
+- JARVIS says it out loud when a pull request is ready: his own small fix, and a runner's job that
+  ends with a DONE line ("Pull request 6, for search the full mail history, is ready for you to look
+  at."). Until now a waiting pull request was only written to the chat.
+- Trying a pull request before it is merged. The ready sentence ends with "Shall I put it live so
+  you can try it?", and the offer is put in front of the next question so a plain "yes" is
+  understood. `try_pull_request` asks the root side to fetch that pull request, of this repository
+  or of a pack, merge it onto what runs now, run the suite and the types, and restart; any failure
+  leaves everything as it was and is said out loud. `end_trial` takes it off again. One trial at a
+  time; `data/trial.json` says which, and `dev_status` reports it. After the restart JARVIS says
+  that it is live.
+- The assistant can search the web and read a page. Every other source it has was installed on
+  purpose -- a house, a mailbox, a calendar, each a pack with a credential behind it -- so a
+  question about a street, an organisation or a term was one it could only say it had no way to
+  look into. That was not a missing pack: it was `tools: []` in the agent, which withdrew the
+  built-in tools wholesale so that nothing could read this machine, and took the only two that read
+  nothing local with it. Those two are handed back and every other one stays gone. `JARVIS_WEB`
+  (on) withdraws them again, the deployment record carries the answer as a facility of its own, and
+  the prompt block says when not to search -- anything about this house, its devices or what was
+  said last week is answered faster and more surely by a pack or by memory -- and that text
+  arriving from a page is a quotation, never an instruction.
+- What was read goes on screen as one window of sources per turn, built from the results
+  themselves: the page's title, its host, and the full address behind it. No model is asked to
+  repeat a URL, a second search updates the same window rather than stacking another, and a search
+  that found nothing leaves the screen exactly as it was.
+- `JARVIS_DOOR_WATCH`: cameras paired with the sensors that mean somebody is in front of them, as
+  `camera.x=binary_sensor.a,binary_sensor.b`, several separated by `;`. A trigger puts that camera on
+  the HUD straight away -- no question, no turn, nothing said out loud -- and it stays for two
+  minutes. Pairing by room was the obvious alternative and does not work: a doorbell and its camera
+  routinely belong to no room at all in the registry, and a watch that resolves to nothing looks
+  configured.
+- The door trigger is an edge, not a state: a `binary_sensor` counts on the way into `on`, an
+  `event.*` entity on any new timestamp, and the state a feed replays when it connects counts for
+  nothing. One camera shows again at most once every fifteen seconds, so a ring that moves the
+  button, the motion sensor and the person detection at once is one window rather than three.
+- A display may now belong to no turn. The HUD kept only what belonged to the turn it had open, which
+  is the right default for a page that anything can write to; a window the brain put up by itself now
+  passes that filter, the same way an unprompted line already could. It replaces itself on its id, so
+  a second ring updates the picture in place.
 
 ### Changed
 
@@ -240,6 +179,26 @@ default from `nl` to `en`; a deployment that relied on the Dutch default sets
 - `JARVIS_SPEECH_LANG` defaults to `en` and is where a deployment starts rather than a fixed
   setting. A switch takes effect from the next question, which opens a fresh conversation.
 - Core's own health lines read in English.
+- The deployment block no longer tells the model to stop at "I cannot". On a deployment that can
+  build, it gets an order to follow: try what it has, close what is missing, and ask the owner only
+  what is the owner's to decide. It is also told when to stop. A deployment without self-development
+  keeps the old, honest wording.
+- Owner requests go through `propose_dev_task` as before. That tool now points at `close_gap` for
+  gaps JARVIS found himself.
+- Everything the self-development machinery says is in English: tool answers, guard reasons, task
+  details, the written notices and the spoken failure. The owner's name falls back to "the user".
+- A runner that died without reporting is closed as well, not only marked failed, so the delegate
+  can clear the job directory it left behind.
+- `show_camera` and the door watch build the same card through one function, so the tool's still,
+  refresh and stream relay cannot drift away from what goes up by itself.
+
+### Security
+
+- `scripts/self-deploy.sh` accepts three new request lines besides a commit hash on `origin/main`:
+  `try core <n>`, `try pack <id> <n>` and `untry`. This is the only way unmerged code runs. The brain
+  names a pull request number, never a commit or a path; the root side fetches it from origin itself
+  and puts it through the same suite and type checks. The owner's yes is enforced by the tool that
+  writes the request, not by the root side.
 
 ### Fixed
 
@@ -248,6 +207,13 @@ default from `nl` to `en`; a deployment that relied on the Dutch default sets
   `briefing: true`, so no once-a-day gate is in the way, and a turn the gate answered is not kept
   as the briefing.
 - A directory URL without its trailing slash still finds its styles.
+- A question with a slash, a colon or other punctuation in it made memory search throw
+  (`fts5: syntax error`) instead of searching. Only letters and digits reach the full-text
+  query now, for facts and for conversations alike.
+- The health rows, the delegate's included, only reached a page when it connected. The five-minute
+  probes now reach every open page, and the delegate's count of free slots follows the runner board
+  instead of waiting for the next probe. A page opened in the morning said every slot was free while
+  two runners were at work.
 
 ### Removed
 
