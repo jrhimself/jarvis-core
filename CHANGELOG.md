@@ -15,6 +15,32 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.3.0] - 2026-09-28
+
+The screen shows what the runners are doing, and JARVIS stops a job once it turns out to rest on a
+misunderstanding.
+
+### Added
+
+- The System window lists the runners: one row per slot with the job's topic, whether it is working,
+  asking something (highlighted), done or stopped, how long it has been going, whether JARVIS started
+  it himself to learn something, and the task number. Idle slots share one line. The board is
+  rebuilt as soon as a job is handed on, judged, dropped or ended, and every minute while a page is
+  open for changes made elsewhere.
+- `abandon_dev_task`, a tool that drops an open job and closes the runner that works on it. It does
+  not ask first: a job built on a misunderstanding was never the user's request. A job whose pull
+  request is already waiting is only marked; the pull request stays for the user to close.
+- The end-of-turn check is also shown the jobs that are still open. When the exchange shows one rests
+  on a misunderstanding or is no longer wanted, the turn is sent back to drop it, in the same single
+  nudge as a turn that gave up. The deployment block says the same in words.
+
+### Fixed
+
+- The health rows, the delegate's included, only reached a page when it connected. The five-minute
+  probes now reach every open page, and the delegate's count of free slots follows the runner board
+  instead of waiting for the next probe. A page opened in the morning said every slot was free while
+  two runners were at work.
+
 ## [2.1.0] - 2026-09-25
 
 JARVIS closes the gaps he runs into himself. Until now, a request he could not carry out ended with an

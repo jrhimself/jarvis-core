@@ -322,18 +322,71 @@
     setList('work', html);
   }
 
+  /* "14m", "2h 5m", "3d" -- how long a runner has had its job. */
+  function ageOf(iso) {
+    const t = Date.parse(iso || '');
+    if (Number.isNaN(t)) return '';
+    const m = Math.max(0, Math.floor((Date.now() - t) / 60000));
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+    return Math.floor(h / 24) + 'd';
+  }
+
+  /* One row per runner that has something to show: what it works on, whether
+     the far side calls it busy, what its last screen was judged to mean, and
+     for how long. Idle slots with nothing on them fold into one line, so three
+     empty slots cost one row and not three. */
+  function runnerRows(board) {
+    if (!board || !Array.isArray(board.runners) || !board.runners.length) return { html: '', shown: false };
+    if (!board.reachable) {
+      return { html: rowHtml('mark', 'RUN', 'Runners unreachable', 'the delegate did not answer'), shown: true };
+    }
+    let html = '';
+    let idle = 0;
+    board.runners.forEach(function (r) {
+      const job = r.job || null;
+      const note = r.note || null;
+      if (!job && r.busy === false) { idle += 1; return; }
+      const t = 'R' + r.slot;
+      if (!job) {
+        html += rowHtml('', t, 'Busy', 'not started by JARVIS');
+        return;
+      }
+      const bits = [];
+      let cls = 'runner';
+      if (r.busy === false) { bits.push('stopped'); cls += ' runner-stopped'; }
+      else if (note && note.state === 'asking') { bits.push('asks: ' + (note.text || 'a question')); cls += ' mark runner-asking'; }
+      else if (note && note.state === 'done') { bits.push('done'); cls += ' runner-done'; }
+      else bits.push('working');
+      bits.push(ageOf(job.since));
+      if (job.learning) bits.push('learning');
+      bits.push('#' + job.id);
+      html += rowHtml(cls, t, job.topic || 'a job', bits.filter(Boolean).join(' · '));
+    });
+    if (idle) html += rowHtml('runner-idle', 'RUN', idle + (idle === 1 ? ' slot idle' : ' slots idle'), '');
+    return { html: html, shown: true };
+  }
+
   function renderSystem(vm) {
-    setMeta('system', '');
-    if (!vm || (vm.cpu == null && vm.mem == null && vm.disk == null && vm.uptime == null)) {
+    const board = vm && vm.runners;
+    const busy = board && board.runners ? board.runners.filter(function (r) { return r.busy === true || r.job; }).length : 0;
+    setMeta('system', busy ? busy + ' running' : '');
+    if (!vm || (vm.cpu == null && vm.mem == null && vm.disk == null && vm.uptime == null && !board)) {
       setBody('system', emptyHtml());
       return;
     }
-    /* CPU, memory and disk are in the footer already; this panel is uptime and
-       the health of what the brain depends on. */
-    let html = '<ul class="list">';
+    /* CPU, memory and disk are in the footer already; this panel is what the
+       runners are doing, uptime, and the health of what the brain depends on.
+       The runners come first: they are the part that changes and the part that
+       can be waiting for an answer. */
+    const run = runnerRows(board);
+    let html = '<ul class="list">' + run.html;
     if (vm.uptime != null) html += '<li class="fit-item"><span class="t">UP</span><span class="body">' + esc(vm.uptime) + '</span></li>';
     if (vm.health && vm.health.length) {
-      vm.health.slice(0, 5).forEach(function (h) {
+      /* The delegate's row is the runners' row in short; with the board on
+         screen it says nothing the rows above do not. */
+      vm.health.filter(function (h) { return !(run.shown && h.server === 'delegate' && h.state === 'ok'); }).slice(0, 5).forEach(function (h) {
         html +=
           '<li class="fit-item"><span class="t">' +
           esc(String(h.server || '').toUpperCase()) +

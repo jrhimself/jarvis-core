@@ -353,7 +353,7 @@ registerProcessor('mic-tap', MicTap);
       };
     },
 
-    system(metrics, health) {
+    system(metrics, health, runners) {
       const m = metrics || {};
       const GB = 1024 * 1024 * 1024;
       const cpu = m.cpuShare == null ? null : Math.round(m.cpuShare * 100);
@@ -369,6 +369,7 @@ registerProcessor('mic-tap', MicTap);
         cpu, mem, disk, uptime,
         rssBytes: m.rssBytes, cpuShare: m.cpuShare, uptimeMs: m.uptimeMs, diskUsed: m.diskUsed,
         health: Array.isArray(health) ? health : [],
+        runners: runners && Array.isArray(runners.runners) ? runners : null,
         gap: 'v2 mock shows NET; Core metrics have no network field.',
       };
     },
@@ -410,6 +411,7 @@ registerProcessor('mic-tap', MicTap);
     let spokenText = '';       /* cumulative answer text for cue gating */
     let metrics = null;
     let health = [];
+    let runners = null; // last runner board from Core
     let tileCache = Object.create(null); // topic → last tiles msg
     let payloadCache = Object.create(null); // topic → last display payload
     let followUntil = 0, followTimer = null;
@@ -814,6 +816,12 @@ registerProcessor('mic-tap', MicTap);
         emitSystem();
         return;
       }
+      if (m.kind === 'runners') {
+        runners = m.board || null;
+        bus.emit('runners', runners);
+        emitSystem();
+        return;
+      }
       if (m.kind === 'usage') {
         bus.emit('usage', m.usage || null);
         return;
@@ -852,8 +860,8 @@ registerProcessor('mic-tap', MicTap);
     }
 
     function emitSystem() {
-      const vm = Normalizers.system(metrics, health);
-      bus.emit('system', { metrics, health, view: vm });
+      const vm = Normalizers.system(metrics, health, runners);
+      bus.emit('system', { metrics, health, runners, view: vm });
       bus.emit('panelData', 'system', vm);
     }
 
@@ -868,7 +876,7 @@ registerProcessor('mic-tap', MicTap);
       else if (panelId === 'mail') vm = Normalizers.mail(payload, tiles);
       else if (panelId === 'work') vm = Normalizers.work(payload, tiles);
       else if (panelId === 'notes') vm = Normalizers.notes(payload, tiles);
-      else if (panelId === 'system') vm = Normalizers.system(metrics, health);
+      else if (panelId === 'system') vm = Normalizers.system(metrics, health, runners);
       else vm = Normalizers.pack(topic, payload, tiles);
       bus.emit('panelData', panelId, vm);
       return { panelId, vm };

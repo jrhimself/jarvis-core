@@ -68,6 +68,7 @@ import { nowBlock } from "./now.js";
 import { interfaceLanguage, language, languageBlock, languageHook, languageNote, takeOffer } from "./language.js";
 import { createLanguageServer, LANGUAGE_SERVER_NAME, LANGUAGE_TOOLS } from "./language-tools.js";
 import { gapHook } from "./gap-check.js";
+import { jobLine } from "./dev/board.js";
 import { loadPersona } from "./persona.js";
 import {
   isLimitMessage,
@@ -457,9 +458,15 @@ export class AgentSession {
                 Stop: [
                   gapHook(() => {
                     const active = this.#active;
-                    return active === null
-                      ? null
-                      : { question: active.question, tools: active.tools.map((tool) => tool.name) };
+                    if (active === null) return null;
+                    // Jobs that were open before this turn began: one this turn
+                    // started is what it just decided to do, not a mistake to undo.
+                    const began = Date.now() - (performance.now() - active.startedAt);
+                    const jobs = dev
+                      .open()
+                      .filter((task) => Date.parse(task.createdAt) < began)
+                      .map((task) => ({ id: task.id, job: jobLine(task) }));
+                    return { question: active.question, tools: active.tools.map((tool) => tool.name), jobs };
                   }, undefined, () => this.#active?.handlers.onSettling?.()),
                 ],
               }

@@ -46,7 +46,9 @@ import {
   openPullRequest,
   type GitHubConfig,
 } from "./github.js";
+import { refreshBoard } from "./board.js";
 import { escapeHtml, failureMessage, reviewMessage, spokenFailure } from "./notify.js";
+import { forget } from "./runners.js";
 import {
   awaitingDevTask,
   createDevTask,
@@ -215,7 +217,71 @@ export class SelfDevelopment {
       now,
     );
     updateDevTask(this.db, id, { slot: handed.slot }, now);
+    refreshBoard();
     return { ok: true, slot: handed.slot, id };
+  }
+
+  /**
+   * Drops a job that turned out not to be wanted, and gives its runner back.
+   *
+   * Written after a runner spent a morning building a reader for a marketplace
+   * the owner had never mentioned: JARVIS guessed where a message came from,
+   * started learning to reach it, and two sentences later heard that it was
+   * mail. He understood the correction and carried on -- and the job built on
+   * the guess carried on too, because nothing he had could stop it.
+   *
+   * A job with a runner has its slot closed first; if the slot will not close
+   * the row stays open, because a runner still at work on a job marked dropped
+   * is worse than one on a job marked running. A job whose pull request is
+   * already waiting is only marked: the pull request is the owner's to close.
+   * A small fix being written here cannot be stopped halfway -- the worker
+   * holds a worktree and a model session -- so that one is refused with the
+   * way that does work.
+   */
+  async abandon(
+    id: number,
+    reason: string,
+    now: Date,
+  ): Promise<{ ok: true; task: DevTask; closed: number | null } | { ok: false; error: string }> {
+    const task = devTask(this.db, id);
+    if (task === null) return { ok: false, error: `There is no task ${id}.` };
+    if (task.state === "running") {
+      return {
+        ok: false,
+        error:
+          "That fix is being written here right now and cannot be stopped halfway. Tell it to stop " +
+          "with dev_steer, or let it finish and do not merge it.",
+      };
+    }
+    if (task.state !== "delegated" && task.state !== "awaiting") {
+      return { ok: false, error: `Task ${id} is not open any more: it is ${task.state}.` };
+    }
+
+    let closed: number | null = null;
+    if (task.state === "delegated" && task.slot !== null) {
+      // Only the newest job on a slot owns what runs there now.
+      const newest = delegatedDevTasks(this.db).filter((other) => other.slot === task.slot).at(-1);
+      if (newest?.id === task.id) {
+        const result = await this.#delegate.kill(task.slot);
+        if (!result.ok && !/not running|no such|not found/i.test(result.error)) {
+          return { ok: false, error: `Runner ${task.slot} could not be closed: ${result.error}` };
+        }
+        forget(task.slot);
+        if (result.ok) closed = task.slot;
+      }
+    }
+
+    updateDevTask(this.db, id, { state: "abandoned", detail: `dropped: ${reason}` }, now);
+    refreshBoard();
+    return { ok: true, task, closed };
+  }
+
+  /** Every job that is still open: running here, waiting for a yes, or with a runner. */
+  open(): DevTask[] {
+    const here = [runningDevTask(this.db), awaitingDevTask(this.db)].filter(
+      (task): task is DevTask => task !== null,
+    );
+    return [...here, ...delegatedDevTasks(this.db)];
   }
 
   /** What a delegated runner is showing right now. */

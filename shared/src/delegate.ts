@@ -98,3 +98,41 @@ export const NO_DELEGATE: Delegate = {
   tail: async () => ({ ok: false, error: "No runner runs here." }),
   kill: async () => ({ ok: false, error: "No runner runs here." }),
 };
+
+/**
+ * One delegation slot as the screen shows it.
+ *
+ * `busy` is what the far side says, and null when it could not be asked; `job`
+ * is what this assistant handed that slot and has not seen end. The two are
+ * kept apart because they can disagree -- a slot busy with nothing JARVIS
+ * knows of is somebody else's, and a job on an idle slot is one that ended
+ * without saying so -- and the disagreement is worth seeing.
+ */
+export interface RunnerRow {
+  slot: number;
+  busy: boolean | null;
+  job?: {
+    /** The dev task's number, the one `abandon_dev_task` takes. */
+    id: number;
+    /** What it is about, in one line. */
+    topic: string;
+    /** When it was handed on, ISO 8601. */
+    since: string;
+    /** Set when JARVIS started it himself to learn something he lacked. */
+    learning?: boolean;
+  };
+  /** What the last judged screen of the runner meant. */
+  note?: {
+    state: "working" | "asking" | "done";
+    /** The question it asked, or what it said it did. */
+    text?: string;
+    /** When that screen was judged, ISO 8601. */
+    at: string;
+  };
+}
+
+/** Every delegation slot, and whether the far side could be asked at all. */
+export interface RunnerBoard {
+  reachable: boolean;
+  runners: RunnerRow[];
+}

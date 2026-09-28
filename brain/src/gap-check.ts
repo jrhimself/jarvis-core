@@ -20,12 +20,38 @@
  * Judged by a model rather than by words: a list of phrases would be a list in
  * one language, and "dat weet ik niet" and "nothing I have reaches that" are
  * the same answer.
+ *
+ * The same look also catches the opposite mistake: work that should stop. A
+ * gap closed on a guess -- JARVIS assumed a message came from a marketplace and
+ * started learning to read one -- went on being built after the owner said it
+ * was an e-mail thread, because the correction reached the conversation and
+ * nothing else. So the check is also shown the jobs still open, and names any
+ * that the exchange shows rest on a misunderstanding or are no longer wanted;
+ * the turn is then sent back to drop them with `abandon_dev_task`.
  */
 
 import { query, type HookCallbackMatcher, type HookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
 
 /** Longest the check may take. A slow check lets the turn end rather than hold it. */
 const CHECK_TIMEOUT_MS = 10_000;
+
+/** The tool that drops a job, whose use means the turn already acted on a correction. */
+export const DROP_TOOL = "mcp__selfdev__abandon_dev_task";
+
+/** One job still open, as the check is shown it. */
+export interface OpenJob {
+  id: number;
+  /** What it is about, in a line or two. */
+  job: string;
+}
+
+/** What the check found: whether the answer gave up, and which jobs should stop. */
+export interface Check {
+  gaveUp: boolean;
+  drop: number[];
+}
+
+const NOTHING: Check = { gaveUp: false, drop: [] };
 
 /** Tools whose use means the turn already did something about a gap. */
 export const GAP_TOOLS = [
@@ -47,7 +73,13 @@ Answer with exactly one word:
 GAVE_UP when it gave up in that way.
 FINE for everything else: a complete answer, a question back to the user, something
 that was done, a refusal for safety or privacy, small talk, or an answer that says the
-missing ability is already being built.`;
+missing ability is already being built.
+
+You may also be shown the jobs the assistant has running in the background, each with its
+number. After that first word, add one line DROP <number> for every job this exchange shows
+should stop: the user corrected what the job assumed, said it is not what he meant, or said
+it is not needed. A job the exchange does not touch is never dropped, and neither is one
+the user merely did not mention.`;
 
 /** The nudge that sends a turn that gave up back to work. */
 export const NUDGE =
@@ -56,18 +88,56 @@ export const NUDGE =
   "Then add one short sentence saying that you are learning it. If close_gap refuses, say why in " +
   "one sentence and stop.";
 
-/** Reads the checking model's one word back. Anything unclear lets the turn end. */
-export function readCheck(answer: string): boolean {
-  const word = answer.trim().split(/\s+/)[0]?.toUpperCase().replace(/[^A-Z_]/g, "") ?? "";
-  return word === "GAVE_UP";
+/** The nudge that sends a turn back to drop the jobs a correction made pointless. */
+export function dropNudge(jobs: readonly OpenJob[]): string {
+  const named = jobs.map((job) => `task ${job.id} (${job.job})`).join(", ");
+  return (
+    `What the user just said shows that ${named} rests on a misunderstanding or is not wanted. ` +
+    "Call abandon_dev_task for it now with the reason, then say in one short sentence that you " +
+    "stopped it."
+  );
 }
 
-/** Asks a small model whether an answer gave up. False on any failure. */
-export async function gaveUp(question: string, answer: string, model = "haiku"): Promise<boolean> {
-  const run = async (): Promise<boolean> => {
+/**
+ * Reads the checking model's answer back. Anything unclear lets the turn end.
+ *
+ * The first word decides whether the answer gave up; every later line that
+ * starts with DROP and a number names a job, and only numbers that were shown
+ * count -- a job the model invents cannot be dropped.
+ */
+export function readCheck(answer: string, jobs: readonly OpenJob[] = []): Check {
+  const lines = answer.trim().split("\n");
+  const word = lines[0]?.trim().split(/\s+/)[0]?.toUpperCase().replace(/[^A-Z_]/g, "") ?? "";
+  const known = new Set(jobs.map((job) => job.id));
+  const drop: number[] = [];
+  for (const line of lines) {
+    const found = /^\s*DROP\s+#?(\d+)\s*$/i.exec(line);
+    const id = found === null ? NaN : Number(found[1]);
+    if (known.has(id) && !drop.includes(id)) drop.push(id);
+  }
+  return { gaveUp: word === "GAVE_UP", drop };
+}
+
+/** The exchange as the checking model is shown it. */
+function checkPrompt(question: string, answer: string, jobs: readonly OpenJob[]): string {
+  const parts = [`The user asked:\n${question.trim()}`, `The assistant answered:\n${answer.trim()}`];
+  if (jobs.length > 0) {
+    parts.push(`Jobs running in the background:\n${jobs.map((job) => `${job.id}: ${job.job}`).join("\n")}`);
+  }
+  return parts.join("\n\n");
+}
+
+/** Asks a small model whether an answer gave up, and which jobs should stop. Nothing on any failure. */
+export async function checkTurn(
+  question: string,
+  answer: string,
+  jobs: readonly OpenJob[] = [],
+  model = "haiku",
+): Promise<Check> {
+  const run = async (): Promise<Check> => {
     let text = "";
     for await (const message of query({
-      prompt: `The user asked:\n${question.trim()}\n\nThe assistant answered:\n${answer.trim()}`,
+      prompt: checkPrompt(question, answer, jobs),
       options: {
         model,
         systemPrompt: CHECK_INSTRUCTIONS,
@@ -86,16 +156,16 @@ export async function gaveUp(question: string, answer: string, model = "haiku"):
         if (b.type === "text" && typeof b.text === "string") text += b.text;
       }
     }
-    return readCheck(text);
+    return readCheck(text, jobs);
   };
   try {
     return await Promise.race([
       run(),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), CHECK_TIMEOUT_MS).unref()),
+      new Promise<Check>((resolve) => setTimeout(() => resolve(NOTHING), CHECK_TIMEOUT_MS).unref()),
     ]);
   } catch (error) {
     console.warn("gap-check: could not check an answer:", error);
-    return false;
+    return NOTHING;
   }
 }
 
@@ -105,6 +175,8 @@ export interface GapTurn {
   question: string;
   /** Names of the tools the turn called so far. */
   tools: readonly string[];
+  /** Jobs that were already open when the turn began. */
+  jobs?: readonly OpenJob[];
 }
 
 /**
@@ -115,7 +187,7 @@ export interface GapTurn {
  */
 export function gapHook(
   turn: () => GapTurn | null,
-  check: (question: string, answer: string) => Promise<boolean> = gaveUp,
+  check: (question: string, answer: string, jobs: readonly OpenJob[]) => Promise<Check> = checkTurn,
   /**
    * Told the moment the model stops, before the check. The answer is out, and
    * the check's few seconds are not a silence to fill with a line that says
@@ -131,12 +203,29 @@ export function gapHook(
         if (stop.stop_hook_active === true) return {};
         const current = turn();
         if (current === null) return {};
-        if (current.tools.some((name) => GAP_TOOLS.includes(name))) return {};
+        // A turn that already closed a gap needs no nudge to close one; a turn
+        // that already dropped a job needs none to drop one. Only what is left
+        // is worth a model call.
+        const closed = current.tools.some((name) => GAP_TOOLS.includes(name));
+        const jobs = current.tools.includes(DROP_TOOL) ? [] : (current.jobs ?? []);
+        if (closed && jobs.length === 0) return {};
         const answer = stop.last_assistant_message ?? "";
         if (answer.trim() === "") return {};
-        if (!(await check(current.question, answer))) return {};
-        console.log("gap-check: the turn gave up; sending it back to close the gap");
-        return { decision: "block", reason: NUDGE };
+
+        const found = await check(current.question, answer, jobs);
+        const gaveUp = found.gaveUp && !closed;
+        const drop = jobs.filter((job) => found.drop.includes(job.id));
+        if (!gaveUp && drop.length === 0) return {};
+
+        if (drop.length > 0) {
+          const ids = drop.map((job) => job.id).join(", ");
+          console.log(`gap-check: the exchange makes task ${ids} pointless; sending it back to drop it`);
+        }
+        if (gaveUp) console.log("gap-check: the turn gave up; sending it back to close the gap");
+        const reason = [drop.length > 0 ? dropNudge(drop) : "", gaveUp ? NUDGE : ""]
+          .filter((part) => part !== "")
+          .join(" ");
+        return { decision: "block", reason };
       },
     ],
   };

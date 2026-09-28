@@ -16,7 +16,8 @@ import { mergeDeskSlots } from "./desk.js";
 import { loadConfig } from "./config.js";
 import { Conversation } from "./conversation.js";
 import { interfaceLanguage, language } from "./language.js";
-import { runHealthChecks, specsFor } from "./health.js";
+import { lastHealth, onHealth, publishHealth, runHealthChecks, specsFor } from "./health.js";
+import { lastBoard, onBoard, refreshBoard } from "./dev/board.js";
 import { screenGone } from "./screens.js";
 import { addLiveSession } from "./live.js";
 import { memory } from "./memory/store.js";
@@ -153,14 +154,31 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     // "ready" alone only ever proved the websocket; a dead bridge or an
     // expired mail token should be visible before the first question, not
     // during it.
-    void packSummary()
-      .then((packs) =>
-        runHealthChecks(
-          specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes, packs.delegate),
-        ),
-      )
-      .then((checks) => send({ kind: "health", checks }))
-      .catch((error: unknown) => console.error("health checks failed:", error));
+    //
+    // The verdicts the clock last found are sent at once, and every set after
+    // them as it comes; only a page that arrives before the first round has
+    // run makes the probes run for it.
+    const forgetHealth = onHealth((checks) => send({ kind: "health", checks }));
+    const knownHealth = lastHealth();
+    if (knownHealth !== null) {
+      send({ kind: "health", checks: knownHealth });
+    } else {
+      void packSummary()
+        .then((packs) =>
+          runHealthChecks(
+            specsFor(config, memory(config.memoryPath), Object.keys(packs.servers), packs.probes, packs.delegate),
+          ),
+        )
+        .then(publishHealth)
+        .catch((error: unknown) => console.error("health checks failed:", error));
+    }
+
+    // What each runner is doing: the last board now, a fresh one in a moment,
+    // and every one after.
+    const forgetBoard = onBoard((board) => send({ kind: "runners", board }), true);
+    const knownBoard = lastBoard();
+    if (knownBoard !== null) send({ kind: "runners", board: knownBoard });
+    refreshBoard();
 
     // The readings that go stale while they are on screen. They arrive by the
     // same path a tool's own figures do -- same shape, same subject, same
@@ -292,6 +310,8 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       clearInterval(watchTimer);
       forgetLiveSession();
       forgetPlan();
+      forgetHealth();
+      forgetBoard();
       forgetLang();
       forgetScreenLang();
       listener?.close();

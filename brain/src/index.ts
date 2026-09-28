@@ -42,7 +42,8 @@ import { warmRecordedLines } from "./conversation.js";
 import { language } from "./language.js";
 import { configurePlanStore, loadPlanUsage } from "./plan.js";
 import { attachWebsocket } from "./ws.js";
-import { runHealthChecks, specsFor } from "./health.js";
+import { healthWithBoard, lastHealth, publishHealth, runHealthChecks, specsFor } from "./health.js";
+import { boardSource, boardWatched, forgetRunner, onBoard, refreshBoard, useBoardSource } from "./dev/board.js";
 
 /** How often every dependency is asked whether it still answers. */
 /** How often delegated runners that went quiet are looked in on. */
@@ -52,6 +53,15 @@ const RUNNER_LOOK_MS = 10 * 60_000;
 const RUNNER_NEWS_MS = 48 * 3_600_000;
 
 const HEALTH_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * How often the runner board is rebuilt while a page is watching it.
+ *
+ * Every change this process makes rebuilds it at once; this is for the ones it
+ * does not see -- a runner closed by hand at the other machine, a session that
+ * died. One SSH login a minute, and none while no page is open.
+ */
+const BOARD_INTERVAL_MS = 60_000;
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -97,7 +107,12 @@ async function main(): Promise<void> {
   // What the runner supervisor can do over the delegate seam, which is the
   // pack's business rather than core's: close a slot, type into it, and mark
   // the job's record when the runner says it is done.
-  const closeSlot = async (slot: number) => (await packSummary()).delegate.kill(slot);
+  const closeSlot = async (slot: number) => {
+    const closed = await (await packSummary()).delegate.kill(slot);
+    if (closed.ok) forgetRunner(slot);
+    refreshBoard();
+    return closed;
+  };
   const runnerSeam: RunnerSeam = {
     reply: async (slot, text) => {
       const delegate = (await packSummary()).delegate;
@@ -108,6 +123,7 @@ async function main(): Promise<void> {
     consider: (report, question) => consider(store, report, question),
     finished: (slot, summary) => {
       endDelegated(store.devConnection(), slot, { state: "finished", detail: summary }, new Date());
+      refreshBoard();
     },
   };
 
@@ -178,11 +194,24 @@ async function main(): Promise<void> {
       .then((packs) =>
         runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
       )
+      .then(publishHealth)
       .catch((error: unknown) => console.error("health checks failed:", error));
   };
   checkHealth();
   const healthTimer = setInterval(checkHealth, HEALTH_INTERVAL_MS);
   healthTimer.unref();
+
+  // The runner board, and the delegate's health row kept in step with it: the
+  // row is a count of free slots, and the board knows that count sooner.
+  useBoardSource(boardSource(store.devConnection(), async () => (await packSummary()).delegate));
+  onBoard((board) => {
+    const checks = lastHealth();
+    if (checks !== null) publishHealth(healthWithBoard(checks, board));
+  });
+  const boardTimer = setInterval(() => {
+    if (boardWatched()) refreshBoard();
+  }, BOARD_INTERVAL_MS);
+  boardTimer.unref();
 
   let hangUp: (() => void) | null = null;
 
@@ -229,6 +258,8 @@ async function main(): Promise<void> {
             (report) => supervise(store, bot, config.suggestChat, report, closeSlot, runnerSeam),
             async (job) => {
               endDelegated(db, job.slot, { state: "failed", detail: "the runner stopped without saying it was done" }, new Date());
+              forgetRunner(job.slot);
+              refreshBoard();
               // A job from weeks ago that nobody closed off is tidied quietly;
               // only one that was still news is worth a message.
               if (Date.now() - job.since < RUNNER_NEWS_MS) {
@@ -261,6 +292,7 @@ async function main(): Promise<void> {
     console.log(`jarvis brain: ${signal} received, shutting down`);
     stopProactive();
     if (lookTimer !== null) clearInterval(lookTimer);
+    clearInterval(boardTimer);
     hangUp?.();
     chat?.close();
     server.close(() => process.exit(0));

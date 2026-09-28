@@ -25,7 +25,9 @@
  */
 
 import { proactiveAtLeast, type Config } from "./config.js";
-import type { Delegate } from "@jarvis/shared";
+import type { Delegate, RunnerBoard } from "@jarvis/shared";
+
+import { withBoard } from "./dev/board.js";
 
 import type { MemoryStore } from "./memory/store.js";
 
@@ -243,4 +245,44 @@ export async function runHealthChecks(specs: readonly ServerSpec[]): Promise<Hea
 
   for (const check of checks) noteServer(check.server, check.state);
   return checks;
+}
+
+/*
+ * The verdicts, kept and handed on.
+ *
+ * The probes run on a clock in `index.ts`, and until now only the page that
+ * happened to connect afterwards heard what they found: a page open all
+ * morning kept the rows it was given at breakfast. The delegate row suffered
+ * most -- it said every slot was free while two runners were at work.
+ */
+let latest: HealthCheck[] | null = null;
+const healthListeners = new Set<(checks: HealthCheck[]) => void>();
+
+/** Keeps a new set of verdicts and tells every open page. */
+export function publishHealth(checks: HealthCheck[]): void {
+  latest = checks;
+  for (const listener of healthListeners) listener(checks);
+}
+
+/** The verdicts as last published, for a page that just connected. */
+export function lastHealth(): HealthCheck[] | null {
+  return latest;
+}
+
+/** Every new set of verdicts, until the returned function is called. */
+export function onHealth(listener: (checks: HealthCheck[]) => void): () => void {
+  healthListeners.add(listener);
+  return () => healthListeners.delete(listener);
+}
+
+/**
+ * Brings the delegate row up to date from a newer board, without probing.
+ *
+ * The board is rebuilt whenever a job starts or ends; the probes run every few
+ * minutes. A row that says "down" is left alone -- that is the probe's call.
+ */
+export function healthWithBoard(checks: readonly HealthCheck[], board: RunnerBoard): HealthCheck[] {
+  return checks.map((check) =>
+    check.server === "delegate" && check.state === "ok" ? { ...check, detail: withBoard(check.detail, board) } : check,
+  );
 }

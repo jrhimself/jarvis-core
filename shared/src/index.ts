@@ -15,6 +15,7 @@ export * from "./pack.js";
 export * from "./time.js";
 
 import type { HudTile } from "./pack.js";
+import type { RunnerBoard } from "./delegate.js";
 
 /** Messages sent by the HUD to the brain. */
 export type ClientMessage =
@@ -522,6 +523,14 @@ export type ServerMessage =
       /** How much of the claude.ai plan is spent, as far as the brain has heard. */
       kind: "usage";
       usage: PlanUsage;
+    }
+  | {
+      /**
+       * What every delegation slot is doing: sent when a page connects and
+       * again whenever a job is handed on, judged, dropped or ended.
+       */
+      kind: "runners";
+      board: RunnerBoard;
     };
 
 /** One of the plan's metered windows. */

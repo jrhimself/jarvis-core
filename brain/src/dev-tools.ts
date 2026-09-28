@@ -384,9 +384,10 @@ export function createDevServer(
       const waiting = dev.awaiting();
       const handed = dev.delegated();
 
-      if (running !== null) lines.push(describeTask(running));
-      if (waiting !== null) lines.push(describeTask(waiting));
-      for (const task of handed) lines.push(describeTask(task));
+      // Numbered, because abandon_dev_task takes the number.
+      if (running !== null) lines.push(`Task ${running.id}: ${describeTask(running)}`);
+      if (waiting !== null) lines.push(`Task ${waiting.id}: ${describeTask(waiting)}`);
+      for (const task of handed) lines.push(`Task ${task.id}: ${describeTask(task)}`);
       // What a runner found out or built comes back here as well as to the chat,
       // so "what did it find" has an answer in conversation.
       for (const task of dev.recentlyFinished(new Date())) lines.push(describeTask(task));
@@ -528,10 +529,41 @@ export function createDevServer(
     { annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: true } },
   );
 
+  const abandon = tool(
+    "abandon_dev_task",
+    "Stop a job you started or handed to a runner once it turns out not to be wanted: the user " +
+      "corrected what it assumed ('no, it is not a marketplace message, it is an e-mail thread'), said he " +
+      "does not need it, or a better job already covers it. Closes the runner that works on it, " +
+      "so it stops spending time and money on the wrong thing. Do not ask first -- a job built on " +
+      "a misunderstanding was never his request -- but say in one short sentence that you stopped " +
+      "it and why. The numbers are in dev_status and on the screen.",
+    {
+      task: z.number().int().describe("The task number, as dev_status gives it"),
+      reason: z.string().min(1)
+        .describe("Why it is no longer wanted, in one short clause, e.g. 'the thread is e-mail, not a marketplace'"),
+    },
+    async (args) => {
+      const dropped = await dev.abandon(args.task, args.reason, new Date());
+      if (!dropped.ok) return refused(dropped.error);
+      const waiting = dropped.task.state === "awaiting" && dropped.task.prUrl !== null;
+      return ok(
+        [
+          `Task ${args.task} is dropped.`,
+          dropped.closed === null ? "" : `Runner ${dropped.closed} is closed.`,
+          waiting ? `Its pull request stays open for the user to close: ${dropped.task.prUrl}` : "",
+          "Say in one short sentence that you stopped it and why.",
+        ]
+          .filter((line) => line !== "")
+          .join(" "),
+      );
+    },
+    { annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true } },
+  );
+
   return createSdkMcpServer({
     name: DEV_SERVER_NAME,
     version: "1.0.0",
-    tools: [propose, start, gap, status, steer, proposeMerge, approveMerge, runner, reply],
+    tools: [propose, start, gap, status, steer, proposeMerge, approveMerge, runner, reply, abandon],
   });
 }
 

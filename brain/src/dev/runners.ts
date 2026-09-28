@@ -42,6 +42,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 
 import type { Closed } from "@jarvis/shared";
 
+import { forgetRunner, noteRunner } from "./board.js";
 import { escapeHtml } from "./notify.js";
 import { loadConfig, ownerName } from "../config.js";
 import { coreBlock, recallFacts } from "../memory/tools.js";
@@ -390,6 +391,7 @@ export function forget(slot: number): void {
   lastHeard.delete(slot);
   lastScreen.delete(slot);
   for (const [key, held] of withOwner) if (held === slot) withOwner.delete(key);
+  forgetRunner(slot);
 }
 
 /**
@@ -603,6 +605,17 @@ export async function supervise(
       ),
     ]);
 
+    // On the screen before anything is said about it: the board is where the
+    // owner looks to see what a runner is doing, and a question waiting there is
+    // the one thing on it that asks something of him.
+    noteRunner(
+      report.slot,
+      verdict.state === "done"
+        ? { state: "done", text: verdict.summary, at: Date.now() }
+        : verdict.state === "asking"
+          ? { state: "asking", text: verdict.question, at: Date.now() }
+          : { state: "working", at: Date.now() },
+    );
     await actOn(bot, chatId, report, verdict, close, seam);
     return verdict;
   } catch (error) {
