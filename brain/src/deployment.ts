@@ -203,6 +203,14 @@ export function describeDeployment(
         : {}),
     },
     {
+      name: "reading the web",
+      on: config.web,
+      detail: config.web
+        ? "searching the web and reading a page are available, which is the one source here that takes no pack and no credential"
+        : "JARVIS_WEB is off: nothing outside this deployment's own sources can be looked up",
+      ...(config.web ? {} : { remedy: "set JARVIS_WEB to on in the env file and restart" }),
+    },
+    {
       name: "watching on my own",
       on: config.proactive !== "off",
       detail:

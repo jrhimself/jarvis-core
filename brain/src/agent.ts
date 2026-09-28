@@ -14,7 +14,7 @@
 import { randomUUID } from "node:crypto";
 
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { SpeechLang } from "@jarvis/shared";
+import type { PackDisplay, SpeechLang } from "@jarvis/shared";
 
 import { loadConfig, proactiveAtLeast } from "./config.js";
 import { describeDeployment, deploymentBlock } from "./deployment.js";
@@ -82,6 +82,15 @@ import {
   planUsage,
 } from "./plan.js";
 import { createSetupServer, SETUP_SERVER_NAME, SETUP_TOOLS } from "./setup-tools.js";
+import {
+  isWebTool,
+  merge,
+  sourcesIn,
+  sourcesPanel,
+  webBlock,
+  WEB_TOOLS,
+  type Source,
+} from "./web.js";
 
 const config = loadConfig();
 const store = memory(config.memoryPath);
@@ -231,6 +240,15 @@ interface ActiveTurn {
   gated: boolean;
   /** Every window that went up during the turn, in order, for saying it again. */
   windows: ShownWindow[];
+  /**
+   * What this turn has read on the web, newest first.
+   *
+   * Per turn rather than per session, and in one window rather than one per
+   * search: a question answered from four searches read four sets of pages for
+   * the same answer, and a screen that stacks them buries the answer under its
+   * own footnotes.
+   */
+  sources: Source[];
 }
 
 /** One conversation's agent process, reused for every turn in it. */
@@ -255,6 +273,8 @@ export class AgentSession {
   #wake: (() => void) | null = null;
   #closed = false;
   #stream: ReturnType<typeof query> | null = null;
+  /** The session's way onto the screen, for what core itself shows. */
+  #show: PackDisplay | null = null;
   #pump: Promise<void> | null = null;
   #broken = false;
   /**
@@ -311,6 +331,7 @@ export class AgentSession {
       () => this.lang,
       config.briefingCacheHours * 3_600_000,
     );
+    this.#show = showVia(sink);
 
     // Everything a pack could need, and nothing more. `turn` is a function
     // rather than a value because a pack outlives the turn it was created in:
@@ -381,6 +402,7 @@ export class AgentSession {
       deskBriefingBlock(mergeDeskSlots(packs.desk)),
       sectionMarkBlock(mergeDeskSlots(packs.desk).map((slot) => slot.topic)),
       coreBlock(store),
+      ...(config.web ? [webBlock()] : []),
       ...computed,
       recipesBlock(store),
     ]
@@ -444,9 +466,11 @@ export class AgentSession {
           ...(devConfigured ? DEV_TOOLS : []),
           ...SETUP_TOOLS,
           ...LANGUAGE_TOOLS,
+          ...(config.web ? WEB_TOOLS : []),
         ],
-        // No built-in tools: this assistant has no business reading the filesystem.
-        tools: [],
+        // The two that read the web, and nothing else: this assistant has no
+        // business reading the filesystem, and every other built-in tool does.
+        tools: config.web ? [...WEB_TOOLS] : [],
         // Nothing from ~/.claude should leak into the assistant's behaviour.
         settingSources: [],
         // The language, said again after every round of tool answers: a turn
@@ -541,6 +565,7 @@ export class AgentSession {
                 await this.#raise(this.#escalation.onToolError());
               } else if (tool !== undefined) {
                 this.#active?.handlers.onToolResult?.(tool, pick(block, "content"));
+                this.#noteSources(tool, pick(block, "content"));
               }
             }
           }
@@ -627,6 +652,34 @@ export class AgentSession {
   }
 
   /**
+   * Puts what a web tool just read on the screen, as one window per turn.
+   *
+   * The same discipline a pack's own window follows: built from the result that
+   * was travelling back anyway, so the list cannot disagree with what is being
+   * said, and no model is asked to repeat a URL it could get wrong. It goes up
+   * where the sentence has got to -- there is no word to wait for, because the
+   * assistant answers the question rather than announcing that it searched.
+   */
+  #noteSources(tool: string, content: unknown): void {
+    const active = this.#active;
+    const show = this.#show;
+    if (active === null || show === null || !isWebTool(tool)) return;
+
+    const merged = merge(active.sources, sourcesIn(content));
+    // A search that turned up nothing new -- or nothing at all -- leaves the
+    // window exactly as it is rather than redrawing the same list.
+    if (merged.map((source) => source.url).join("\n") === active.sources.map((source) => source.url).join("\n")) {
+      return;
+    }
+    active.sources = merged;
+
+    const panel = sourcesPanel(merged);
+    // Same id every time in this turn, so a second search updates the window in
+    // place instead of pushing the first one down the row.
+    if (panel !== null) show(panel, undefined, undefined, `sources-${active.turnId}`);
+  }
+
+  /**
    * Applies a model change, or does nothing when there is none to apply.
    *
    * Never allowed to end the turn: a session that cannot change model is a
@@ -674,6 +727,7 @@ export class AgentSession {
       asked: asksForBriefing(text),
       gated: false,
       windows: [],
+      sources: [],
     };
     this.#active = active;
     await this.#raise(this.#escalation.startTurn());
