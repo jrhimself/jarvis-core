@@ -350,6 +350,25 @@ test("a conversation recorded twice is updated, not duplicated", () => {
   });
 });
 
+test("the transcript is the newest turns since a moment, oldest first", () => {
+  withStore((store) => {
+    store.logTurn("s1", "gisteren", "oud");
+    const cut = new Date().toISOString();
+    store.logTurn("s1", "goedemorgen", "Good morning.");
+    store.logTurn("s1", "hoe laat is het", "Eight.");
+    store.logTurn("s2", "en nu", "Nine.");
+
+    const all = store.turnsSince(cut);
+    assert.ok(all.every((turn) => turn.at >= cut));
+    assert.deepEqual(all.slice(-3).map((turn) => turn.asked), ["goedemorgen", "hoe laat is het", "en nu"]);
+    assert.deepEqual(
+      store.turnsSince(cut, 2).map((turn) => turn.asked),
+      ["hoe laat is het", "en nu"],
+      "past the limit the newest are kept",
+    );
+  });
+});
+
 test("turns wait to be distilled, per conversation", () => {
   withStore((store) => {
     const first = store.logTurn("s1", "hoe laat is het", "acht uur");

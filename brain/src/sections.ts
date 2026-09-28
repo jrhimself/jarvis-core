@@ -29,6 +29,16 @@ const MARKER = /⟦([^⟦⟧]{0,40})⟧/g;
 /** Longer than this, an opening bracket was not the start of a marker. */
 const MAX_HELD = 48;
 
+/**
+ * A finished answer with its markers taken out.
+ *
+ * The stored turn keeps them, because a replayed briefing needs them to open
+ * its windows again. Anything that shows the words to a person does not.
+ */
+export function withoutMarkers(text: string): string {
+  return text.replace(MARKER, "");
+}
+
 export interface SectionMark {
   /** The desk topic the part is about. */
   topic: string;

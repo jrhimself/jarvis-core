@@ -266,14 +266,10 @@
       setBody('notes', emptyHtml());
       return;
     }
-    /* The nightly pass over the notes: what last night added, beside it what
-       it removed, and a row per night. A window from before the pass sent a
-       figure counts its rows. */
+    /* What the nightly pass over the notes taught him: one fact per row, its
+       subject above what it says. The facts themselves, not how many. */
     const items = vm.items || [];
-    let html = vm.figure
-      ? heroHtml(vm.figure.value, 'Added', vm.figure.label ? esc(vm.figure.label) : '')
-      : heroHtml(items.length, items.length === 1 ? 'Fact' : 'Facts');
-    html += '<ul class="list compact">';
+    let html = '<ul class="list facts-list">';
     items.forEach(function (it) {
       html += rowHtml('', it.tag, it.text, it.sub);
     });
@@ -1052,6 +1048,7 @@
     wire(l);
     wireAsk(l);
     wireCompose(l);
+    if (window.JarvisTranscript) JarvisTranscript.wire(l);
     window.JarvisCoreLink = l;
     l.connect();
     return l;

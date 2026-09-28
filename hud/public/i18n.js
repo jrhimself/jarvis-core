@@ -48,6 +48,10 @@
     'Chart': 'Grafiek',
     'Image': 'Afbeelding',
     'Live': 'Live',
+    'Transcript': 'Transcript',
+    'You': 'Jij',
+    'Nothing said yet today.': 'Vandaag nog niets gezegd.',
+    'The transcript could not be loaded.': 'Het transcript kon niet worden geladen.',
   };
   const DICTS = { nl: NL };
   const LOCALES = { en: 'en-GB', nl: 'nl-NL' };

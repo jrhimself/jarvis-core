@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { SectionMarks, sectionMarkBlock } from "../dist/sections.js";
+import { SectionMarks, sectionMarkBlock, withoutMarkers } from "../dist/sections.js";
 
 /** Feeds the pieces; returns the text that came out and each mark as an offset into it. */
 function through(pieces: string[]): { text: string; marks: Array<[string, number]> } {
@@ -90,4 +90,11 @@ test("the prompt names every valid topic as its marker", () => {
 
 test("the prompt asks for a spoken lead-in after each marker", () => {
   assert.match(sectionMarkBlock(["weather"]), /"On the agenda:"/);
+});
+
+test("a stored answer reads back without its markers", () => {
+  assert.equal(
+    withoutMarkers("Good morning.⟦weather⟧The weather: sun. ⟦agenda⟧On the agenda: nothing."),
+    "Good morning.The weather: sun. On the agenda: nothing.",
+  );
 });

@@ -642,6 +642,7 @@ registerProcessor('mic-tap', MicTap);
       if (!turn || n <= local.reached) return;
       local.reached = n;
       spokenText = String(turn.text || '').slice(0, n);
+      emitSpoken();
       flushPendingFocus(false);
     }
 
@@ -927,6 +928,12 @@ registerProcessor('mic-tap', MicTap);
       keepVoiceAlive();
     }
 
+    /* What has been said of this turn so far, for the captions: the same
+       count the cue gate keeps, so the words on screen follow the voice. */
+    function emitSpoken() {
+      if (turn) bus.emit('spoken', { turnId: turn.id, text: spokenText });
+    }
+
     function onText(m) {
       if (typeof m.text !== 'string' || !m.text) return;
       if (m.opening !== true && turn && !turn.answering) {
@@ -938,7 +945,10 @@ registerProcessor('mic-tap', MicTap);
         turn.text = (turn.text || '') + m.text;
         /* With the brain's voice, cues wait for the audio (see voiceTick):
            the text of a briefing is in long before it has been said. */
-        if (m.opening !== true && !voiceSpeaksTurn() && !localSpeaksTurn()) spokenText = turn.text;
+        if (m.opening !== true && !voiceSpeaksTurn() && !localSpeaksTurn()) {
+          spokenText = turn.text;
+          emitSpoken();
+        }
         if (localSpeaksTurn()) localFeed(false);
         bus.emit('text', { turnId: turn.id, text: m.text, full: turn.text, opening: !!m.opening });
         flushPendingFocus(false);
@@ -1493,6 +1503,7 @@ registerProcessor('mic-tap', MicTap);
       if (n > voice.spokenN) {
         voice.spokenN = n;
         spokenText = String(turn.text || '').slice(0, n);
+        emitSpoken();
         flushPendingFocus(false);
       }
     }

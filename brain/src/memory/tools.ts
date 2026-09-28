@@ -350,30 +350,20 @@ function quietRun(run: CorpusRun): boolean {
 }
 
 /**
- * The window over the nightly passes: one row per night, what it added and
- * what it removed.
+ * The window over the newest pass: the facts it learned, one row each.
  *
- * Built here rather than left to the model. Asked to put the history on
- * screen, it wrote its own shorthand per row -- "+28, -16 (824)" -- which
- * nobody reads as facts added and removed. The title is what the desk panel
- * is called, and it has to keep mapping to the `notes` topic (see
+ * Built here rather than left to the model. What is worth seeing is what he
+ * now knows, not how many things that is: a row per night with a count added
+ * and a count removed said nothing anyone could check. The title is what the
+ * desk panel is called, and it has to keep mapping to the `notes` topic (see
  * WINDOW_TOPICS), or the window stops opening on its section marker.
  */
-export function factsPanel(runs: readonly CorpusRun[]): DisplayPayload | null {
-  const newest = runs[0];
-  if (newest === undefined || quietRun(newest)) return null;
+export function factsPanel(run: CorpusRun | undefined, learned: readonly Fact[]): DisplayPayload | null {
+  if (run === undefined || quietRun(run) || learned.length === 0) return null;
   return {
     type: "panel",
     title: "Facts",
-    figure: { value: newest.written, label: `${newest.retired} removed` },
-    rows: runs.map((run) => ({
-      label: formatLocal(new Date(run.at), { weekday: "short", day: "numeric", month: "short" }),
-      value: quietRun(run)
-        ? "no change"
-        : `${run.written > 0 ? "+" : ""}${run.written} added · ` +
-          `${run.retired > 0 ? "−" : ""}${run.retired} removed`,
-      hint: `${run.factsAfter} facts`,
-    })),
+    rows: learned.map((fact) => ({ label: fact.subject, value: fact.body })),
   };
 }
 
@@ -505,9 +495,10 @@ export function createMemoryServer(store: MemoryStore, display?: PackDisplay) {
     "What the nightly pass over the owner's own notes did — the notes they leave behind " +
       "while working with a coding agent, which become facts in your memory. Use it as " +
       "the last item of the morning briefing, and whenever he asks what you picked up " +
-      "from his notes or whether the ingest still runs. When a night changed something, " +
-      "say it in one sentence; the tool puts the history on screen by itself, so never " +
-      "call show_panel for it. A night that changed nothing is worth no sentence.",
+      "from his notes or whether the ingest still runs. When a night taught you something, " +
+      "say what: name the few facts that matter most by their content, never how many " +
+      "there were. The tool puts those facts on screen by itself, so never call " +
+      "show_panel for it. A night that changed nothing is worth no sentence.",
     {
       limit: z.number().int().min(1).max(14).default(7).describe("How many nights"),
     },
@@ -525,29 +516,27 @@ export function createMemoryServer(store: MemoryStore, display?: PackDisplay) {
           : `Let op: de laatste pass is ${Math.floor(silent / 3_600_000)} uur geleden; ` +
             "hij hoort elke nacht te draaien.";
 
+      // What the newest pass learned, measured from the run before it; without
+      // one, the pass itself is the whole history.
       const quiet = quietRun(newest);
-      const panel = factsPanel(runs);
+      const learned = quiet ? [] : store.corpusFactsBetween(runs[1]?.at ?? "", newest.at);
+      const panel = factsPanel(newest, learned);
       if (panel !== null && display !== undefined) {
         display(panel, undefined, "notes|notities|facts|feiten", "facts");
       }
       const note = quiet
         ? "Laatste nacht veranderde er niets — in de briefing niets zeggen en niets tonen."
-        : "Geen show_panel hiervoor, en zeg niets over het scherm.";
-
-      // Which notes the newest pass read, so the briefing can say what it was
-      // about rather than only how many facts it was. Measured from the run
-      // before it; without one, the pass itself is the whole history.
-      const previous = runs[1];
-      const read = quiet
-        ? []
-        : store
-            .corpusFilesSince(previous?.at ?? "")
-            .filter((file) => file.ingestedAt <= newest.at)
-            .map((file) => file.path.replace(/\.md$/, ""));
-      const about = read.length === 0 ? null : `Gelezen die nacht: ${read.join(", ")}.`;
+        : "Noem wat je geleerd hebt bij inhoud, geen aantallen. Geen show_panel hiervoor, " +
+          "en zeg niets over het scherm.";
+      const facts =
+        learned.length === 0
+          ? null
+          : ["Geleerd die nacht:", ...learned.map((fact) => `- ${fact.subject}: ${fact.body}`)].join("\n");
 
       return ok(
-        [header, note, about, ...runs.map(renderRun)].filter((line) => line !== null).join("\n"),
+        [header, note, facts, "Passes:", ...runs.map(renderRun)]
+          .filter((line) => line !== null)
+          .join("\n"),
       );
     },
     { annotations: { readOnlyHint: true } },
