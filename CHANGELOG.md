@@ -31,6 +31,8 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   text while someone speaks, and repeats the last text while speech carries on between two results, so that the
   browser's wait for quiet does not run out under someone who is still talking. A stretch with no speech in it comes
   back as nothing, not as the invented "Thank you." Whisper is known for.
+  What is spoken is not what is answered: the language is worked out from the speech (`JARVIS_STT_LANGUAGES`, Dutch and
+  English), once per utterance, on the first partial, so the final is not delayed by choosing again.
 
 ### Changed
 

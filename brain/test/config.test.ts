@@ -45,6 +45,7 @@ const BLANK = {
   JARVIS_STT_MODELS: undefined,
   JARVIS_STT_MODEL: undefined,
   JARVIS_STT_PARTIALS: undefined,
+  JARVIS_STT_LANGUAGES: undefined,
   JARVIS_LIMIT_SENTENCE: undefined,
   JARVIS_LIMIT_SENTENCE_EN: undefined,
   JARVIS_LIMIT_SENTENCE_NL: undefined,

@@ -31,6 +31,7 @@ const EMPTY: Record<string, string | undefined> = {
   JARVIS_STT_MODELS: undefined,
   JARVIS_STT_MODEL: undefined,
   JARVIS_STT_PARTIALS: undefined,
+  JARVIS_STT_LANGUAGES: undefined,
 };
 
 function configWith(env: Record<string, string | undefined>): Config {
@@ -102,6 +103,8 @@ test("Whisper listens when named, and the key is not needed", () => {
   assert.equal(listenConfigured(configWith({ ELEVENLABS_API_KEY: "e" })), true);
   assert.equal(listenConfigured(whisperConfig()), true);
   assert.equal(configWith({ JARVIS_LISTEN_PROVIDER: "whisper" }).sttModel, "base");
+  assert.deepEqual(configWith({}).sttLanguages, ["nl", "en"], "Dutch and English, whatever the assistant answers in");
+  assert.deepEqual(configWith({ JARVIS_STT_LANGUAGES: " en ,, nl " }).sttLanguages, ["en", "nl"]);
 });
 
 test("speaking Piper does not move the microphone", () => {
@@ -125,7 +128,7 @@ test("openListener hands out the local listener, and it says it is ready at once
   listener.close();
 });
 
-test("speech, then quiet: one utterance, read once, in the language asked for", async () => {
+test("speech, then quiet: one utterance, read once, the language left to the model", async () => {
   const turn = recorder();
   const listener = openListener(whisperConfig({ JARVIS_STT_PARTIALS: "0" }), turn.handlers, "nl");
   feed(listener, QUIET, 500);
@@ -136,7 +139,7 @@ test("speech, then quiet: one utterance, read once, in the language asked for", 
 
   const ms = heardMs(turn.finals[0]);
   assert.ok(ms >= 1500 && ms <= 2200, `about a second of voice with its lead-in and the quiet after: ${ms}`);
-  assert.match(turn.finals[0]!, /nl$/);
+  assert.match(turn.finals[0]!, /auto$/, "the assistant answers in English; that says nothing of what is spoken");
   assert.deepEqual(turn.partials, []);
   listener.close();
 });
@@ -220,4 +223,106 @@ test("a process that cannot be started is an error, and not a hang", async () =>
   await until(() => turn.errors.length === 1, "the failure");
   listener.push(VOICE);
   assert.equal(turn.errors.length, 1, "once");
+});
+
+test("the language is worked out once, on the first partial, and the rest is read in it", async () => {
+  stopWhisper(); // nothing is known of the last utterance
+  const turn = recorder();
+  const listener = openListener(whisperConfig(), turn.handlers, "en");
+  feed(listener, QUIET, 300);
+  feed(listener, VOICE, 1000);
+  await until(() => turn.partials.length >= 1, "the first partial");
+  assert.match(turn.partials[0]!, /nl$/, "nothing is known yet: the first language allowed is the guess, and the model is not asked");
+  assert.equal(turn.partials.some((text) => text.endsWith("auto")), false, "not yet: too little speech to choose on");
+
+  // Enough speech to choose on: one reading is the model's own.
+  for (let spoken = 0; spoken < 30 && !turn.partials.some((text) => text.endsWith("auto")); spoken++) {
+    feed(listener, VOICE, 400);
+    await sleep(40);
+  }
+  assert.ok(turn.partials.some((text) => text.endsWith("auto")), "the model chose once, on enough speech");
+
+  feed(listener, VOICE, 800);
+  await sleep(60);
+
+  feed(listener, QUIET, 700);
+  await until(() => turn.finals.length === 1, "the final");
+  assert.match(turn.finals[0]!, /nl$/, "the final, which the person waits for, does not choose again");
+  listener.close();
+});
+
+test("the language of one utterance is not the next one's", async () => {
+  const turn = recorder();
+  const listener = openListener(whisperConfig({ JARVIS_STT_PARTIALS: "0" }), turn.handlers, "en");
+  feed(listener, QUIET, 300);
+  feed(listener, VOICE, 800);
+  feed(listener, QUIET, 800);
+  await until(() => turn.finals.length === 1, "the first");
+  feed(listener, VOICE, 800);
+  feed(listener, QUIET, 800);
+  await until(() => turn.finals.length === 2, "the second");
+  assert.match(turn.finals[0]!, /auto$/);
+  assert.match(turn.finals[1]!, /auto$/, "someone who switches language is heard in the new one");
+  listener.close();
+});
+
+test("one allowed language is a language chosen, and nothing is worked out", async () => {
+  const turn = recorder();
+  const listener = openListener(
+    whisperConfig({ JARVIS_STT_PARTIALS: "0", JARVIS_STT_LANGUAGES: "en" }),
+    turn.handlers,
+    "nl",
+  );
+  feed(listener, QUIET, 300);
+  feed(listener, VOICE, 800);
+  feed(listener, QUIET, 800);
+  await until(() => turn.finals.length === 1, "the utterance");
+  assert.match(turn.finals[0]!, /en$/);
+  listener.close();
+});
+
+test("the last utterance's language is the guess for the first words, and one full reading confirms it", async () => {
+  stopWhisper();
+  const first = recorder();
+  const one = openListener(whisperConfig(), first.handlers, "en");
+  feed(one, QUIET, 300);
+  feed(one, VOICE, 2000);
+  feed(one, QUIET, 700);
+  await until(() => first.finals.length === 1, "the first utterance");
+  one.close();
+
+  const turn = recorder();
+  const two = openListener(whisperConfig(), turn.handlers, "en");
+  feed(two, QUIET, 700);
+  feed(two, VOICE, 1000);
+  await until(() => turn.partials.length >= 1, "the first words");
+  assert.match(turn.partials[0]!, /nl$/, "read at once in the language of the last one, not left to the model");
+  assert.equal(turn.partials.some((text) => text.endsWith("auto")), false);
+
+  // Enough speech now to be sure; one reading is spent on choosing.
+  for (let spoken = 0; spoken < 30 && !turn.partials.some((text) => text.endsWith("auto")); spoken++) {
+    feed(two, VOICE, 400);
+    await sleep(40);
+  }
+  assert.ok(turn.partials.some((text) => text.endsWith("auto")), "the confirming reading");
+  two.close();
+});
+
+test("a reading that reached the end of the speech is the final, and nothing is read twice", async () => {
+  stopWhisper();
+  const turn = recorder();
+  const listener = openListener(whisperConfig({ JARVIS_STT_LANGUAGES: "nl" }), turn.handlers, "en");
+  feed(listener, QUIET, 300);
+  feed(listener, VOICE, 1000);
+  await until(() => turn.partials.length >= 1, "a partial");
+  const covered = turn.partials[0]!;
+
+  assert.ok(covered.length > 0);
+  feed(listener, QUIET, 600);
+  await until(() => turn.finals.length === 1, "the final");
+  // The whole utterance -- lead-in, voice and the quiet that ended it -- is 1800 ms.
+  // A final read of all of it would say so; one that is a reading already made,
+  // taken during the quiet, is shorter.
+  assert.ok(heardMs(turn.finals[0]) < 1800, `not read again from the top: ${turn.finals[0]}`);
+  listener.close();
 });

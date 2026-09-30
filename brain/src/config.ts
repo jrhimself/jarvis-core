@@ -268,6 +268,12 @@ export interface Config {
   sttModels: string;
   /** The Whisper model: `tiny`, `base`, `small`. Bigger hears better and takes longer and more memory. */
   sttModel: string;
+  /**
+   * The languages a person may speak, which is not the language the assistant answers in: asking in
+   * Dutch of an assistant that answers in English is ordinary. With one, that is the language; with
+   * several, the model picks, once per utterance.
+   */
+  sttLanguages: string[];
   /** Whether text appears while the person is still speaking, at the price of the model working all that time. */
   sttPartials: boolean;
   /**
@@ -601,6 +607,10 @@ export function loadConfig(): Config {
     sttModels: resolve(envString("JARVIS_STT_MODELS", "../data/stt")),
     // Base is the smallest that reads Dutch well; tiny is fine for English only.
     sttModel: envString("JARVIS_STT_MODEL", "base"),
+    sttLanguages: envString("JARVIS_STT_LANGUAGES", "nl,en")
+      .split(",")
+      .map((language) => language.trim())
+      .filter((language) => language !== ""),
     sttPartials: envFlag("JARVIS_STT_PARTIALS", true),
     fishLatency: envEnum("JARVIS_FISH_LATENCY", ["balanced", "normal"] as const, "normal"),
     fishNormalize: envFlag("JARVIS_FISH_NORMALIZE", true),
