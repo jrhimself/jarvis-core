@@ -3,7 +3,7 @@
  *
  * Nothing here can be seen failing. It fires when nobody is talking to the
  * assistant, it writes to a page that may not be open, and the picture it is
- * about is gone half a minute later. So the tests are about the edges that
+ * about is gone a minute later. So the tests are about the edges that
  * decide whether it fires at all: the state that was already `on` when the feed
  * connected, the three sensors that move for one ring, and the pairing a
  * deployment wrote by hand.
@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { HomeProvider, StateChange } from "@jarvis/shared";
+import type { DisplayDismiss, DisplayPayload, HomeProvider, StateChange } from "@jarvis/shared";
 
 import { parseDoorWatch, startDoorWatch } from "../dist/door.js";
 import { addLiveSession } from "../dist/live.js";
@@ -109,6 +109,37 @@ test("the state the feed replays on connect is not somebody at the door", async 
     house.move("binary_sensor.a", "on");
     await settle();
     assert.deepEqual(shown, ["door:camera.one"]);
+  } finally {
+    stop();
+    forget();
+    restore();
+  }
+});
+
+test("the window closes by itself after a minute, and it is a moving picture", async () => {
+  const restore = stubFetch();
+  const seen: { payload: DisplayPayload; dismiss: DisplayDismiss }[] = [];
+  const forget = addLiveSession({
+    say: () => {},
+    show: (_id, payload, dismiss) => seen.push({ payload, dismiss }),
+  });
+  const house = watchedHouse(["camera.one", "event.c"]);
+  house.home.cameraStream = (id) => ({
+    url: `https://house.invalid/stream/${id}`,
+    headers: {},
+  });
+  const stop = await startDoorWatch(house.home, [
+    { camera: "camera.one", triggers: ["event.c"] },
+  ]);
+  try {
+    house.move("event.c", "2026-09-26T10:00:00+00:00");
+    house.move("event.c", "2026-09-26T10:00:10+00:00");
+    await settle();
+
+    const shown = seen[0];
+    assert.deepEqual(shown?.dismiss, { mode: "timeout", ms: 60_000 });
+    const moving = shown?.payload.type === "image" ? shown.payload.stream : undefined;
+    assert.notEqual(moving, undefined);
   } finally {
     stop();
     forget();

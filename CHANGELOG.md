@@ -15,6 +15,15 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.1.1] - 2026-09-30
+
+### Changed
+
+- The door watch holds its camera for a minute instead of two. It is the walk to the door and
+  back; beyond that the card is a window nobody asked for, sitting over whatever the page was
+  showing before. The picture itself is unchanged: where the house relays a stream, the card is
+  the moving one and not a still.
+
 ## [2.1.0] - 2026-09-30
 
 Seven abilities, taken from what a general-purpose agent has out of the box and this one did not:
