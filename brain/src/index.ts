@@ -42,7 +42,11 @@ import {
 import { delegatedDevTasks, endDelegated } from "./dev/store.js";
 import { pullRequestIn, spokenReady } from "./dev/notify.js";
 import { pullRequestTarget, rememberOffer } from "./dev/trial.js";
-import { notify, spoken } from "./notify.js";
+import { channelsFor, notify, spoken, type Channel, type Notice } from "./notify.js";
+import { closeSharedBrowser } from "./browser.js";
+import { runUnattended } from "./headless.js";
+import { startScheduler } from "./scheduler.js";
+import { escapeHtml } from "./dev/notify.js";
 import { warmRecordedLines } from "./conversation.js";
 import { language } from "./language.js";
 import { configurePlanStore, loadPlanUsage } from "./plan.js";
@@ -200,6 +204,41 @@ async function main(): Promise<void> {
   startCheckpointing(store, config.memoryPath);
   const stopProactive = startProactive(config, store);
 
+  // Jobs the assistant was asked to do later. Their results have no
+  // conversation to land in, so they go where an unprompted message goes: to
+  // the phone if there is a bot, to the webhook if there is one, and out loud
+  // if a screen happens to be open.
+  let stopScheduler: () => void = () => {};
+  if (config.schedule) {
+    const phone: Channel | null =
+      bot === null
+        ? null
+        : {
+            name: "telegram",
+            deliver: async (notice: Notice) => {
+              if (notice.written === undefined || notice.written === "") return false;
+              await bot.send(config.suggestChat, escapeHtml(notice.written));
+              return true;
+            },
+          };
+    const reach = [...channelsFor(null, config), ...(phone === null ? [] : [phone])];
+    if (reach.length === 1) {
+      console.warn("schedule: no written channel is configured, so results can only be spoken");
+    }
+    stopScheduler = startScheduler({
+      db: store.scheduleConnection(),
+      run: (prompt, job) => runUnattended(prompt, `job-${job.id}-${Date.now()}`),
+      deliver: async (job, text, kind) => {
+        const short = text.length <= 300 && kind === "result" && job.deliver === "all";
+        const notice: Notice =
+          kind === "failure"
+            ? { written: text }
+            : { ...(short ? { spoken: text } : {}), written: text };
+        await notify(reach, notice);
+      },
+    });
+  }
+
   // The door, on its own connection and only when a deployment named one. The
   // observation layer holds a house too, but it holds it only from `observe`
   // upwards, and a camera that goes up by itself is worth having in a
@@ -336,6 +375,8 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     console.log(`jarvis brain: ${signal} received, shutting down`);
     stopProactive();
+    stopScheduler();
+    void closeSharedBrowser();
     stopDoorWatch();
     doorHome?.close();
     if (lookTimer !== null) clearInterval(lookTimer);

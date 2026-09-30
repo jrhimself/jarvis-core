@@ -490,6 +490,37 @@ export function createMemoryServer(store: MemoryStore, display?: PackDisplay) {
     { annotations: { readOnlyHint: true } },
   );
 
+  const transcript = tool(
+    "transcript",
+    "Search the exact words of earlier exchanges -- what was asked and what you answered -- for " +
+      "things like 'what did I say about the plumber', 'what number did you give me', or 'did we " +
+      "already talk about this today'. Unlike `conversations`, which reads summaries of finished " +
+      "conversations, this also finds the one that is still going. Give a few distinctive words; " +
+      "every word must appear.",
+    {
+      query: z.string().min(2).describe("A few distinctive words, all of which must appear"),
+      days: z.number().int().min(1).max(365).default(30).describe("How far back to look"),
+      limit: z.number().int().min(1).max(10).default(5),
+    },
+    async (args) => {
+      const terms = args.query.split(/\s+/).filter((term) => term.length > 1);
+      if (terms.length === 0) return ok("Give at least one word to search for.");
+      const since = new Date(Date.now() - args.days * 86_400_000).toISOString();
+      const found = store.searchTurns(terms, since, args.limit);
+      if (found.length === 0) return ok(`Nothing said in the last ${args.days} days contains "${args.query}".`);
+      const clip = (value: string): string => (value.length > 400 ? `${value.slice(0, 399)}…` : value);
+      return ok(
+        found
+          .map(
+            (turn) =>
+              `${formatLocal(new Date(turn.at), { dateStyle: "medium", timeStyle: "short" })}\n  asked: ${clip(turn.asked)}\n  answered: ${clip(turn.answered)}`,
+          )
+          .join("\n"),
+      );
+    },
+    { annotations: { readOnlyHint: true } },
+  );
+
   const ingest = tool(
     "note_ingest",
     "What the nightly pass over the owner's own notes did — the notes they leave behind " +
@@ -545,6 +576,6 @@ export function createMemoryServer(store: MemoryStore, display?: PackDisplay) {
   return createSdkMcpServer({
     name: MEMORY_SERVER_NAME,
     version: "1.0.0",
-    tools: [recall, remember, forget, conversations, ingest],
+    tools: [recall, remember, forget, conversations, transcript, ingest],
   });
 }

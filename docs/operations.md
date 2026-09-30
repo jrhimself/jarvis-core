@@ -213,6 +213,11 @@ condition, and is on the list below.
 
 ---
 
+Scheduled jobs (`schedule`) run in-process on a 30 s clock and are kept in the `schedules` table of
+the memory database, so a restart forgets nothing and the nightly backup carries them. A job that
+was due while the service was down runs once at start-up, not once per missed tick. `list` shows the
+last result of each; three failures in a row pause a job and send a message saying why.
+
 ## 5. External dependencies and what their failure looks like
 
 | Dependency | Protocol | Credential | Timeout | Failure mode |
@@ -222,6 +227,8 @@ condition, and is on the list below.
 | ElevenLabs | websocket | API key | 8 s to connect | Voice unavailable → the HUD falls back to browser speech; credit balance cached 5 min. Transcription is always ElevenLabs |
 | Fish Audio | websocket, MessagePack | API key | 8 s to connect | Same fallback. A socket that closes before the first sentence is reopened on it; one that dies mid-sentence fails the turn. The free model is not metered, so no balance is asked |
 | Forge API | HTTPS | Fine-grained token | 20 s | Branch pushes still work; no pull request opens — reported loudly, never silently |
+| Chromium (only with `JARVIS_BROWSER=on`) | Playwright | none | 20 s navigation, 8 s per action | `browse` answers that the browser is not installed or would not start, in words the model can pass on. Setup, as the service user: `npm ci`, then `npx playwright-core install chromium-headless-shell`, then once as root `npx playwright-core install-deps chromium-headless-shell` for the system libraries. It runs inside the brain unit's hardening with its sandbox on; if a host cannot do that, `JARVIS_BROWSER_SANDBOX=off` is the fallback, and the trade is a browser reading untrusted pages without one. About 300 MB while open, none while closed. |
+| The Wayback Machine, archive.today | HTTPS | none | 15-25 s | `recover_page` reports which routes it tried and why each was not the page, and names places on the same site that may serve the content freely |
 | Whatever a pack talks to | its own | its own | its own | Its rows go `down` on the health panel; nothing else is affected |
 
 Health probes run **on every HUD connection**, in parallel. Each pack declares a probe per server, and

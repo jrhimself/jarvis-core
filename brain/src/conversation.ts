@@ -199,6 +199,11 @@ export class Conversation {
      * is to spend them.
      */
     private readonly voice: "on" | "off" = "on",
+    /**
+     * Whether anybody is there. An unattended conversation is a scheduled job:
+     * it may not schedule further jobs, since nobody would see them made.
+     */
+    private readonly role: "attended" | "unattended" = "attended",
   ) {}
 
   /** True while a turn is being answered. */
@@ -209,7 +214,7 @@ export class Conversation {
   /** Opens the agent ahead of the first question. Failures are not fatal. */
   warm(): void {
     if (this.#closed || this.#agent !== null) return;
-    const agent = new AgentSession();
+    const agent = new AgentSession(this.role);
     this.#agent = agent;
     void agent.warm().catch((error: unknown) => {
       console.error("could not warm the agent:", error);
@@ -322,7 +327,7 @@ export class Conversation {
       }
       if (this.#agent === null || this.#agent.broken) {
         this.#agent?.close();
-        this.#agent = new AgentSession();
+        this.#agent = new AgentSession(this.role);
       }
 
       const result = await this.#agent.ask(

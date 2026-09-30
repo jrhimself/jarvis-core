@@ -295,6 +295,22 @@ export interface Config {
    * a machine that is to reach nothing it was not pointed at.
    */
   web: boolean;
+  /**
+   * Whether the assistant may do things later on its own: reminders, daily
+   * checks, watches. On, because a reminder is about the least surprising thing
+   * an assistant can be asked for. Off withdraws the tool and stops the clock.
+   */
+  schedule: boolean;
+  /**
+   * Whether the assistant may drive a real browser for pages that will not be
+   * fetched. Off until switched on, because it needs Chromium on the machine
+   * and is the heaviest thing the assistant can start.
+   */
+  browser: boolean;
+  /** Chromium to use instead of the one Playwright installs. Empty uses Playwright's. */
+  browserExecutable: string;
+  /** Whether Chromium's own sandbox is used. Off only where the machine cannot provide one. */
+  browserSandbox: boolean;
   /** How many steps one question may take before the turn is stopped. 0 does not stop it. */
   maxSteps: number;
   /** How long a briefing is repeated from memory rather than fetched again, in hours. 0 keeps none. */
@@ -561,6 +577,10 @@ export function loadConfig(): Config {
     escalateModel: envString("JARVIS_ESCALATE_MODEL", ""),
     fallbackModel: envString("JARVIS_FALLBACK_MODEL", ""),
     web: envFlag("JARVIS_WEB", true),
+    schedule: envFlag("JARVIS_SCHEDULE", true),
+    browser: envFlag("JARVIS_BROWSER", false),
+    browserExecutable: envString("JARVIS_BROWSER_EXECUTABLE", ""),
+    browserSandbox: envFlag("JARVIS_BROWSER_SANDBOX", true),
     // Sixteen is roughly twice the longest turn seen in ordinary use, which is
     // the shape a brake should have: invisible until something is wrong.
     maxSteps: envNumber("JARVIS_MAX_STEPS", 16, 0, 200),
