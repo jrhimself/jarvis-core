@@ -30,6 +30,13 @@ export interface ListenerHandlers {
   onFinal: (text: string) => void;
   /** Listening failed; the caller should fall back to the browser. */
   onError: (reason: string) => void;
+  /**
+   * Listening is available, before anything has been heard. A service that
+   * answers at once has no use for it -- its first result says so -- but a
+   * listener that is ready to take audio and has nothing to say yet, because it
+   * reads whole sentences, does.
+   */
+  onReady?: () => void;
 }
 
 export class Listener {

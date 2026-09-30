@@ -1,8 +1,9 @@
 /**
  * What a voice is, whoever is speaking.
  *
- * Two services synthesise speech for the brain -- ElevenLabs and Fish Audio --
- * and the conversation must not care which. It feeds text in as it is written,
+ * Three voices synthesise speech for the brain -- ElevenLabs and Fish Audio,
+ * which are services, and Piper, which runs on this machine -- and the
+ * conversation must not care which. It feeds text in as it is written,
  * receives audio while the rest is still being thought, and is told when the
  * turn has been spoken or why it will not be. That contract is here; the two
  * sockets that honour it are next door.
@@ -46,7 +47,21 @@ export interface SpeakingVoice {
   abort(): void;
 }
 
-/** Which service speaks. */
-export type VoiceProvider = "elevenlabs" | "fish";
+/** One listening session: microphone audio in, and the handlers say what was heard. */
+export interface Listening {
+  /** Feeds a chunk of microphone audio, base64 PCM at 16 kHz. */
+  push(base64: string): void;
+  /** Asks for what has been heard so far, for a caller that has stopped listening. */
+  commit(): void;
+  close(): void;
+}
 
-export const VOICE_PROVIDERS: readonly VoiceProvider[] = ["elevenlabs", "fish"];
+/** Which service listens. */
+export type ListenProvider = "elevenlabs" | "whisper";
+
+export const LISTEN_PROVIDERS: readonly ListenProvider[] = ["elevenlabs", "whisper"];
+
+/** Which service speaks. */
+export type VoiceProvider = "elevenlabs" | "fish" | "piper";
+
+export const VOICE_PROVIDERS: readonly VoiceProvider[] = ["elevenlabs", "fish", "piper"];

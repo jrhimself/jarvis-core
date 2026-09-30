@@ -8,8 +8,9 @@
 import type { SpeechLang } from "@jarvis/shared";
 
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { VOICE_PROVIDERS, type VoiceProvider } from "./voice/types.js";
+import { LISTEN_PROVIDERS, VOICE_PROVIDERS, type ListenProvider, type VoiceProvider } from "./voice/types.js";
 
 /** What the HUD's memory panel may do: nothing, look, or look and change. */
 export type MemoryPanelMode = "off" | "read" | "edit";
@@ -247,6 +248,34 @@ export interface Config {
   fishVoiceId: string;
   /** Which Fish voice reads English; empty means the Dutch one reads both. */
   fishVoiceIdEn: string;
+  /** The Python that runs Piper, with `piper-tts` installed; empty of a venv it is the system one. */
+  piperPython: string;
+  /** The script that keeps Piper's voices loaded and answers the brain over a pipe. */
+  piperServer: string;
+  /** Directory holding the voices, as `<name>.onnx` next to `<name>.onnx.json`. */
+  piperModels: string;
+  /** Which Piper voice reads Dutch. */
+  piperVoice: string;
+  /** Which Piper voice reads English. */
+  piperVoiceEn: string;
+  /** Which service listens: ElevenLabs Scribe, or Whisper on this machine. */
+  listenProvider: ListenProvider;
+  /** The Python that runs Whisper, with `faster-whisper` installed. */
+  sttPython: string;
+  /** The script that keeps Whisper loaded and answers the brain over a pipe. */
+  sttServer: string;
+  /** Where Whisper's model is kept; it is downloaded there the first time. */
+  sttModels: string;
+  /** The Whisper model: `tiny`, `base`, `small`. Bigger hears better and takes longer and more memory. */
+  sttModel: string;
+  /**
+   * The languages a person may speak, which is not the language the assistant answers in: asking in
+   * Dutch of an assistant that answers in English is ordinary. With one, that is the language; with
+   * several, the model picks, once per utterance.
+   */
+  sttLanguages: string[];
+  /** Whether text appears while the person is still speaking, at the price of the model working all that time. */
+  sttPartials: boolean;
   /**
    * How Fish trades the first word against the prosody of the rest.
    *
@@ -560,6 +589,29 @@ export function loadConfig(): Config {
     fishEndpoint: envString("JARVIS_FISH_ENDPOINT", "wss://api.fish.audio/v1/tts/live"),
     fishVoiceId: envString("JARVIS_FISH_VOICE_ID", ""),
     fishVoiceIdEn: envString("JARVIS_FISH_VOICE_ID_EN", ""),
+    // Piper is never picked by the keys that happen to be present: it has none,
+    // so it speaks only when somebody names it.
+    piperPython: envString("JARVIS_PIPER_PYTHON", "python3"),
+    piperServer: envString("JARVIS_PIPER_SERVER", fileURLToPath(new URL("../piper/server.py", import.meta.url))),
+    piperModels: resolve(envString("JARVIS_PIPER_MODELS", "../data/piper")),
+    // Alan reads like a butler; Dutch has no voice of that character. Pim is
+    // the one that is understood: a spoken greeting read back by Whisper came
+    // out word for word, where MLS came out as noise.
+    piperVoice: envString("JARVIS_PIPER_VOICE", "nl_NL-pim-medium"),
+    piperVoiceEn: envString("JARVIS_PIPER_VOICE_EN", "en_GB-alan-medium"),
+    // Listening is separate from speaking: naming Piper does not move the
+    // microphone off ElevenLabs, and the other way around.
+    listenProvider: envEnum("JARVIS_LISTEN_PROVIDER", LISTEN_PROVIDERS, "elevenlabs"),
+    sttPython: envString("JARVIS_STT_PYTHON", "python3"),
+    sttServer: envString("JARVIS_STT_SERVER", fileURLToPath(new URL("../stt/server.py", import.meta.url))),
+    sttModels: resolve(envString("JARVIS_STT_MODELS", "../data/stt")),
+    // Base is the smallest that reads Dutch well; tiny is fine for English only.
+    sttModel: envString("JARVIS_STT_MODEL", "base"),
+    sttLanguages: envString("JARVIS_STT_LANGUAGES", "nl,en")
+      .split(",")
+      .map((language) => language.trim())
+      .filter((language) => language !== ""),
+    sttPartials: envFlag("JARVIS_STT_PARTIALS", true),
     fishLatency: envEnum("JARVIS_FISH_LATENCY", ["balanced", "normal"] as const, "normal"),
     fishNormalize: envFlag("JARVIS_FISH_NORMALIZE", true),
     planWarnPct: envNumber("JARVIS_PLAN_WARN_PCT", 75, 0, 100),

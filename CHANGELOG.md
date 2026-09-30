@@ -15,6 +15,31 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [Unreleased]
+
+### Added
+
+- A voice that runs on the machine: `JARVIS_VOICE_PROVIDER=piper`. Piper needs no account, no key and
+  no balance, so the assistant can no longer go mute when a free tier runs out. One Python process
+  keeps the voices loaded and the brain sends it sentences as they close; audio is resampled to the
+  16 kHz every other voice produces, so the HUD is untouched. Measured on two 2014-era cores: first
+  audio about a tenth of a second into a warm turn, a sentence in a tenth of its own length.
+  Setup is in the README's environment table. It sends no per-character timing, like Fish.
+- Listening on the machine as well: `JARVIS_LISTEN_PROVIDER=whisper`. Scribe is an account too, and it ran out
+  with the voice. Whisper reads the microphone through `faster-whisper`; because it reads sentences and not a
+  stream, the brain cuts the audio into utterances by loudness, sends a settled sentence at each pause and partial
+  text while someone speaks, and repeats the last text while speech carries on between two results, so that the
+  browser's wait for quiet does not run out under someone who is still talking. A stretch with no speech in it comes
+  back as nothing, not as the invented "Thank you." Whisper is known for.
+  What is spoken is not what is answered: the language is worked out from the speech (`JARVIS_STT_LANGUAGES`, Dutch and
+  English), once per utterance, on the first partial, so the final is not delayed by choosing again.
+
+### Changed
+
+- The Dutch Piper voice is `nl_NL-pim-medium`, not `mls`: read back by Whisper, a plain greeting came out word
+  for word in Pim and as noise in MLS.
+- The two Python processes (Piper, Whisper) share one small pipe protocol, in `voice/pipe.ts`.
+
 ## [2.3.0] - 2026-09-30
 
 ### Changed
