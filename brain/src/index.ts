@@ -48,6 +48,8 @@ import { runUnattended } from "./headless.js";
 import { startScheduler } from "./scheduler.js";
 import { escapeHtml } from "./dev/notify.js";
 import { warmRecordedLines } from "./conversation.js";
+import { warmPiper } from "./voice/piper.js";
+import { warmWhisper } from "./voice/whisper.js";
 import { language } from "./language.js";
 import { configurePlanStore, loadPlanUsage } from "./plan.js";
 import { attachWebsocket } from "./ws.js";
@@ -177,6 +179,9 @@ async function main(): Promise<void> {
 
   // The lines that fill a silence, spoken once by the configured voice and
   // kept, so a slow turn is acknowledged from disk rather than from a socket.
+  // Loading a model takes seconds; the first sentence should not wait for it.
+  if (config.voiceProvider === "piper") warmPiper(config);
+  if (config.listenProvider === "whisper") warmWhisper(config);
   void warmRecordedLines().catch((error: unknown) => {
     console.warn("voice: could not record the opening lines:", error);
   });

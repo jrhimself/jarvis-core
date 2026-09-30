@@ -14,19 +14,17 @@
  * closes; the first is heard while the model is still writing the second.
  *
  * There is one Python process for the whole brain, not one per turn: loading a
- * voice takes longer than saying a sentence with it. Its frames -- see
- * `piper/server.py` -- are ordered and one sentence is in flight at a time, so
- * a turn that is cancelled costs at most the sentence being made.
+ * voice takes longer than saying a sentence with it. See `pipe.ts` for how it
+ * is run and `piper/server.py` for what it does with a sentence.
  *
  * Piper sends no per-character timing. The HUD paces the transcript by the
  * audio's length instead, as it does for Fish.
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-
 import type { SpeechLang } from "@jarvis/shared";
 
 import type { Config } from "../config.js";
+import { Pipe } from "./pipe.js";
 import type { SpeakingVoice, VoiceHandlers } from "./types.js";
 
 /** Longest the process may take to load its voices before it is given up on. */
@@ -40,189 +38,42 @@ const SENTENCE_TIMEOUT_MS = 20_000;
  */
 const SENTENCE_BREAK = /(?<=[.!?…]["'’”)\]]*)\s+(?=\S)/;
 
-interface Sink {
-  onAudio: (pcm: Buffer) => void;
-  onDone: () => void;
-  onError: (reason: string) => void;
-}
+let pipe: Pipe | null = null;
+let pipeKey = "";
 
-interface Job extends Sink {
-  id: number;
-  voice: string;
-  text: string;
-  speed: number;
-  cancelled: boolean;
-}
-
-/** The one running Python process, and the queue of sentences waiting for it. */
-class Engine {
-  #child: ChildProcessWithoutNullStreams | null = null;
-  #ready: Promise<void> | null = null;
-  #onReady: () => void = () => {};
-  #buffer: Buffer = Buffer.alloc(0);
-  #queue: Job[] = [];
-  #active: Job | null = null;
-  #timer: NodeJS.Timeout | null = null;
-  #next = 1;
-
-  constructor(private readonly config: Config) {}
-
-  /** Resolves once the process is up with its voices loaded; starts it if it is not. */
-  ready(): Promise<void> {
-    if (this.#ready !== null) return this.#ready;
-    const ready = new Promise<void>((resolve, reject) => {
-      const voices = [this.config.piperVoice, this.config.piperVoiceEn].filter(
-        (voice, index, all) => voice !== "" && all.indexOf(voice) === index,
-      );
-      const child = spawn(
-        this.config.piperPython,
-        [this.config.piperServer, this.config.piperModels, ...voices],
-        { stdio: ["pipe", "pipe", "pipe"] },
-      );
-      this.#child = child;
-      this.#buffer = Buffer.alloc(0);
-
-      const timeout = setTimeout(() => {
-        reject(new Error("piper did not start in time"));
-        this.#die("piper did not start in time");
-      }, READY_TIMEOUT_MS);
-
-      this.#onReady = () => {
-        clearTimeout(timeout);
-        resolve();
-        this.#pump();
-      };
-      child.stdout.on("data", (data: Buffer) => this.#read(data));
-      child.stderr.on("data", (data: Buffer) => {
-        const text = data.toString().trim();
-        if (text !== "") console.warn(`voice: piper: ${text}`);
-      });
-      child.on("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-        this.#die(error.message);
-      });
-      child.on("exit", (code) => {
-        clearTimeout(timeout);
-        reject(new Error(`piper exited (${code})`));
-        this.#die(`piper exited (${code})`);
-      });
-      // Writing to a process that has gone is reported on the pipe, and it is
-      // reported again by `exit`; the second is the one that is acted on.
-      child.stdin.on("error", () => {});
-    });
-    // A rejection nobody awaits yet -- the process died before a turn asked --
-    // is not an unhandled one: the next call starts a fresh process.
-    ready.catch(() => {});
-    this.#ready = ready;
-    return ready;
-  }
-
-  /** Queues one sentence; audio, then done or an error, arrive on `sink`. */
-  request(voice: string, text: string, speed: number, sink: Sink): { cancel: () => void } {
-    const job: Job = { ...sink, id: this.#next++, voice, text, speed, cancelled: false };
-    this.#queue.push(job);
-    this.#pump();
-    return {
-      cancel: () => {
-        job.cancelled = true;
-        // Not yet sent: nothing to wait for. Already sent: its frames are
-        // dropped as they arrive, and the queue moves on at its done.
-        const index = this.#queue.indexOf(job);
-        if (index >= 0) this.#queue.splice(index, 1);
-      },
-    };
-  }
-
-  #pump(): void {
-    if (this.#active !== null || this.#child === null) return;
-    const job = this.#queue.shift();
-    if (job === undefined) return;
-    this.#active = job;
-    this.#timer = setTimeout(() => this.#die("piper took too long over a sentence"), SENTENCE_TIMEOUT_MS);
-    this.#child.stdin.write(
-      `${JSON.stringify({ id: job.id, voice: job.voice, text: job.text, speed: job.speed })}\n`,
-    );
-  }
-
-  #read(data: Buffer): void {
-    this.#buffer = Buffer.concat([this.#buffer, data]);
-    // kind (1) + id (4) + length (4), then the payload.
-    while (this.#buffer.length >= 9) {
-      const length = this.#buffer.readUInt32BE(5);
-      if (this.#buffer.length < 9 + length) return;
-      const kind = String.fromCharCode(this.#buffer[0]!);
-      const id = this.#buffer.readUInt32BE(1);
-      const payload = this.#buffer.subarray(9, 9 + length);
-      this.#buffer = this.#buffer.subarray(9 + length);
-      this.#handle(kind, id, payload);
-    }
-  }
-
-  #handle(kind: string, id: number, payload: Buffer): void {
-    if (kind === "R") {
-      this.#onReady();
-      return;
-    }
-    const job = this.#active;
-    if (job === null || job.id !== id) return;
-
-    if (kind === "A") {
-      if (!job.cancelled) job.onAudio(Buffer.from(payload));
-      return;
-    }
-    if (kind === "D" || kind === "E") {
-      if (this.#timer !== null) clearTimeout(this.#timer);
-      this.#timer = null;
-      this.#active = null;
-      if (!job.cancelled) {
-        if (kind === "D") job.onDone();
-        else job.onError(payload.toString("utf8") || "piper failed");
-      }
-      this.#pump();
-    }
-  }
-
-  /** The process is gone or stuck: fail what was waiting and let the next call start afresh. */
-  #die(reason: string): void {
-    if (this.#timer !== null) clearTimeout(this.#timer);
-    this.#timer = null;
-    const child = this.#child;
-    this.#child = null;
-    this.#ready = null;
-    if (child !== null) {
-      child.removeAllListeners("exit");
-      child.kill();
-    }
-    const waiting = [...(this.#active === null ? [] : [this.#active]), ...this.#queue];
-    this.#active = null;
-    this.#queue = [];
-    for (const job of waiting) if (!job.cancelled) job.onError(reason);
-  }
-
-  stop(): void {
-    this.#die("piper stopped");
-  }
-}
-
-let engine: Engine | null = null;
-let engineKey = "";
-
-function engineFor(config: Config): Engine {
+function pipeFor(config: Config): Pipe {
   const key = JSON.stringify([config.piperPython, config.piperServer, config.piperModels]);
-  if (engine === null || engineKey !== key) {
-    engine?.stop();
-    engine = new Engine(config);
-    engineKey = key;
+  if (pipe === null || pipeKey !== key) {
+    pipe?.stop();
+    const voices = [config.piperVoice, config.piperVoiceEn].filter(
+      (voice, index, all) => voice !== "" && all.indexOf(voice) === index,
+    );
+    pipe = new Pipe({
+      command: config.piperPython,
+      args: [config.piperServer, config.piperModels, ...voices],
+      label: "voice: piper",
+      readyTimeoutMs: READY_TIMEOUT_MS,
+      jobTimeoutMs: SENTENCE_TIMEOUT_MS,
+    });
+    pipeKey = key;
   }
-  return engine;
+  return pipe;
+}
+
+/** Starts the process and loads the voices now, so the first turn does not wait for them. */
+export function warmPiper(config: Config): void {
+  pipeFor(config)
+    .ready()
+    .catch((error: unknown) => {
+      console.warn(`voice: piper would not start -- ${error instanceof Error ? error.message : String(error)}`);
+    });
 }
 
 /** Stops the shared process; the next voice starts a fresh one. For tests and shutdown. */
 export function stopPiper(): void {
-  engine?.stop();
-  engine = null;
-  engineKey = "";
+  pipe?.stop();
+  pipe = null;
+  pipeKey = "";
 }
 
 /**
@@ -250,7 +101,7 @@ export class PiperVoice implements SpeakingVoice {
     private readonly handlers: VoiceHandlers,
     private readonly lang: SpeechLang = "nl",
   ) {
-    engineFor(config)
+    pipeFor(config)
       .ready()
       .then(() => {
         if (this.#failed || this.#done) return;
@@ -280,16 +131,19 @@ export class PiperVoice implements SpeakingVoice {
   #send(sentence: string): void {
     this.#outstanding++;
     this.#jobs.push(
-      engineFor(this.config).request(piperVoiceIdFor(this.config, this.lang), sentence, this.config.voiceSpeed, {
-        onAudio: (pcm) => {
-          if (!this.#failed) this.handlers.onAudio(pcm.toString("base64"));
+      pipeFor(this.config).request(
+        { voice: piperVoiceIdFor(this.config, this.lang), text: sentence, speed: this.config.voiceSpeed },
+        {
+          onData: (pcm) => {
+            if (!this.#failed) this.handlers.onAudio(pcm.toString("base64"));
+          },
+          onDone: () => {
+            this.#outstanding--;
+            this.#maybeDone();
+          },
+          onError: (reason) => this.#fail(reason),
         },
-        onDone: () => {
-          this.#outstanding--;
-          this.#maybeDone();
-        },
-        onError: (reason) => this.#fail(reason),
-      }),
+      ),
     );
   }
 

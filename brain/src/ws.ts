@@ -26,7 +26,7 @@ import { onPlanUsage, planUsage } from "./plan.js";
 import { METRICS_INTERVAL_MS, readMetrics } from "./metrics.js";
 import { tileFeed } from "./tiles.js";
 import { brainVersion } from "./version.js";
-import { Listener } from "./voice/scribe.js";
+import { listenConfigured, listenUnavailableReason, openListener, type Listening } from "./voice/index.js";
 import { isWebTool } from "./web.js";
 
 /**
@@ -117,7 +117,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
     );
 
     // One microphone per connection, opened on demand and closed with it.
-    let listener: Listener | null = null;
+    let listener: Listening | null = null;
 
     // What lets the brain speak and show something between questions. Registered
     // for as long as the page is open and forgotten with it, so a line meant for
@@ -262,30 +262,36 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       }
 
       if (message.kind === "listen_start") {
-        if (config.elevenLabsKey === "") {
-          send({ kind: "listen", available: false, reason: "de transcriptie is niet ingesteld" });
+        if (!listenConfigured(config)) {
+          send({ kind: "listen", available: false, reason: listenUnavailableReason() });
           return;
         }
         listener?.close();
         let announced = false;
+        // Whether any text has reached the browser: after that it cannot take over
+        // without losing what was already said.
+        let heard = false;
         const announce = () => {
           if (announced) return;
           announced = true;
           send({ kind: "listen", available: true });
         };
-        listener = new Listener(config, {
+        listener = openListener(config, {
+          onReady: announce,
           onPartial: (text) => {
             announce();
+            heard = true;
             send({ kind: "transcript", text, final: false });
           },
           onFinal: (text) => {
             announce();
+            heard = true;
             send({ kind: "transcript", text, final: true });
           },
           onError: (reason) => {
             // Only useful before the first result: once text is arriving the
             // browser cannot take over without losing what was already said.
-            if (!announced) send({ kind: "listen", available: false, reason });
+            if (!heard) send({ kind: "listen", available: false, reason });
             listener?.close();
             listener = null;
           },

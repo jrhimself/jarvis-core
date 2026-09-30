@@ -10,7 +10,7 @@ import type { SpeechLang } from "@jarvis/shared";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VOICE_PROVIDERS, type VoiceProvider } from "./voice/types.js";
+import { LISTEN_PROVIDERS, VOICE_PROVIDERS, type ListenProvider, type VoiceProvider } from "./voice/types.js";
 
 /** What the HUD's memory panel may do: nothing, look, or look and change. */
 export type MemoryPanelMode = "off" | "read" | "edit";
@@ -258,6 +258,18 @@ export interface Config {
   piperVoice: string;
   /** Which Piper voice reads English. */
   piperVoiceEn: string;
+  /** Which service listens: ElevenLabs Scribe, or Whisper on this machine. */
+  listenProvider: ListenProvider;
+  /** The Python that runs Whisper, with `faster-whisper` installed. */
+  sttPython: string;
+  /** The script that keeps Whisper loaded and answers the brain over a pipe. */
+  sttServer: string;
+  /** Where Whisper's model is kept; it is downloaded there the first time. */
+  sttModels: string;
+  /** The Whisper model: `tiny`, `base`, `small`. Bigger hears better and takes longer and more memory. */
+  sttModel: string;
+  /** Whether text appears while the person is still speaking, at the price of the model working all that time. */
+  sttPartials: boolean;
   /**
    * How Fish trades the first word against the prosody of the rest.
    *
@@ -576,10 +588,20 @@ export function loadConfig(): Config {
     piperPython: envString("JARVIS_PIPER_PYTHON", "python3"),
     piperServer: envString("JARVIS_PIPER_SERVER", fileURLToPath(new URL("../piper/server.py", import.meta.url))),
     piperModels: resolve(envString("JARVIS_PIPER_MODELS", "../data/piper")),
-    // Alan reads like a butler; Dutch has no voice of that character, and MLS
-    // is the most even of the Dutch ones.
-    piperVoice: envString("JARVIS_PIPER_VOICE", "nl_NL-mls-medium"),
+    // Alan reads like a butler; Dutch has no voice of that character. Pim is
+    // the one that is understood: read back by Whisper, "Goedemorgen Joey. Alle
+    // systemen zijn online." came out word for word, where MLS came out as noise.
+    piperVoice: envString("JARVIS_PIPER_VOICE", "nl_NL-pim-medium"),
     piperVoiceEn: envString("JARVIS_PIPER_VOICE_EN", "en_GB-alan-medium"),
+    // Listening is separate from speaking: naming Piper does not move the
+    // microphone off ElevenLabs, and the other way around.
+    listenProvider: envEnum("JARVIS_LISTEN_PROVIDER", LISTEN_PROVIDERS, "elevenlabs"),
+    sttPython: envString("JARVIS_STT_PYTHON", "python3"),
+    sttServer: envString("JARVIS_STT_SERVER", fileURLToPath(new URL("../stt/server.py", import.meta.url))),
+    sttModels: resolve(envString("JARVIS_STT_MODELS", "../data/stt")),
+    // Base is the smallest that reads Dutch well; tiny is fine for English only.
+    sttModel: envString("JARVIS_STT_MODEL", "base"),
+    sttPartials: envFlag("JARVIS_STT_PARTIALS", true),
     fishLatency: envEnum("JARVIS_FISH_LATENCY", ["balanced", "normal"] as const, "normal"),
     fishNormalize: envFlag("JARVIS_FISH_NORMALIZE", true),
     planWarnPct: envNumber("JARVIS_PLAN_WARN_PCT", 75, 0, 100),

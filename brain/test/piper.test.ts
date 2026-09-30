@@ -109,7 +109,7 @@ test("each language has its voice, and each falls back to the other's", () => {
 test("the defaults name real voices", () => {
   const config = configWith({ JARVIS_VOICE_PROVIDER: "piper" });
   assert.equal(config.piperVoiceEn, "en_GB-alan-medium");
-  assert.equal(config.piperVoice, "nl_NL-mls-medium");
+  assert.equal(config.piperVoice, "nl_NL-pim-medium");
 });
 
 test("openVoice hands out the local voice when Piper is the provider", () => {

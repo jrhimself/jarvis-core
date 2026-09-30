@@ -47,6 +47,20 @@ export interface SpeakingVoice {
   abort(): void;
 }
 
+/** One listening session: microphone audio in, and the handlers say what was heard. */
+export interface Listening {
+  /** Feeds a chunk of microphone audio, base64 PCM at 16 kHz. */
+  push(base64: string): void;
+  /** Asks for what has been heard so far, for a caller that has stopped listening. */
+  commit(): void;
+  close(): void;
+}
+
+/** Which service listens. */
+export type ListenProvider = "elevenlabs" | "whisper";
+
+export const LISTEN_PROVIDERS: readonly ListenProvider[] = ["elevenlabs", "whisper"];
+
 /** Which service speaks. */
 export type VoiceProvider = "elevenlabs" | "fish" | "piper";
 

@@ -16,9 +16,11 @@ import type { Config } from "../config.js";
 import { remainingCharacters, Voice, voiceIdFor } from "./elevenlabs.js";
 import { FishVoice, fishCreditsLeft, fishVoiceIdFor } from "./fish.js";
 import { PiperVoice, piperVoiceIdFor } from "./piper.js";
-import type { SpeakingVoice, VoiceHandlers } from "./types.js";
+import { Listener, type ListenerHandlers } from "./scribe.js";
+import { WhisperListener } from "./whisper.js";
+import type { Listening, SpeakingVoice, VoiceHandlers } from "./types.js";
 
-export type { Alignment, SpeakingVoice, VoiceHandlers, VoiceProvider } from "./types.js";
+export type { Alignment, Listening, SpeakingVoice, VoiceHandlers, VoiceProvider } from "./types.js";
 export { VOICE_PROVIDERS } from "./types.js";
 
 /**
@@ -68,4 +70,21 @@ export function openVoice(config: Config, handlers: VoiceHandlers, lang: SpeechL
   return config.voiceProvider === "fish"
     ? new FishVoice(config, handlers, lang)
     : new Voice(config, handlers, lang);
+}
+
+/** Whether anything at all will listen. Whisper has no key; it needs only to be named. */
+export function listenConfigured(config: Config): boolean {
+  return config.listenProvider === "whisper" || config.elevenLabsKey !== "";
+}
+
+/** Why nothing listens, for the browser to show. */
+export function listenUnavailableReason(): string {
+  return "de transcriptie is niet ingesteld";
+}
+
+/** Opens one listening session on whichever service is configured. */
+export function openListener(config: Config, handlers: ListenerHandlers, lang: SpeechLang): Listening {
+  return config.listenProvider === "whisper"
+    ? new WhisperListener(config, handlers, lang)
+    : new Listener(config, handlers, lang);
 }
