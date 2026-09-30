@@ -15,6 +15,41 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.1.0] - 2026-09-30
+
+Seven abilities, taken from what a general-purpose agent has out of the box and this one did not:
+doing things later, looking at a picture, reading a page that refuses to be fetched, driving a
+browser, searching earlier conversations word for word, and writing down the steps of a long
+question.
+
+### Added
+
+- `schedule`: reminders, recurring checks and watches. A job is a prompt run later by a fresh
+  assistant with nobody present; it answers with the message, or with `SILENT` when there is
+  nothing to tell. Schedules are `in 30m`, `every 2h`, `daily at 09:00`, `weekdays at 8:30`,
+  `every monday at 9am`, a five-field cron expression, or a local timestamp, and calendar forms
+  are worked out in the configured zone so they hold across the clocks changing. Stored in the
+  memory database (`schedules`); a job due while the service was down runs once at start-up; three
+  failures in a row pause it; a job cannot schedule jobs. `JARVIS_SCHEDULE` (on by default).
+- `look`: hands a picture to the model itself -- a camera through the house, or an image at a public
+  address. Private addresses are refused and redirects are checked at every hop (`net-guard.ts`).
+- `recover_page`: for a page that returned 403, 429, a paywall or a bot check. Tries the Wayback
+  Machine, then archive.today, and returns the first copy that is genuinely the page, with its
+  route and date. Redirect stubs, rate-limit bodies and search interstitials that answer 200 are
+  recognised and skipped; when nothing works it lists places on the same site that may serve the
+  content freely.
+- `browse`: a headless Chromium through `playwright-core`, for pages that need scripts or a click.
+  One shared browser, no profile, closed after three idle minutes, public addresses only -- checked
+  for every request the page makes -- and never typing into a password or a card number. Off by
+  default (`JARVIS_BROWSER`, `JARVIS_BROWSER_EXECUTABLE`, `JARVIS_BROWSER_SANDBOX`); setup is in
+  `docs/operations.md`.
+- `transcript`: searches the exact words of earlier exchanges, including the conversation still
+  going, where `conversations` reads summaries of finished ones.
+- `todo`: a scratchpad for the steps of a question that takes several tool calls, kept for one
+  conversation.
+- `Conversation` takes a role, so a turn with nobody present (a scheduled job) can be refused the
+  tools that only make sense with somebody there.
+
 ## [2.0.0] - 2026-09-28
 
 A new HUD, and a major version because of it: the page at `/` is a different page. The first HUD,

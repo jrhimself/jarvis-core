@@ -23,6 +23,10 @@ const ALLOWED_MIME = new Set([
   "image/svg+xml",
 ]);
 
+/** What the looking tool may be handed, and how much of it. */
+export const IMAGE_TYPES: ReadonlySet<string> = ALLOWED_MIME;
+export const MAX_IMAGE_BYTES = MAX_BYTES;
+
 interface StoredMedia {
   bytes: Buffer;
   mimeType: string;

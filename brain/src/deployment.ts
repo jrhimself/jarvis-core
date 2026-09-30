@@ -211,6 +211,22 @@ export function describeDeployment(
       ...(config.web ? {} : { remedy: "set JARVIS_WEB to on in the env file and restart" }),
     },
     {
+      name: "doing things later",
+      on: config.schedule,
+      detail: config.schedule
+        ? "reminders, daily checks and watches can be set, and they run by themselves and report to the owner"
+        : "JARVIS_SCHEDULE is off: nothing can be set to happen later",
+      ...(config.schedule ? {} : { remedy: "set JARVIS_SCHEDULE to on in the env file and restart" }),
+    },
+    {
+      name: "browsing a page",
+      on: config.browser,
+      detail: config.browser
+        ? "a real browser can open a public page that a plain fetch cannot read"
+        : "JARVIS_BROWSER is off: only pages a plain fetch can read are available",
+      ...(config.browser ? {} : { remedy: "install Chromium for playwright-core and set JARVIS_BROWSER to on" }),
+    },
+    {
       name: "watching on my own",
       on: config.proactive !== "off",
       detail:

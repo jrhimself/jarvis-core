@@ -125,6 +125,33 @@ remaining one reads this machine, and those stay withdrawn. What was read goes u
 sources, taken from the results themselves rather than from the model, so an answer can be held
 against what it was taken from. `JARVIS_WEB=off` withdraws both again.
 
+A page that refuses to load — a 403, a rate limit, a paywall, a bot check — is not tried twice.
+`recover_page` walks down the Wayback Machine and archive.today and returns the first copy that is
+genuinely the page, with its date; the routes that answer 200 with an error page dressed as
+success (a rate-limit notice, a redirect stub, a search interstitial) are recognised and skipped.
+A copy is a snapshot and is presented as one. A page that only shows its content after scripts run
+or a button is pressed is for `browse`, a headless Chromium behind `JARVIS_BROWSER=on`: one browser
+for the whole service, no profile, closed after three idle minutes, public addresses only — checked
+for every request the page makes, not just the first — and never typing into a password or a card
+number. What a page says is a quotation; the tool says so at the top of every answer.
+
+**Later.** "Remind me in an hour", "every weekday at half past seven, tell me if the post has
+arrived", "watch that page and tell me when the price drops": one `schedule` tool with `create`,
+`list`, `pause`, `resume`, `remove` and `run`. A job is a prompt run later by a fresh assistant with
+nobody there, so it answers with the message itself, or with the single word `SILENT` when there is
+nothing to tell — a watch that reports that nothing changed gets muted. Calendar schedules are
+worked out in the household's own hours (nine o'clock stays nine o'clock when the clocks change);
+a job that was due while the service was down runs once when it returns; three failures in a row
+pause it and say so. Results go to the phone, and out loud as well when a screen is open. A job
+cannot schedule further jobs.
+
+**Eyes.** `look` hands a picture to the model itself, where `show_image` and `show_camera` put one on
+the screen for a person: a camera through the house, or an image on the public web. A private
+address is refused, and redirects are checked at every hop. `transcript` searches the exact words of
+earlier exchanges, including the conversation still going; `conversations` reads summaries of
+finished ones. `todo` is a scratchpad for the steps of a long question, kept for the length of one
+conversation.
+
 **Itself.** What it noticed about the house and about its own jobs (`anomalies`), what earlier
 conversations were about, what it remembers and why, what every model call cost, and what the last
 attempt to extend itself did. The HUD's own panels say the same thing without being asked: one row
@@ -409,6 +436,8 @@ capability is simply not offered.
 | `JARVIS_SPEECH_LANG` | The language a deployment starts in: `en` (default) or `nl`. From there it changes when somebody asks for it -- "switch to Dutch" -- and never because a question arrives in another language; it is kept in the deployment's own database (`settings`, key `speech.lang`), so it survives a restart and never touches a file. After a switch JARVIS asks whether the screen should follow; the screen's language is a setting of its own (`ui.lang`, English until asked). The current language decides what the assistant answers in -- the model is told so at the very top of its instructions, above the persona, whatever language the persona and the memory are written in -- which of the two voices above reads the answer, what the microphone is transcribed as, which spoken lines below are used, and what a line put through `say` is spoken in when the caller names no language of its own. A switch takes effect from the next question, which starts a fresh conversation. |
 | `JARVIS_MEMORY_PANEL` | `off`, `read` (default) or `edit` — how much of the memory the HUD may see and change. Not `edit` by default on purpose: the control surface has no authentication of its own, so anything that reaches the port would be able to rewrite and delete what the assistant knows. |
 | `JARVIS_WEB` | Whether the assistant may search the web and read a page (`on` by default; `off` withdraws both tools). These are the only built-in tools it is given: the rest read this machine, and are refused whatever this is set to. On by default because it needs no credential and no pack, so the alternative is an assistant that says it cannot look something up when it can. What a page says is quoted back, never acted on — the prompt says so in as many words, because a fetched page is somebody else's writing arriving in the middle of a conversation. |
+| `JARVIS_SCHEDULE` | Whether the assistant may set reminders, daily checks and watches, and whether the clock that runs them is started (`on` by default). Results go through the same written channels as any unprompted message, plus the Telegram bot when there is one; with none configured they can only be spoken, and the start-up log says so. |
+| `JARVIS_BROWSER`, `JARVIS_BROWSER_EXECUTABLE`, `JARVIS_BROWSER_SANDBOX` | Whether the assistant may drive a headless Chromium for pages a plain fetch cannot read (`off` by default: it needs Chromium on the machine, see [operations](docs/operations.md#5-external-dependencies-and-what-their-failure-looks-like)). `JARVIS_BROWSER_EXECUTABLE` names a Chromium to use instead of the one Playwright installs; `JARVIS_BROWSER_SANDBOX=off` turns Chromium's own sandbox off, for a machine that cannot provide one — leave it on if it starts. |
 | `JARVIS_TIMEZONE`, `JARVIS_LOCALE` | The zone every weekday, hour and spoken time is worked out in, and the language dates and numbers are written in. Unset, the zone is the machine's own and the locale is `nl-NL`; the zone in use is printed at every startup. Getting this wrong is silent — a behavioural baseline still builds, it is just about different hours — so a machine whose clock is UTC while the house is not opens a finding about itself until the zone is named. |
 | `JARVIS_PORT`, `JARVIS_CERT_DIR` | Where it listens, and the TLS certificate and key. |
 | `JARVIS_MEMORY_PATH`, `JARVIS_DATA_DIR` | The memory database, and the runtime state around it. |

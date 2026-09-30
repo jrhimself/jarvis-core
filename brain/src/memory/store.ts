@@ -18,6 +18,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { migrateDev } from "../dev/store.js";
+import { migrateSchedules } from "../schedule-store.js";
 import { beat, migrateProactive, proactiveCounts } from "../proactive/store.js";
 
 export type FactKind = "voorkeur" | "feit" | "persoon" | "gewoonte" | "conclusie" | "lopend";
@@ -446,6 +447,7 @@ export class MemoryStore {
 
     migrateProactive(this.#db);
     migrateDev(this.#db);
+    migrateSchedules(this.#db);
   }
 
   /**
@@ -465,6 +467,11 @@ export class MemoryStore {
    * say so at the call site.
    */
   devConnection(): DatabaseSync {
+    return this.#db;
+  }
+
+  /** The same connection, for the jobs the assistant was asked to run later. */
+  scheduleConnection(): DatabaseSync {
     return this.#db;
   }
 
@@ -908,6 +915,32 @@ export class MemoryStore {
          ORDER BY id`,
       )
       .all(iso, limit) as unknown as Array<{ at: string; asked: string; answered: string }>;
+  }
+
+  /**
+   * Exchanges whose words contain every one of these terms, newest first.
+   *
+   * The session log holds a summary per conversation and only once it has
+   * ended; this is for the exact wording, and for the conversation that is
+   * still going. A plain scan, because the table is a few thousand short rows
+   * and a full-text index would be a second thing to keep in step with it.
+   */
+  searchTurns(
+    terms: readonly string[],
+    since: string | null,
+    limit: number,
+  ): Array<{ at: string; asked: string; answered: string }> {
+    const clauses = terms.map(() => "(asked LIKE ? ESCAPE '\\' OR answered LIKE ? ESCAPE '\\')");
+    const args: string[] = [];
+    for (const term of terms) {
+      const like = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+      args.push(like, like);
+    }
+    const where = [...clauses, ...(since === null ? [] : ["at >= ?"])].join(" AND ");
+    if (since !== null) args.push(since);
+    return this.#db
+      .prepare(`SELECT at, asked, answered FROM turns ${where === "" ? "" : `WHERE ${where}`} ORDER BY id DESC LIMIT ?`)
+      .all(...args, limit) as unknown as Array<{ at: string; asked: string; answered: string }>;
   }
 
   /** Exchanges that no distillation pass has looked at yet. */

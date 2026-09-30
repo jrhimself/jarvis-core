@@ -82,6 +82,11 @@ import {
   planUsage,
 } from "./plan.js";
 import { createSetupServer, SETUP_SERVER_NAME, SETUP_TOOLS } from "./setup-tools.js";
+import { createScheduleServer, SCHEDULE_SERVER_NAME, SCHEDULE_TOOLS } from "./schedule-tools.js";
+import { createTodoServer, TodoList, TODO_SERVER_NAME, TODO_TOOLS } from "./todo.js";
+import { createVisionServer, VISION_SERVER_NAME, VISION_TOOLS } from "./vision.js";
+import { createRecoverServer, RECOVER_SERVER_NAME, RECOVER_TOOLS } from "./recover.js";
+import { BROWSER_SERVER_NAME, BROWSER_TOOLS, createBrowserServer, sharedBrowser } from "./browser.js";
 import {
   isWebTool,
   merge,
@@ -290,6 +295,14 @@ export class AgentSession {
     heavyPrefixes: [`mcp__${DEV_SERVER_NAME}__`],
   });
 
+  /** The steps this conversation has written down for itself. */
+  readonly #todo = new TodoList();
+
+  constructor(
+    /** A scheduled job runs unattended, and may not make further schedules. */
+    private readonly role: "attended" | "unattended" = "attended",
+  ) {}
+
   /** True once the process is gone and the session must be replaced. */
   get broken(): boolean {
     return this.#broken;
@@ -383,6 +396,11 @@ export class AgentSession {
       ...(insightConfigured ? [INSIGHT_SERVER_NAME] : []),
       ...(devConfigured ? [DEV_SERVER_NAME] : []),
       SETUP_SERVER_NAME,
+      TODO_SERVER_NAME,
+      VISION_SERVER_NAME,
+      ...(config.schedule ? [SCHEDULE_SERVER_NAME] : []),
+      ...(config.web ? [RECOVER_SERVER_NAME] : []),
+      ...(config.browser ? [BROWSER_SERVER_NAME] : []),
     ];
     const deployment = describeDeployment(config, packs.reports, serverNames, persona.own);
 
@@ -402,7 +420,7 @@ export class AgentSession {
       deskBriefingBlock(mergeDeskSlots(packs.desk)),
       sectionMarkBlock(mergeDeskSlots(packs.desk).map((slot) => slot.topic)),
       coreBlock(store),
-      ...(config.web ? [webBlock()] : []),
+      ...(config.web ? [webBlock({ browse: config.browser })] : []),
       ...computed,
       recipesBlock(store),
     ]
@@ -456,6 +474,23 @@ export class AgentSession {
           [SETUP_SERVER_NAME]: createSetupServer(deployment, () =>
             runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
           ),
+          [TODO_SERVER_NAME]: createTodoServer(this.#todo),
+          [VISION_SERVER_NAME]: createVisionServer(home),
+          ...(config.schedule
+            ? {
+                [SCHEDULE_SERVER_NAME]: createScheduleServer(store.scheduleConnection(), {
+                  unattended: this.role === "unattended",
+                }),
+              }
+            : {}),
+          ...(config.web ? { [RECOVER_SERVER_NAME]: createRecoverServer({ browserAvailable: config.browser }) } : {}),
+          ...(config.browser
+            ? {
+                [BROWSER_SERVER_NAME]: createBrowserServer(
+                  sharedBrowser({ executablePath: config.browserExecutable, sandbox: config.browserSandbox }),
+                ),
+              }
+            : {}),
         },
         allowedTools: [
           ...DISPLAY_TOOLS,
@@ -466,7 +501,11 @@ export class AgentSession {
           ...(devConfigured ? DEV_TOOLS : []),
           ...SETUP_TOOLS,
           ...LANGUAGE_TOOLS,
-          ...(config.web ? WEB_TOOLS : []),
+          ...TODO_TOOLS,
+          ...VISION_TOOLS,
+          ...(config.schedule ? SCHEDULE_TOOLS : []),
+          ...(config.web ? [...WEB_TOOLS, ...RECOVER_TOOLS] : []),
+          ...(config.browser ? BROWSER_TOOLS : []),
         ],
         // The two that read the web, and nothing else: this assistant has no
         // business reading the filesystem, and every other built-in tool does.
