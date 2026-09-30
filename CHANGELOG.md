@@ -15,6 +15,22 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.2.0] - 2026-09-30
+
+### Changed
+
+- `try_pull_request` takes the pull request itself, not only a task number. A finished job whose
+  record does not carry its pull request -- a runner's summary is prose, and a job the user did
+  himself has no row at all -- used to end the road: the tool refused and said to ask the user, who
+  had just said it. It now accepts `pull_request` in whatever words it was said in, and that wins
+  over `task` when both are given.
+- Which pull request a piece of text points at is read from more wordings: `owner/jarvis-core#24`,
+  `jarvis-pack-gmail#6`, `PR 24 (jarvis-core)`, `pull request 12 on the gmail pack`, `PR 24 on
+  core`, and the repository named before the number. Rather than one pattern per wording, the
+  numbers said to be pull requests and the repositories named are found separately and the closest
+  pair wins; a number with no repository near it is still refused rather than guessed at. This also
+  widens the spoken offer after a runner finishes, which is made only when the repository is known.
+
 ## [2.1.0] - 2026-09-30
 
 Seven abilities, taken from what a general-purpose agent has out of the box and this one did not:

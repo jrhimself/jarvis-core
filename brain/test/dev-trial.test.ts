@@ -31,9 +31,32 @@ test("a link or a runner's own words name the pull request and its repository", 
   });
 });
 
+test("the shorthands and the spoken wordings name it too", () => {
+  assert.deepEqual(pullRequestTarget("jrhimself/jarvis-core#24"), { repo: "core", number: 24 });
+  assert.deepEqual(pullRequestTarget("jarvis-pack-gmail#6 is ready"), { repo: "pack", pack: "gmail", number: 6 });
+  assert.deepEqual(pullRequestTarget("PR 24 (jarvis-core), doorbell work"), { repo: "core", number: 24 });
+  assert.deepEqual(pullRequestTarget("put pull request 12 on the gmail pack live"), {
+    repo: "pack",
+    pack: "gmail",
+    number: 12,
+  });
+  assert.deepEqual(pullRequestTarget("try PR 24 on core"), { repo: "core", number: 24 });
+  assert.deepEqual(pullRequestTarget("jarvis-core, pull request #24"), { repo: "core", number: 24 });
+});
+
+test("the nearest repository to the number is the one meant", () => {
+  assert.deepEqual(pullRequestTarget("PR #6 on jarvis-pack-gmail; jarvis-core is untouched"), {
+    repo: "pack",
+    pack: "gmail",
+    number: 6,
+  });
+});
+
 test("a number without a repository is not guessed at", () => {
   assert.equal(pullRequestTarget("Opened PR #6, all green."), null);
   assert.equal(pullRequestTarget("The time is 14:58."), null);
+  assert.equal(pullRequestTarget("Opened PR #6; the core suite is green and the pack builds."), null);
+  assert.equal(pullRequestTarget("jarvis-core is on 2.1.0"), null);
 });
 
 test("the root side is only ever handed a fixed line", () => {
