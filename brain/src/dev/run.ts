@@ -57,6 +57,7 @@ import {
   requestTrial,
   type PullTarget,
   type Trial,
+  type TrialRequest,
 } from "./trial.js";
 import {
   awaitingDevTask,
@@ -304,22 +305,55 @@ export class SelfDevelopment {
   }
 
   /**
-   * Asks the root side to put a task's pull request live on top of what runs.
+   * The pull request a request for a trial is about: a task's, or one named.
+   *
+   * A task number is the short way to say it when the record carries the pull
+   * request, and it often does not -- a runner's summary is prose, and a job
+   * the user did himself has no row at all. So anything that names a pull
+   * request is accepted too, in whatever words it was said in, and it wins
+   * over the task when both are given: it is the more specific of the two.
+   */
+  resolveTarget(ref: TrialRequest): { ok: true; target: PullTarget } | { ok: false; error: string } {
+    const said = (ref.reference ?? "").trim();
+    if (said !== "") {
+      const named = pullRequestTarget(said);
+      return named === null
+        ? {
+            ok: false,
+            error:
+              `Could not tell which pull request "${said}" is. Say the repository and the number, ` +
+              `like "jarvis-core#24", "jarvis-pack-gmail#6" or a link to it.`,
+          }
+        : { ok: true, target: named };
+    }
+    if (ref.task === undefined) {
+      return { ok: false, error: "Say which pull request to try: a task number, or the repository and number." };
+    }
+    const task = devTask(this.db, ref.task);
+    if (task === null) return { ok: false, error: `There is no task ${ref.task}.` };
+    const target = this.targetOf(task);
+    return target === null
+      ? {
+          ok: false,
+          error:
+            `Task ${ref.task} does not say which pull request it made. Call it again with the pull request ` +
+            `itself, like "jarvis-core#24" -- what dev_status says about the task, or what the user says, ` +
+            `may name it.`,
+        }
+      : { ok: true, target };
+  }
+
+  /**
+   * Asks the root side to put a pull request live on top of what runs.
    *
    * Refused while another one is on trial. The restart that follows ends this
    * process; the next one says how it went (`announceTrial`). A trial that
    * fails never restarts anything, so that outcome is watched for here.
    */
-  async tryLive(id: number, now: Date): Promise<{ ok: true; target: PullTarget } | { ok: false; error: string }> {
-    const task = devTask(this.db, id);
-    if (task === null) return { ok: false, error: `There is no task ${id}.` };
-    const target = this.targetOf(task);
-    if (target === null) {
-      return {
-        ok: false,
-        error: `Task ${id} does not say which pull request it made. Ask the user for the repository and number.`,
-      };
-    }
+  async tryLive(ref: TrialRequest, now: Date): Promise<{ ok: true; target: PullTarget } | { ok: false; error: string }> {
+    const found = this.resolveTarget(ref);
+    if (!found.ok) return found;
+    const target = found.target;
     const running = await this.trial();
     if (running !== null) {
       return {

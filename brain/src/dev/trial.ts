@@ -33,6 +33,13 @@ export type PullTarget =
   | { repo: "core"; number: number }
   | { repo: "pack"; pack: string; number: number };
 
+/** How a trial is asked for: by the task that made the pull request, or by naming it. */
+export interface TrialRequest {
+  task?: number;
+  /** The pull request in whatever words it was said in: a link, a slug and a number, a sentence. */
+  reference?: string;
+}
+
 /** The file the root side writes while a trial is running, and removes when it ends. */
 export const TRIAL_FILE = "trial.json";
 
@@ -53,21 +60,73 @@ const PACK_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /**
  * The pull request a piece of text points at, when it says where it lives.
  *
- * A link is the surest ("github.com/o/jarvis-pack-gmail/pull/6"); a runner's
- * own words ("Opened PR #6 on jarvis-pack-gmail") are the common case. A
- * number with no repository is not enough: guessing the wrong one would try
- * a different pull request under the same number.
+ * A link is the surest ("github.com/o/jarvis-pack-gmail/pull/6"); everything
+ * else is however a runner, a status line or the user happens to word it:
+ * "Opened PR #6 on jarvis-pack-gmail", "jrhimself/jarvis-core#24", "PR 24
+ * (jarvis-core)", "pull request 12 on the gmail pack". Rather than one pattern
+ * per wording, both halves are looked for on their own -- every number that is
+ * said to be a pull request, every repository that is named -- and the closest
+ * pair wins. A number with no repository near it is still not enough: guessing
+ * the wrong one would try a different pull request under the same number.
  */
 export function pullRequestTarget(text: string): PullTarget | null {
   const link = /github\.com\/[\w.-]+\/(jarvis-core|jarvis-pack-([a-z0-9-]+))\/pull\/(\d+)/i.exec(text);
   if (link !== null) return target(link[1] ?? "", link[2], Number(link[3]));
-  const named =
-    /\b(?:PR|pull request)\s*#?\s*(\d+)\b[^.\n]{0,40}?\b(?:on|in|for|to)\s+(?:[\w.-]+\/)?(jarvis-core|jarvis-pack-([a-z0-9-]+))/i.exec(
-      text,
-    );
-  if (named !== null) return target(named[2] ?? "", named[3], Number(named[1]));
-  return null;
+
+  const repos = repoMentions(text);
+  if (repos.length === 0) return null;
+  let best: { target: PullTarget; distance: number } | null = null;
+  for (const found of numberMentions(text)) {
+    for (const repo of repos) {
+      const distance = Math.abs(repo.at - found.at);
+      if (distance > NEAR) continue;
+      const made = target(repo.repo, repo.pack, found.number);
+      if (made !== null && (best === null || distance < best.distance)) best = { target: made, distance };
+    }
+  }
+  return best?.target ?? null;
 }
+
+/** How far apart a number and a repository may be and still be about each other. */
+const NEAR = 60;
+
+/** Every number said to be a pull request: "PR 24", "pull request #6", "#24". */
+function numberMentions(text: string): { number: number; at: number }[] {
+  const found: { number: number; at: number }[] = [];
+  for (const match of text.matchAll(/(?:\bPRs?\b|\bpull requests?\b|#)[\s:#]*(\d+)\b/gi)) {
+    found.push({ number: Number(match[1]), at: match.index });
+  }
+  return found;
+}
+
+/**
+ * Every repository named, as a slug or in words.
+ *
+ * A slug counts anywhere; the spoken forms only after a word that points at
+ * them ("on core", "on the gmail pack"), because a green core suite and a pack
+ * that builds are mentioned in half the summaries a runner writes.
+ */
+function repoMentions(text: string): { repo: string; pack?: string; at: number }[] {
+  const found: { repo: string; pack?: string; at: number }[] = [];
+  for (const match of text.matchAll(/(?:[\w.-]+\/)?jarvis-pack-([a-z0-9-]+)/gi)) {
+    found.push({ repo: "jarvis-pack", pack: match[1], at: match.index });
+  }
+  for (const match of text.matchAll(/(?:[\w.-]+\/)?jarvis-core\b/gi)) {
+    found.push({ repo: "jarvis-core", at: match.index });
+  }
+  for (const match of text.matchAll(/\b(?:on|in|for|to|of)\s+(?:the\s+)?core\b|\b(?:the\s+)?assistant'?s own code\b/gi)) {
+    found.push({ repo: "jarvis-core", at: match.index });
+  }
+  const spokenPack = /\b(?:on|in|for|to|of)\s+(?:the\s+)?(?:pack\s+([a-z0-9][a-z0-9-]*)|([a-z0-9][a-z0-9-]*)\s+pack)\b/gi;
+  for (const match of text.matchAll(spokenPack)) {
+    const id = (match[1] ?? match[2] ?? "").toLowerCase();
+    if (!PACK_WORDS.has(id)) found.push({ repo: "jarvis-pack", pack: id, at: match.index });
+  }
+  return found;
+}
+
+/** Words that stand next to "pack" without being the name of one. */
+const PACK_WORDS = new Set(["the", "a", "an", "this", "that", "it", "its", "and", "is", "was", "one", "own", "new"]);
 
 function target(repo: string, pack: string | undefined, number: number): PullTarget | null {
   if (!Number.isInteger(number) || number <= 0) return null;
@@ -175,6 +234,7 @@ export function offerNote(stored: string, now: Date): string {
   const said = typeof offer.said === "string" ? offer.said : "";
   return (
     `[A moment ago you said to the user, unprompted: "${said}" If this answers yes, call ` +
-    `try_pull_request with task ${task} and confirmed true; if it answers no, leave it.]`
+    `try_pull_request with task ${task} and confirmed true -- and if that task turns out not to say ` +
+    `which pull request it made, call it again naming the pull request itself; if it answers no, leave it.]`
   );
 }

@@ -568,18 +568,28 @@ export function createDevServer(
 
   const tryLive = tool(
     "try_pull_request",
-    "Put a finished task's pull request live before it is merged, so the user can try the " +
-      "ability right away. It is merged on top of what runs now, the suite runs, and you restart " +
-      "in a minute or two; if anything fails nothing changes and you hear why. Needs his yes: when " +
-      "you offered it out loud, his yes in this question is enough. One pull request on trial at a " +
-      "time. Say that it is being put live and that you will be back in a moment, then stop.",
+    "Put an open pull request live before it is merged, so the user can try the ability right " +
+      "away. It is merged on top of what runs now, the suite runs, and you restart in a minute or " +
+      "two; if anything fails nothing changes and you hear why. Say which one by task number when " +
+      "the task record carries it, or by naming the pull request itself -- from dev_status, from a " +
+      "runner's message, or from what the user says. Needs his yes: when you offered it out loud, " +
+      "his yes in this question is enough. One pull request on trial at a time. Say that it is " +
+      "being put live and that you will be back in a moment, then stop.",
     {
-      task: z.number().int().describe("The task number, as dev_status or the offer gives it"),
+      task: z.number().int().optional().describe("The task number, as dev_status or the offer gives it"),
+      pull_request: z
+        .string()
+        .optional()
+        .describe(
+          "The pull request itself, when no task number says it or the task does not carry it: " +
+            "'jarvis-core#24', 'jarvis-pack-gmail#6', 'PR 24 on the assistant's own code', or a link. " +
+            "Takes precedence over task.",
+        ),
       confirmed: z.boolean().default(false).describe("True only when the user said yes to trying it"),
     },
     async (args) => {
       if (!args.confirmed) return refused("He has not said yes to trying it. Ask first.");
-      const tried = await dev.tryLive(args.task, new Date());
+      const tried = await dev.tryLive({ task: args.task, reference: args.pull_request }, new Date());
       return tried.ok
         ? ok(
             `Asked to put ${describeTarget(tried.target)} live. The suite runs first; you restart in a ` +
