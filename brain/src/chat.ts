@@ -14,12 +14,18 @@
  * spend credits on audio nobody can hear -- and the shape of an answer, which
  * arrives as one message rather than a stream, because a chat that edits its
  * own message forty times is unreadable.
+ *
+ * And the language, which is whatever was typed. The deployment has one
+ * language because a speaker does: a voice answering this sentence in Dutch and
+ * the next in English is a broken assistant. A keyboard has no such constraint
+ * -- somebody switches mid-thread and expects to be met there -- so this
+ * channel mirrors each message rather than following the deployment.
  */
 
 import type { SpeechLang } from "@jarvis/shared";
 
 import { Conversation } from "./conversation.js";
-import { language } from "./language.js";
+import { guessLang, language } from "./language.js";
 import { escapeHtml } from "./dev/notify.js";
 import type { Said } from "./telegram.js";
 
@@ -68,6 +74,8 @@ interface Live {
   /** Where this turn's words go. Replaced per turn, because the conversation outlives it. */
   onChunk: (chunk: string) => void;
   onFail: (message: string) => void;
+  /** What this chat was last recognisably in, for the sentences that are ours. */
+  lang: SpeechLang;
 }
 
 /**
@@ -94,8 +102,9 @@ export class Chat {
     if (text === "") return;
 
     const live = this.#for(said.chatId);
+    live.lang = guessLang(text) ?? live.lang;
     if (live.busy) {
-      await this.bot.send(said.chatId, BUSY[language().current]);
+      await this.bot.send(said.chatId, BUSY[live.lang]);
       return;
     }
 
@@ -131,7 +140,7 @@ export class Chat {
       live.busy = false;
     }
 
-    const body = failure !== null ? String(failure) : answer.trim() === "" ? NOTHING[language().current] : answer;
+    const body = failure !== null ? String(failure) : answer.trim() === "" ? NOTHING[live.lang] : answer;
     for (const piece of pieces(body)) {
       await this.bot.send(said.chatId, escapeHtml(piece));
     }
@@ -153,6 +162,7 @@ export class Chat {
       turn: 0,
       onChunk: () => {},
       onFail: () => {},
+      lang: language().current,
     };
 
     live.conversation = new Conversation(
@@ -175,6 +185,8 @@ export class Chat {
       },
       undefined,
       "off",
+      "attended",
+      "mirror",
     );
 
     this.#live.set(chatId, live);

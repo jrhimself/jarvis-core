@@ -15,6 +15,26 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.3.0] - 2026-09-30
+
+### Changed
+
+- The chat answers in the language it was written in. The deployment's language belongs to a
+  speaker: a voice that says one sentence in Dutch and the next in English is a broken assistant,
+  so a question in another language is deliberately not a request to switch. A keyboard has no such
+  constraint -- somebody types Dutch from a train and expects to be met there -- and until now got
+  English back, because the language rule reaches the model in three places and all three named one
+  language. A conversation can now be opened in `mirror` instead, which says "the language of this
+  question" in all three, and the chat is opened that way. The screen and the voice are untouched.
+- The sentences that are the deployment's own rather than the model's -- still working on your last
+  question, the plan is spent, the turn was stopped -- follow the words that were typed, by function
+  word, falling back to whatever the chat was last recognisably in. A word list is no judge of
+  language and is not asked to be one: the answer itself is the model's, which reads the question.
+- A mirroring conversation reads the briefing cache but never writes to it, and leaves the screen's
+  pending language offer alone. Both are shared with the browser, and a chat that asked in Dutch
+  would otherwise either file a Dutch briefing under English or spend an offer the screen was
+  waiting to be asked about.
+
 ## [2.2.0] - 2026-09-30
 
 ### Changed

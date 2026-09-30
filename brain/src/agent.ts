@@ -65,7 +65,16 @@ import { distilSession } from "./memory/distiller.js";
 import { memory } from "./memory/store.js";
 import { usageFromResult } from "./memory/usage.js";
 import { nowBlock } from "./now.js";
-import { interfaceLanguage, language, languageBlock, languageHook, languageNote, takeOffer } from "./language.js";
+import type { LangMode } from "./language.js";
+import {
+  guessLang,
+  interfaceLanguage,
+  language,
+  languageBlock,
+  languageHook,
+  languageNote,
+  takeOffer,
+} from "./language.js";
 import { createLanguageServer, LANGUAGE_SERVER_NAME, LANGUAGE_TOOLS } from "./language-tools.js";
 import { gapHook } from "./gap-check.js";
 import { jobLine } from "./dev/board.js";
@@ -266,13 +275,22 @@ export class AgentSession {
    */
   readonly id = randomUUID();
   /**
-   * The language this conversation was opened in.
+   * The language this conversation was opened in, or `mirror` for a channel
+   * that answers each question in the language it arrived in.
    *
    * Fixed for the life of the session, because it is written into the system
    * prompt and that is written once. A switch is picked up by the conversation
-   * noticing the difference and opening a new session.
+   * noticing the difference and opening a new session -- which never happens
+   * while mirroring, since there is nothing to switch away from.
    */
-  readonly lang: SpeechLang = language().current;
+  readonly lang: LangMode;
+  /**
+   * A language for the sentences that are ours rather than the model's: the
+   * plan is spent, the turn was stopped. A mirroring session has no language of
+   * its own, so this is read off the question being answered, and falls back to
+   * the deployment's when the question is too short to tell.
+   */
+  #spoken: SpeechLang = language().current;
   #active: ActiveTurn | null = null;
   #queue: SDKUserMessage[] = [];
   #wake: (() => void) | null = null;
@@ -301,7 +319,11 @@ export class AgentSession {
   constructor(
     /** A scheduled job runs unattended, and may not make further schedules. */
     private readonly role: "attended" | "unattended" = "attended",
-  ) {}
+    lang: LangMode = language().current,
+  ) {
+    this.lang = lang;
+    if (lang !== "mirror") this.#spoken = lang;
+  }
 
   /** True once the process is gone and the session must be replaced. */
   get broken(): boolean {
@@ -341,7 +363,11 @@ export class AgentSession {
         sink(id, payload, dismiss, anchor, at);
         return id;
       },
-      () => this.lang,
+      // The deployment's language even while mirroring: the cache is shared
+      // with the screen, and a chat that asked in Dutch would otherwise miss a
+      // briefing that exists and pay for seven tool calls to rebuild it. What
+      // it reads in English it answers in Dutch, which is what mirroring says.
+      () => (this.lang === "mirror" ? language().current : this.lang),
       config.briefingCacheHours * 3_600_000,
     );
     this.#show = showVia(sink);
@@ -516,7 +542,9 @@ export class AgentSession {
         // that reads seven Dutch tool answers after an English note answers in
         // Dutch otherwise.
         hooks: {
-          PostToolBatch: [languageHook(() => language().current)],
+          // A mirroring session has no deployment language to be talked back
+          // into, so it keeps saying "the language of the question" here.
+          PostToolBatch: [languageHook(() => (this.lang === "mirror" ? "mirror" : language().current))],
           // An explicit "brief me" gets through every once-a-day gate, and a
           // gate that does answer marks the turn as not having been a briefing.
           PreToolUse: [againHook(() => this.#active?.asked === true)],
@@ -627,7 +655,12 @@ export class AgentSession {
             const active = this.#active;
             if (active !== null && active.text === "") {
               console.warn(`agent: the plan is spent -- ${typeof firstText === "string" ? firstText : "rate_limit"}`);
-              const sentence = limitSentence(config.spoken[this.lang].limit, planUsage(), new Date(), this.lang);
+              const sentence = limitSentence(
+                config.spoken[this.#spoken].limit,
+                planUsage(),
+                new Date(),
+                this.#spoken,
+              );
               active.text = sentence;
               active.handlers.onLimit?.();
               active.handlers.onText(sentence);
@@ -675,7 +708,7 @@ export class AgentSession {
           const active = this.#active;
           if (active !== null && active.text === "" && typeof subtype === "string" && subtype.startsWith("error_")) {
             console.warn(`agent: a turn was stopped (${subtype})`);
-            active.text = config.spoken[this.lang].stopped;
+            active.text = config.spoken[this.#spoken].stopped;
             active.handlers.onText(active.text);
           }
           this.#active?.finish();
@@ -745,6 +778,8 @@ export class AgentSession {
   ): Promise<TurnResult> {
     await this.#start();
 
+    if (this.lang === "mirror") this.#spoken = guessLang(text) ?? this.#spoken;
+
     let finish: () => void = () => {};
     const finished = new Promise<void>((resolve) => {
       finish = resolve;
@@ -781,8 +816,10 @@ export class AgentSession {
     let asked = `${languageNote(this.lang)}
 ${text}`;
     // The screen switch offered in the turn that changed the voice, for the
-    // fresh session that turn's language change opened.
-    const offer = takeOffer(this.lang, store);
+    // fresh session that turn's language change opened. A mirroring channel is
+    // not that session: it has no screen, and reading the offer here would
+    // spend it before the browser that was asked ever sees it.
+    const offer = this.lang === "mirror" ? "" : takeOffer(this.lang, store);
     if (offer !== "") asked = `${offer}
 ${asked}`;
     // The offer to try a pull request that was made out loud, unprompted, for
@@ -850,7 +887,11 @@ ${asked}`;
       store.recordToolCalls(turnId, active.tools);
       // The briefing is kept whole -- the words and the windows -- so that the
       // next request for it is a lookup rather than seven tool calls.
-      if (active.briefing && !active.gated && !looksGated(active.text)) {
+      // A mirroring session reads this cache and never writes to it: what it
+      // produced is in whatever language the question was in, and filing that
+      // under the deployment's language would hand the screen a briefing in the
+      // wrong one.
+      if (active.briefing && !active.gated && !looksGated(active.text) && this.lang !== "mirror") {
         briefingCache.remember({ lang: this.lang, text: active.text, windows: active.windows });
       }
     }

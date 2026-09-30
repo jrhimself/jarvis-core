@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 
 import { loadConfig } from "./config.js";
 import { AgentSession } from "./agent.js";
+import type { LangMode } from "./language.js";
 import { language } from "./language.js";
 import { Opening } from "./opening.js";
 import { SectionMarks, type SectionPass } from "./sections.js";
@@ -204,6 +205,12 @@ export class Conversation {
      * it may not schedule further jobs, since nobody would see them made.
      */
     private readonly role: "attended" | "unattended" = "attended",
+    /**
+     * What the answer is written in. The deployment's language by default; the
+     * language of each question for a channel somebody types in, where the
+     * person picks it per message and no speaker has to agree.
+     */
+    private readonly langMode: "deployment" | "mirror" = "deployment",
   ) {}
 
   /** True while a turn is being answered. */
@@ -214,7 +221,7 @@ export class Conversation {
   /** Opens the agent ahead of the first question. Failures are not fatal. */
   warm(): void {
     if (this.#closed || this.#agent !== null) return;
-    const agent = new AgentSession(this.role);
+    const agent = new AgentSession(this.role, this.#lang());
     this.#agent = agent;
     void agent.warm().catch((error: unknown) => {
       console.error("could not warm the agent:", error);
@@ -322,12 +329,13 @@ export class Conversation {
       // A session speaks the language it was opened in. After a switch the
       // next question starts a new one: what was said before is in memory, and
       // a session told to answer in two languages answers in neither reliably.
-      if (this.#agent !== null && !this.#agent.broken && this.#agent.lang !== lang) {
+      // A mirroring session is told exactly that and is therefore never stale.
+      if (this.#agent !== null && !this.#agent.broken && this.#agent.lang !== this.#lang()) {
         this.#endSession();
       }
       if (this.#agent === null || this.#agent.broken) {
         this.#agent?.close();
-        this.#agent = new AgentSession(this.role);
+        this.#agent = new AgentSession(this.role, this.#lang());
       }
 
       const result = await this.#agent.ask(
@@ -608,6 +616,11 @@ export class Conversation {
       this.#idleTimer = null;
     }, this.limits.idleMs);
     this.#idleTimer.unref();
+  }
+
+  /** What a session opened now answers in. */
+  #lang(): LangMode {
+    return this.langMode === "mirror" ? "mirror" : language().current;
   }
 
   /** Drops the agent, so the next turn starts a fresh conversation. */
