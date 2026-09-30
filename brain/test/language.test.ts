@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  guessLang,
   INTERFACE_SETTING,
   LANGUAGE_SETTING,
   Language,
@@ -117,6 +118,33 @@ test("the offer reaches the next session only while it still fits", () => {
   assert.equal(offerNote("nl", "nl", "nl"), "", "the screen already followed");
   assert.equal(offerNote("en", "en", "nl"), "", "the voice switched back since");
   assert.equal(offerNote("nl", "en", null), "");
+});
+
+test("a mirroring channel is told to follow the question rather than a language", () => {
+  const block = languageBlock("mirror");
+  assert.match(block, /answer in the language the question was asked in/);
+  assert.doesNotMatch(block, /answer in English/);
+  assert.doesNotMatch(block, /answer in Dutch/);
+  assert.match(block, /do not call set_speech_language/, "switching is not what typing Dutch means");
+  assert.equal(languageNote("mirror"), "[Answer in the language this question is written in.]");
+});
+
+test("and is told the same thing again after a round of tool answers", async () => {
+  const hook = languageHook("mirror");
+  const out = (await hook.hooks[0]!({} as never, undefined, { signal: new AbortController().signal })) as {
+    hookSpecificOutput: { additionalContext: string };
+  };
+  const context = out.hookSpecificOutput.additionalContext;
+  assert.match(context, /^\[Answer in the language this question is written in\.\]/);
+  assert.match(context, /from here is in the language the question was asked in/);
+});
+
+test("the deployment's own sentences follow the words that were typed", () => {
+  assert.equal(guessLang("kun je de lampen in de woonkamer uitdoen"), "nl");
+  assert.equal(guessLang("could you turn the living room lights off"), "en");
+  assert.equal(guessLang("ok"), null, "too short to settle anything");
+  assert.equal(guessLang(""), null);
+  assert.equal(guessLang("Sonos"), null, "a name is not a language");
 });
 
 test("the note after a tool round follows a switch made in that turn", async () => {
