@@ -595,8 +595,8 @@ export function loadConfig(): Config {
     piperServer: envString("JARVIS_PIPER_SERVER", fileURLToPath(new URL("../piper/server.py", import.meta.url))),
     piperModels: resolve(envString("JARVIS_PIPER_MODELS", "../data/piper")),
     // Alan reads like a butler; Dutch has no voice of that character. Pim is
-    // the one that is understood: read back by Whisper, "Goedemorgen Joey. Alle
-    // systemen zijn online." came out word for word, where MLS came out as noise.
+    // the one that is understood: a spoken greeting read back by Whisper came
+    // out word for word, where MLS came out as noise.
     piperVoice: envString("JARVIS_PIPER_VOICE", "nl_NL-pim-medium"),
     piperVoiceEn: envString("JARVIS_PIPER_VOICE_EN", "en_GB-alan-medium"),
     // Listening is separate from speaking: naming Piper does not move the

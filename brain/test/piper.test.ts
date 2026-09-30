@@ -124,7 +124,7 @@ test("a turn: open once, sentences read in order in the language's voice, done l
 
   // The model writes a few words at a time; a sentence closes when the next begins.
   voice.speak("Good morning");
-  voice.speak(", Joey. The door is");
+  voice.speak(", sir. The door is");
   voice.speak(" locked. It is 21.");
   voice.speak("4 degrees.");
   voice.finish();
@@ -140,7 +140,7 @@ test("a turn: open once, sentences read in order in the language's voice, done l
   const heard = turn.audio.join("");
   assert.equal(
     heard,
-    "en-voice|Good morning, Joey.en-voice|The door is locked.en-voice|It is 21.4 degrees.",
+    "en-voice|Good morning, sir.en-voice|The door is locked.en-voice|It is 21.4 degrees.",
     "a decimal point is not a sentence end, and order is kept",
   );
 });
