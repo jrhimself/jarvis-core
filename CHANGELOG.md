@@ -15,6 +15,17 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [Unreleased]
+
+### Added
+
+- A voice that runs on the machine: `JARVIS_VOICE_PROVIDER=piper`. Piper needs no account, no key and
+  no balance, so the assistant can no longer go mute when a free tier runs out. One Python process
+  keeps the voices loaded and the brain sends it sentences as they close; audio is resampled to the
+  16 kHz every other voice produces, so the HUD is untouched. Measured on two 2014-era cores: first
+  audio about a tenth of a second into a warm turn, a sentence in a tenth of its own length.
+  Setup is in the README's environment table. It sends no per-character timing, like Fish.
+
 ## [2.3.0] - 2026-09-30
 
 ### Changed

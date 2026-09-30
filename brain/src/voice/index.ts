@@ -8,18 +8,25 @@
  * change to the conversation.
  */
 
+import { existsSync } from "node:fs";
+
 import type { SpeechLang } from "@jarvis/shared";
 
 import type { Config } from "../config.js";
 import { remainingCharacters, Voice, voiceIdFor } from "./elevenlabs.js";
 import { FishVoice, fishCreditsLeft, fishVoiceIdFor } from "./fish.js";
+import { PiperVoice, piperVoiceIdFor } from "./piper.js";
 import type { SpeakingVoice, VoiceHandlers } from "./types.js";
 
 export type { Alignment, SpeakingVoice, VoiceHandlers, VoiceProvider } from "./types.js";
 export { VOICE_PROVIDERS } from "./types.js";
 
-/** The key the chosen service needs, empty when it has not been given. */
+/**
+ * The key the chosen service needs, empty when it has not been given. Piper has
+ * no key; what it needs is its voices, so the directory stands in for one.
+ */
 export function voiceKey(config: Config): string {
+  if (config.voiceProvider === "piper") return existsSync(config.piperModels) ? config.piperModels : "";
   return config.voiceProvider === "fish" ? config.fishAudioKey : config.elevenLabsKey;
 }
 
@@ -30,16 +37,19 @@ export function voiceConfigured(config: Config): boolean {
 
 /** The service's name for the startup record and the log. */
 export function voiceProviderName(config: Config): string {
+  if (config.voiceProvider === "piper") return "Piper (local)";
   return config.voiceProvider === "fish" ? "Fish Audio" : "ElevenLabs";
 }
 
 /** The env variable whose absence leaves the assistant silent. */
 export function voiceKeyVariable(config: Config): string {
+  if (config.voiceProvider === "piper") return "JARVIS_PIPER_MODELS";
   return config.voiceProvider === "fish" ? "FISH_AUDIO_API_KEY" : "ELEVENLABS_API_KEY";
 }
 
 /** Which voice reads this language on the chosen service. */
 export function voiceFor(config: Config, lang: SpeechLang): string {
+  if (config.voiceProvider === "piper") return piperVoiceIdFor(config, lang);
   return config.voiceProvider === "fish" ? fishVoiceIdFor(config, lang) : voiceIdFor(config, lang);
 }
 
@@ -48,11 +58,13 @@ export function voiceFor(config: Config, lang: SpeechLang): string {
  * need not be known. Zero means the key is missing.
  */
 export function voiceCreditsLeft(config: Config): Promise<number | null> {
+  if (config.voiceProvider === "piper") return Promise.resolve(null);
   return config.voiceProvider === "fish" ? fishCreditsLeft(config) : remainingCharacters(config);
 }
 
 /** Opens a voice for this turn on whichever service is configured. */
 export function openVoice(config: Config, handlers: VoiceHandlers, lang: SpeechLang): SpeakingVoice {
+  if (config.voiceProvider === "piper") return new PiperVoice(config, handlers, lang);
   return config.voiceProvider === "fish"
     ? new FishVoice(config, handlers, lang)
     : new Voice(config, handlers, lang);

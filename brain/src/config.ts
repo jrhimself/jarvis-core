@@ -8,6 +8,7 @@
 import type { SpeechLang } from "@jarvis/shared";
 
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { VOICE_PROVIDERS, type VoiceProvider } from "./voice/types.js";
 
@@ -247,6 +248,16 @@ export interface Config {
   fishVoiceId: string;
   /** Which Fish voice reads English; empty means the Dutch one reads both. */
   fishVoiceIdEn: string;
+  /** The Python that runs Piper, with `piper-tts` installed; empty of a venv it is the system one. */
+  piperPython: string;
+  /** The script that keeps Piper's voices loaded and answers the brain over a pipe. */
+  piperServer: string;
+  /** Directory holding the voices, as `<name>.onnx` next to `<name>.onnx.json`. */
+  piperModels: string;
+  /** Which Piper voice reads Dutch. */
+  piperVoice: string;
+  /** Which Piper voice reads English. */
+  piperVoiceEn: string;
   /**
    * How Fish trades the first word against the prosody of the rest.
    *
@@ -560,6 +571,15 @@ export function loadConfig(): Config {
     fishEndpoint: envString("JARVIS_FISH_ENDPOINT", "wss://api.fish.audio/v1/tts/live"),
     fishVoiceId: envString("JARVIS_FISH_VOICE_ID", ""),
     fishVoiceIdEn: envString("JARVIS_FISH_VOICE_ID_EN", ""),
+    // Piper is never picked by the keys that happen to be present: it has none,
+    // so it speaks only when somebody names it.
+    piperPython: envString("JARVIS_PIPER_PYTHON", "python3"),
+    piperServer: envString("JARVIS_PIPER_SERVER", fileURLToPath(new URL("../piper/server.py", import.meta.url))),
+    piperModels: resolve(envString("JARVIS_PIPER_MODELS", "../data/piper")),
+    // Alan reads like a butler; Dutch has no voice of that character, and MLS
+    // is the most even of the Dutch ones.
+    piperVoice: envString("JARVIS_PIPER_VOICE", "nl_NL-mls-medium"),
+    piperVoiceEn: envString("JARVIS_PIPER_VOICE_EN", "en_GB-alan-medium"),
     fishLatency: envEnum("JARVIS_FISH_LATENCY", ["balanced", "normal"] as const, "normal"),
     fishNormalize: envFlag("JARVIS_FISH_NORMALIZE", true),
     planWarnPct: envNumber("JARVIS_PLAN_WARN_PCT", 75, 0, 100),

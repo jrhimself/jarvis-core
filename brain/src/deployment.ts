@@ -188,7 +188,7 @@ export function describeDeployment(
       ...(voiceConfigured(config)
         ? {}
         : {
-            remedy: `set ${voiceKeyVariable(config)} in the env file and restart; JARVIS_VOICE_PROVIDER chooses between elevenlabs and fish`,
+            remedy: `set ${voiceKeyVariable(config)} in the env file and restart; JARVIS_VOICE_PROVIDER chooses between elevenlabs, fish and piper`,
           }),
     },
     {
