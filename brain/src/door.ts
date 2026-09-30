@@ -37,8 +37,14 @@ export interface DoorWatch {
   triggers: string[];
 }
 
-/** How long the picture stays up once nobody touches it. */
-const ON_SCREEN_MS = 120_000;
+/**
+ * How long the picture stays up once nobody touches it.
+ *
+ * A minute is about the walk to the door and back. Longer and the card is still
+ * there once the caller has been dealt with, which is a window nobody asked for
+ * sitting over whatever the page was showing before.
+ */
+const ON_SCREEN_MS = 60_000;
 
 /**
  * How long after a trigger the same camera ignores its sensors.
