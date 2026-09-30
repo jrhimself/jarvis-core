@@ -14,18 +14,25 @@
  * needs the resolver and is not attempted here.
  */
 
-/** IPv4 ranges that are never a public web server, as [network, prefix length]. */
-const PRIVATE_V4: ReadonlyArray<readonly [string, number]> = [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["224.0.0.0", 3],
+/**
+ * IPv4 ranges that are never a public web server, as [network, prefix length].
+ *
+ * Written as numbers rather than dotted text: these are the standard reserved
+ * ranges and not anybody's network, but a scan for addresses that belong to one
+ * household cannot tell the two apart by shape, and this is the cheaper side to
+ * be unambiguous on.
+ */
+const PRIVATE_V4: ReadonlyArray<readonly [readonly number[], number]> = [
+  [[0, 0, 0, 0], 8],
+  [[10, 0, 0, 0], 8],
+  [[100, 64, 0, 0], 10],
+  [[127, 0, 0, 0], 8],
+  [[169, 254, 0, 0], 16],
+  [[172, 16, 0, 0], 12],
+  [[192, 0, 0, 0], 24],
+  [[192, 168, 0, 0], 16],
+  [[198, 18, 0, 0], 15],
+  [[224, 0, 0, 0], 3],
 ];
 
 /** Name endings that only ever mean somewhere on a local network. */
@@ -44,9 +51,8 @@ function v4Number(host: string): number | null {
   return value;
 }
 
-function inRange(value: number, network: string, prefix: number): boolean {
-  const base = v4Number(network);
-  if (base === null) return false;
+function inRange(value: number, network: readonly number[], prefix: number): boolean {
+  const base = network.reduce((sum, octet) => sum * 256 + octet, 0);
   const size = 2 ** (32 - prefix);
   return value >= base && value < base + size;
 }

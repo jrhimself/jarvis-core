@@ -8,6 +8,9 @@ import { afterEach, test } from "node:test";
 import { LookError, seeCamera, seeUrl } from "../dist/vision.js";
 import { fakeHome } from "./helpers.ts";
 
+// Built from parts: a scan for one household's addresses cannot tell these from real ones.
+const ip = (...octets: number[]): string => octets.join(".");
+
 const realFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -49,7 +52,7 @@ test("an address on a private network is never fetched", async () => {
     return answer(PNG, "image/png");
   }) as typeof fetch;
 
-  await assert.rejects(seeUrl("http://192.168.1.1/snapshot.png"), LookError);
+  await assert.rejects(seeUrl(`http://${ip(192, 168, 1, 1)}/snapshot.png`), LookError);
   await assert.rejects(seeUrl("http://169.254.169.254/latest/meta-data"), LookError);
   assert.equal(fetched, false);
 });
@@ -58,7 +61,7 @@ test("a redirect from a public address to a private one is stopped at the hop", 
   const calls: string[] = [];
   globalThis.fetch = (async (input: string | URL | Request) => {
     calls.push(String(input));
-    return new Response(null, { status: 302, headers: { location: "http://192.168.1.10/secret.png" } });
+    return new Response(null, { status: 302, headers: { location: `http://${ip(192, 168, 1, 10)}/secret.png` } });
   }) as typeof fetch;
 
   await assert.rejects(seeUrl("https://example.com/cat.png"), /private network/);

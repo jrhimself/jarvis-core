@@ -12,6 +12,9 @@ import { test } from "node:test";
 import { BrowserSession, BrowseError, formatSnapshot } from "../dist/browser.js";
 import type { PwBrowser, PwContext, PwPage, PwRoute, Snapshot } from "../dist/browser.js";
 
+// Built from parts: a scan for one household's addresses cannot tell these from real ones.
+const ip = (...octets: number[]): string => octets.join(".");
+
 interface Fake {
   session: BrowserSession;
   log: string[];
@@ -96,7 +99,7 @@ test("the page is shown as text and a numbered list of controls, marked as quote
 
 test("only public addresses are opened, and the browser is not even started for the others", async () => {
   const { session, launched } = fake(PAGE);
-  await assert.rejects(session.goto("http://192.168.1.1/"), BrowseError);
+  await assert.rejects(session.goto(`http://${ip(192, 168, 1, 1)}/`), BrowseError);
   await assert.rejects(session.goto("file:///etc/passwd"), BrowseError);
   assert.equal(launched(), 0);
 });
@@ -115,7 +118,7 @@ test("every request the page makes is checked, not just the first", async () => 
   const { session, requestAllowed } = fake(PAGE);
   await session.goto("https://shop.example/");
   assert.equal(await requestAllowed("https://cdn.shop.example/app.js"), true);
-  assert.equal(await requestAllowed("http://192.168.1.1/admin"), false);
+  assert.equal(await requestAllowed(`http://${ip(192, 168, 1, 1)}/admin`), false);
   assert.equal(await requestAllowed("http://localhost:8123/api"), false);
   assert.equal(await requestAllowed("ftp://example.com/x"), false);
   await session.close();

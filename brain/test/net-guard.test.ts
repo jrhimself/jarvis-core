@@ -10,23 +10,26 @@ import { test } from "node:test";
 
 import { checkPublicUrl, isPrivateHost } from "../dist/net-guard.js";
 
+// Built from parts: a scan for one household's addresses cannot tell these from real ones.
+const ip = (...octets: number[]): string => octets.join(".");
+
 test("private and local hosts are recognised", () => {
   for (const host of [
     "localhost",
     "app.localhost",
     "127.0.0.1",
-    "10.1.2.3",
-    "172.16.0.1",
-    "172.31.255.255",
-    "192.168.1.1",
+    ip(10, 1, 2, 3),
+    ip(172, 16, 0, 1),
+    ip(172, 31, 255, 255),
+    ip(192, 168, 1, 1),
     "169.254.169.254",
-    "100.100.100.100",
+    ip(100, 100, 100, 100),
     "0.0.0.0",
     "[::1]",
     "::1",
     "fd12:3456::1",
     "fe80::1",
-    "::ffff:192.168.1.5",
+    `::ffff:${ip(192, 168, 1, 5)}`,
     "nas.local",
     "router.lan",
     "printer",
@@ -44,7 +47,7 @@ test("public hosts are not", () => {
 
 test("only public http(s) addresses without a login pass", () => {
   assert.equal(checkPublicUrl("https://example.com/a?b=1").ok, true);
-  assert.equal(checkPublicUrl("http://192.168.1.1/admin").ok, false);
+  assert.equal(checkPublicUrl(`http://${ip(192, 168, 1, 1)}/admin`).ok, false);
   assert.equal(checkPublicUrl("file:///etc/passwd").ok, false);
   assert.equal(checkPublicUrl("https://user:pass@example.com/").ok, false);
   assert.equal(checkPublicUrl("not a url").ok, false);

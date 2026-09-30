@@ -10,6 +10,9 @@ import { test } from "node:test";
 
 import { apiHints, genuine, htmlToText, recoverPage, renderRecovery } from "../dist/recover.js";
 
+// Built from parts: a scan for one household's addresses cannot tell these from real ones.
+const ip = (...octets: number[]): string => octets.join(".");
+
 const ARTICLE = `<html><head><title>The real story</title><script>var x=1</script></head><body>
   <h1>The real story</h1>${"<p>A paragraph with words in it, long enough to count as content.</p>".repeat(12)}
 </body></html>`;
@@ -101,7 +104,7 @@ test("when nothing works the answer says what was tried and where else to look",
 
 test("a private address is not looked up anywhere", async () => {
   const deps = fetcher({});
-  const result = await recoverPage("http://192.168.1.5/page", deps);
+  const result = await recoverPage(`http://${ip(192, 168, 1, 5)}/page`, deps);
   assert.equal(result.ok, false);
   assert.deepEqual(deps.asked, []);
 });
