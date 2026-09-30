@@ -42,19 +42,25 @@ import {
 import {
   deleteBranch,
   getPullRequest,
+  inRepo,
+  listPullRequests,
   mergePullRequest,
   openPullRequest,
   type GitHubConfig,
+  type PullRequest,
 } from "./github.js";
 import { refreshBoard, topicOf } from "./board.js";
 import { escapeHtml, failureMessage, reviewMessage, spokenFailure, spokenReady } from "./notify.js";
+import { describePullRequest, matchPullRequests, pullNumber } from "./pull-requests.js";
 import { forget } from "./runners.js";
 import {
   currentTrial,
   describeTarget,
   pullRequestTarget,
   rememberOffer,
+  repoName,
   requestTrial,
+  sameTarget,
   type PullTarget,
   type Trial,
   type TrialRequest,
@@ -489,40 +495,145 @@ export class SelfDevelopment {
     return worker.ask(text);
   }
 
-  /**
-   * Merges the waiting pull request and asks to be restarted on it.
-   *
-   * Refuses on anything it did not open itself, on a pull request GitHub says is
-   * not clean, and on a task that is not in `awaiting` -- three ways of saying
-   * that the only thing a spoken yes can do is land a change that already
-   * passed everything else.
-   */
-  async approve(now: Date): Promise<{ ok: true; sha: string; task: DevTask } | { ok: false; error: string }> {
-    const task = awaitingDevTask(this.db);
-    if (task === null) return { ok: false, error: "No fix is waiting for approval." };
-    if (task.prNumber === null) return { ok: false, error: "That fix has no pull request." };
-    if (!this.canOpenPullRequests) return { ok: false, error: "I have no GitHub token." };
+  /** The open pull requests on the assistant's own source, most recent first. */
+  async openPullRequests(): Promise<PullRequest[]> {
+    if (!this.canOpenPullRequests) return [];
+    const listed = await listPullRequests(githubConfig(this.config));
+    return listed.ok ? listed.value : [];
+  }
 
+  /**
+   * The attempt that left a pull request behind, whichever door opened it.
+   *
+   * A small fix records its own number; a runner's is in what it said when it
+   * was done. Either way the row is what turns a merge into an answer to "is
+   * that one done".
+   */
+  #taskFor(target: PullTarget): DevTask | null {
+    return latestDevTasks(this.db, 50).find((task) => sameTarget(this.targetOf(task), target)) ?? null;
+  }
+
+  /**
+   * Which pull request a spoken reference means, and whether it can be merged.
+   *
+   * The reference wins when there is one, because it is the more specific of
+   * the two: a link or a number is not a guess. Without one it is the fix
+   * waiting for a yes, and failing that whatever is open -- one candidate is an
+   * answer, several are a question. Nothing here merges anything; the point of
+   * separating it is that the owner hears which pull request he is saying yes
+   * to before he says it.
+   */
+  async chooseMerge(
+    reference: string,
+  ): Promise<{ ok: true; target: PullTarget; pull: PullRequest; task: DevTask | null } | { ok: false; error: string }> {
+    if (!this.canOpenPullRequests) {
+      return { ok: false, error: "I have no GitHub token, so I cannot merge anything." };
+    }
     const github = githubConfig(this.config);
-    const current = await getPullRequest(github, task.prNumber);
-    if (!current.ok) return { ok: false, error: current.error };
-    if (current.value.state === "closed" && !current.value.merged) {
-      updateDevTask(this.db, task.id, { state: "abandoned", detail: "the pull request was closed" }, now);
-      return { ok: false, error: "That pull request was closed." };
+    const said = reference.trim();
+    const number = said === "" ? null : pullNumber(said);
+    let target: PullTarget | null =
+      (said === "" ? null : pullRequestTarget(said)) ??
+      (number === null ? null : { repo: "core", number });
+
+    if (target === null) {
+      const waiting = said === "" ? awaitingDevTask(this.db) : null;
+      target = waiting === null ? null : this.targetOf(waiting);
     }
 
-    const merged = await mergePullRequest(github, task.prNumber, titleFor(task.instruction));
-    if (!merged.ok) return { ok: false, error: merged.error };
-    if (task.branch !== null) await deleteBranch(github, task.branch);
+    if (target === null) {
+      const listed = await listPullRequests(github);
+      if (!listed.ok) return listed;
+      const [only, ...rest] = matchPullRequests(said, listed.value);
+      if (only === undefined) {
+        return {
+          ok: false,
+          error:
+            listed.value.length === 0
+              ? "Nothing is open on your own code to merge."
+              : `I cannot tell which pull request that is. These are open:\n${listed.value.map(describePullRequest).join("\n")}\nAsk which one he means.`,
+        };
+      }
+      if (rest.length > 0) {
+        return {
+          ok: false,
+          error: `That fits more than one; ask which:\n${[only, ...rest].map(describePullRequest).join("\n")}`,
+        };
+      }
+      target = { repo: "core", number: only.number };
+    }
+
+    const got = await getPullRequest(inRepo(github, repoName(this.config.devGitHubRepo, target)), target.number);
+    if (!got.ok) return got;
+    const pull = got.value;
+    const what = describeTarget(target);
+    if (pull.merged) return { ok: false, error: `${what} is merged already.` };
+    if (pull.state === "closed") return { ok: false, error: `${what} was closed without being merged.` };
+    if (pull.draft) return { ok: false, error: `${what} is still a draft, so it is not finished.` };
+    if (pull.mergeable_state === "dirty") {
+      return {
+        ok: false,
+        error: `${what} conflicts with main and GitHub will not merge it. It has to be rebased first; say so.`,
+      };
+    }
+    return { ok: true, target, pull, task: this.#taskFor(target) };
+  }
+
+  /**
+   * Merges one pull request and, when it is this assistant's own code, asks to
+   * be restarted on it.
+   *
+   * Whichever door opened it: a fix written here, a runner's work, a pack's
+   * pull request, something pushed by hand. What keeps it the owner's decision
+   * is the tool that calls this, which needs his yes in an earlier turn. A pack
+   * is merged and no more -- the running checkout of a pack is not this
+   * process's to replace -- and the caller is told which of the two happened.
+   */
+  async merge(
+    target: PullTarget,
+    now: Date,
+  ): Promise<{ ok: true; sha: string; deploying: boolean } | { ok: false; error: string }> {
+    if (!this.canOpenPullRequests) return { ok: false, error: "I have no GitHub token." };
+    const github = inRepo(githubConfig(this.config), repoName(this.config.devGitHubRepo, target));
+    const task = this.#taskFor(target);
+    const what = describeTarget(target);
+
+    const current = await getPullRequest(github, target.number);
+    if (!current.ok) return current;
+    if (current.value.merged) return { ok: false, error: `${what} is merged already.` };
+    if (current.value.state === "closed") {
+      if (task !== null) {
+        updateDevTask(this.db, task.id, { state: "abandoned", detail: "the pull request was closed" }, now);
+      }
+      return { ok: false, error: `${what} was closed.` };
+    }
+
+    const merged = await mergePullRequest(github, target.number, current.value.title);
+    if (!merged.ok) return merged;
+    // Only a branch in the repository that was merged into: a fork's is not this
+    // token's to delete, and a failure there would say nothing useful anyway.
+    if (current.value.headRepo === github.repo && current.value.branch !== "") {
+      await deleteBranch(github, current.value.branch);
+    }
+
+    const record = (detail: string) => {
+      if (task !== null) updateDevTask(this.db, task.id, { state: "merged", detail }, now);
+      refreshBoard();
+    };
+    const landed = `merged as ${merged.value.slice(0, 7)}`;
+
+    if (target.repo !== "core") {
+      record(landed);
+      return { ok: true, sha: merged.value, deploying: false };
+    }
 
     const asked = await requestDeploy(this.config.dataDir, merged.value);
     if (!asked.ok) {
-      updateDevTask(this.db, task.id, { state: "merged", detail: asked.error }, now);
+      record(asked.error);
       return { ok: false, error: `Merged, but ${asked.error}` };
     }
-
-    updateDevTask(this.db, task.id, { state: "merged", detail: `merged as ${merged.value.slice(0, 7)}` }, now);
-    return { ok: true, sha: merged.value, task };
+    record(landed);
+    return { ok: true, sha: merged.value, deploying: true };
   }
 
   /** How the last requested deploy ended, once the root side has written it down. */

@@ -323,8 +323,15 @@ cloned from here has an `origin` it may not write to. Point it at your own copy 
 accepted is asked before the work rather than after it, so a remote that refuses costs a second
 instead of a quarter of an hour and the commit that was written in it.
 
-Merging is a second spoken yes, in a later turn, on a pull request that is already green. The brain
-then writes the merged commit hash into `data/deploy-request` and stops. It cannot restart itself —
+Merging is a second spoken yes, in a later turn, on a pull request that is already green — any open
+one, and not only the fix this machinery wrote itself. `propose_merge` takes the pull request in the
+words it was named in: a number, a link, `jarvis-pack-gmail#6`, a branch, or a few words of the
+title, matched against what is actually open. One candidate is an answer, several are a question,
+and a number is only read as a pull request number when it is said as one, so "the one runner 11
+built" does not land pull request 11. A pull request that is a draft, closed or in conflict with
+`main` is refused with which of the three it is, rather than as GitHub's error. A pack's pull request
+is merged and no more, because the running copy of a pack is not this process's to replace; for its
+own code the brain writes the merged commit hash into `data/deploy-request` and stops. It cannot restart itself —
 its unit runs with `NoNewPrivileges` — so a path unit picks the file up and a root one-shot
 (`scripts/self-deploy.sh`) refuses anything that is not already an ancestor of `origin/main`, runs
 the suite again, restarts the service and rolls the checkout back if any of that fails. The result

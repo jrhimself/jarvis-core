@@ -45,11 +45,30 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   What is spoken is not what is answered: the language is worked out from the speech (`JARVIS_STT_LANGUAGES`, Dutch and
   English), once per utterance, on the first partial, so the final is not delayed by choosing again.
 
+- `propose_merge` takes the pull request in the words it was named in: `25`, `#25`, a link,
+  `jarvis-pack-gmail#6`, a branch name, or a few words of the title, matched against what is
+  actually open. Without a reference it is still the fix waiting for a yes, or the only thing
+  open. One candidate is an answer and several are a question, because a merge is not undone by
+  asking again.
+- A bare number only counts when it is said as a pull request number. "The one runner 11 built"
+  names a runner, and a yes meant for that one must not land pull request 11.
+- Merging reaches a pack's own repository as well as the assistant's source. A pack is merged and
+  no more: the running copy of a pack is not the brain's to replace, and the answer says so
+  instead of promising a restart that is not coming.
+- `dev_status` lists the open pull requests, so "is anything waiting for me?" is answered from
+  GitHub rather than from the task table, which only ever knew about half of them.
+
 ### Changed
 
 - The Dutch Piper voice is `nl_NL-pim-medium`, not `mls`: read back by Whisper, a plain greeting came out word
   for word in Pim and as noise in MLS.
 - The two Python processes (Piper, Whisper) share one small pipe protocol, in `voice/pipe.ts`.
+- A pull request that is a draft, already merged, closed or in conflict with `main` is refused
+  before anything is proposed, with which of the four it is. The conflict used to surface as
+  GitHub's refusal after the yes.
+- The squash commit takes the pull request's own title, which for a pull request nothing here
+  opened is the only title there is. A merged branch is deleted only when it lives in the
+  repository it was merged into.
 
 ## [2.3.0] - 2026-09-30
 
