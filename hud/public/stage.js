@@ -403,13 +403,17 @@
     const w = n.stage.clientWidth;
     const h = n.stage.clientHeight;
     const e = smooth(Math.max(state.mix, state.busyMix));
-    const rest = Math.min(1, h / 640, w / 1300);
+    /* Sized from the room left over, with the state line under it counted in:
+       the orb may fill the stage, but not at the price of its own caption. */
+    const rest = Math.min(1, h / 700, w / 1300);
     const s = rest + (0.2 - rest) * e;
     const tx = (92 - w / 2) * e;
     const ty = (h / 2 - 86) * e;
     n.orb.style.transform =
       'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + s.toFixed(4) + ')';
-    n.orb.style.pointerEvents = e > 0.95 ? 'auto' : 'none';
+    /* Reachable wherever it stands: the swarm is turned by hand, and the middle
+       of the stage is empty anyway. */
+    n.orb.style.pointerEvents = 'auto';
     if (n.dock) {
       /* The dock travels with the orb but is not scaled, so the state line and
          the pack strip stay readable in the corner. Under the orb while it is
@@ -417,7 +421,7 @@
          corner and anchored by its left edge, or a strip of pack cards would
          run off the stage rather than into the room. */
       const dx = tx - 56 * e;
-      const dy = ty + 268 * (1 - e) + 64 * e;
+      const dy = ty + (280 * rest + 18) * (1 - e) + 64 * e;
       n.dock.style.transform =
         'translate(' + (-50 + 50 * e).toFixed(1) + '%,0)' +
         ' translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';

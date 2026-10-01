@@ -432,7 +432,10 @@ html[data-live="0"] .pill .dot { animation: none; }
   background: transparent;
   position: relative;
   z-index: 1;
+  cursor: grab;
+  touch-action: none;
 }
+#orb.is-turning { cursor: grabbing; }
 
 .orb-label {
   position: absolute;
@@ -1083,17 +1086,16 @@ html[data-live="0"] .panel { animation: none; }
   pointer-events: none;
 }
 
-.voice-chip {
-  position: fixed;
-  left: 50%;
-  bottom: 22%;
-  transform: translateX(-50%);
-  z-index: 35;
+/* Both halves of a turn are shown the same way -- a badge saying who spoke and
+   a pill holding what was said -- so the question and the answer read as one
+   conversation rather than as two different kinds of message. */
+.say-chip {
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: min(520px, 70vw);
-  padding: 10px 16px;
+  max-width: min(760px, 92vw);
+  padding: 9px 18px;
   background: hsla(calc(var(--hue) + 10), 50%, 10%, 0.78);
   border: 1px solid hsla(var(--hue), 90%, 70%, 0.45);
   border-radius: 999px;
@@ -1102,8 +1104,10 @@ html[data-live="0"] .panel { animation: none; }
   pointer-events: none;
   animation: chip-in 0.35s ease-out;
 }
-.voice-chip .chip-label {
+.say-chip[hidden] { display: none; }
+.say-chip .chip-label {
   flex-shrink: 0;
+  align-self: center;
   font-size: 9px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -1112,15 +1116,26 @@ html[data-live="0"] .panel { animation: none; }
   border: 1px solid hsla(22,100%,55%,0.45);
   border-radius: 999px;
 }
-.voice-chip .chip-text {
+/* Who is speaking is the one thing that differs, so it is the one thing with
+   its own colour: the answer wears the orb's hue. */
+.caption .chip-label {
+  color: hsla(var(--hue), 90%, 78%, 0.95);
+  border-color: hsla(var(--hue), 90%, 70%, 0.45);
+}
+.say-chip .chip-text {
   font-size: 14px;
   color: var(--text);
   letter-spacing: 0.02em;
+  text-align: left;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 @keyframes chip-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .transcript-panel {
@@ -1939,6 +1954,7 @@ html.is-focusing .footer {
 .stage-foot {
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
   padding: 2px 0 6px;
@@ -1946,23 +1962,20 @@ html.is-focusing .footer {
   position: relative;
   z-index: 6;
 }
+/* Room for both halves of a turn, kept whether or not they are there: the orb
+   is sized from what is left over, and a question appearing would otherwise
+   shrink the whole room by the height of one line. */
+@media (min-width: 1101px) {
+  .stage-foot { min-height: 168px; }
+}
 .stage-foot .caption {
-  margin: 0;
-  width: clamp(300px, 100vw - 680px, 760px);
-  max-width: 92vw;
-  font-size: 15px;
-  line-height: 1.45;
-  letter-spacing: 0;
-  text-transform: none;
-  color: hsla(var(--hue), 30%, 94%, 0.95);
-  text-shadow: 0 0 18px hsla(var(--hue), 100%, 65%, 0.35), 0 1px 8px rgba(0, 0, 0, 0.85);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
   transition: opacity 0.6s ease;
 }
-.stage-foot .caption[hidden] { display: none; }
+.stage-foot .caption .chip-text {
+  font-size: 15px;
+  line-height: 1.45;
+  color: hsla(var(--hue), 30%, 94%, 0.95);
+}
 .stage-foot .caption.fading { opacity: 0; }
 
 /* The nav row is only a way of walking the carousel, so it is there when there

@@ -23,10 +23,6 @@
   <span></span><span></span><span></span><span></span><span></span><span></span>
 </div>
 
-<div id="voice-chip" class="voice-chip" hidden>
-  <span class="chip-label">You</span>
-  <span class="chip-text" id="voice-chip-text"></span>
-</div>
 <div id="mic-error" class="mic-error" hidden></div>
 
 <div class="hud">
@@ -114,7 +110,14 @@
   <div id="pack-overflow" class="pack-overflow" hidden></div>
 
   <div class="stage-foot" data-on="0">
-    <p id="caption" class="caption" aria-live="polite" hidden></p>
+    <div id="voice-chip" class="say-chip voice-chip" hidden>
+      <span class="chip-label">You</span>
+      <span class="chip-text" id="voice-chip-text"></span>
+    </div>
+    <p id="caption" class="say-chip caption" aria-live="polite" hidden>
+      <span class="chip-label">Jarvis</span>
+      <span class="chip-text" id="caption-text"></span>
+    </p>
     <div class="stage-nav">
       <button type="button" class="nav-step" id="stage-prev" aria-label="Previous panel">‹</button>
       <span class="nav-name"><span class="nav-dot" aria-hidden="true"></span><span id="stage-label"></span></span>

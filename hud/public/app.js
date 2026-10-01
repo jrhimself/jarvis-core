@@ -1788,6 +1788,7 @@ function unfocusPanel(opts) {
     /* Leaving the desk ends the briefing; moving between panels within one does
        not, which is why this sits here and not in the private hand-off. */
     inBriefing = false;
+    if (user && window.JarvisTranscript && JarvisTranscript.release) JarvisTranscript.release();
     return _unfocusPanelNow(false);
   };
   if (focusHandOff) {
@@ -2112,6 +2113,9 @@ function boot() {
   document.addEventListener('click', (e) => {
     const target = e.target instanceof Element ? e.target : null;
     if (!target || target.closest('button, a')) return;
+    /* The orb is a thing in the room, not the background behind it: turning it
+       by hand must not also be read as dismissing what is on screen. */
+    if (target.closest('.orb-core')) return;
     const panel = target.closest('.panel[data-panel], .pack-card[data-panel]');
     const id = panel ? panel.getAttribute('data-panel') : null;
     if (focusedPanelId) {
@@ -2127,6 +2131,31 @@ function boot() {
     if (target.closest('input, form')) return;
     if (id) focusPanel(id, { user: true });
   });
+
+  /* The swarm can be turned by hand. It is the one thing on the desk that is
+     an object rather than a readout, and a shell of points only reads as a
+     sphere once you have moved it yourself. */
+  if (canvas && window.JarvisSwarm) {
+    let dragging = null;
+    canvas.addEventListener('pointerdown', (e) => {
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      canvas.setPointerCapture(e.pointerId);
+      canvas.classList.add('is-turning');
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging || e.pointerId !== dragging.id) return;
+      JarvisSwarm.drag(e.clientX - dragging.x, e.clientY - dragging.y);
+      dragging.x = e.clientX;
+      dragging.y = e.clientY;
+    });
+    const letGo = (e) => {
+      if (!dragging || e.pointerId !== dragging.id) return;
+      dragging = null;
+      canvas.classList.remove('is-turning');
+    };
+    canvas.addEventListener('pointerup', letGo);
+    canvas.addEventListener('pointercancel', letGo);
+  }
 
   const stepPrev = document.getElementById('stage-prev');
   const stepNext = document.getElementById('stage-next');
