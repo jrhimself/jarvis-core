@@ -90,6 +90,17 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Changed
 
+- The swarm arrives on boot rather than appearing. It had the ring orb's bloom, which is half a
+  second because rings are then drawn on top of it for another second -- but the swarm has no rings,
+  so that half second was the whole build and nine hundred points were simply there. The cloud now
+  gets the time the ring pass would have taken as well, eased at both ends, and the points start far
+  enough out to be off the frame: they cross it inwards, the near face landing while the far side is
+  still on its way, and the camera that pulls back to keep the travelling cloud inside a square
+  canvas lets go as they settle. Two faults in the old fly-in only showed at that distance: a point
+  given its full travel in depth crossed the camera and came back mirrored through the centre, and
+  depth read as brightness far outside the shell, which made the alpha negative -- which a canvas
+  ignores, so the point was drawn in whatever brightness the point before it had. Depth now travels
+  a fraction of what the plane does, and the brightness is clamped to the body.
 - The Dutch Piper voice is `nl_NL-pim-medium`, not `mls`: read back by Whisper, a plain greeting came out word
   for word in Pim and as noise in MLS.
 - The two Python processes (Piper, Whisper) share one small pipe protocol, in `voice/pipe.ts`.

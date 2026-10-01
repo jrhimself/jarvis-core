@@ -29,6 +29,17 @@ const SWARM_IDLE_SPIN = 0.17;
 /* A thought breaking into speech throws the shell outwards for this long. */
 const SWARM_BURST_S = 1.4;
 
+/* The boot arrival. The points start this many shell radii out -- far enough to
+   be off the frame, so they fly in from outside it rather than appearing on it
+   -- and the camera pulls back by `PULL` while they do, which is what keeps the
+   travelling cloud inside a square canvas. `STAGGER` is the share of the boot
+   the cascade spans: the whole shell is not one arrival but a near face landing
+   first and the far side still on its way. */
+const SWARM_BOOT_FROM = 3.6;
+const SWARM_BOOT_PULL = 1.9;
+const SWARM_BOOT_STAGGER = 0.72;
+const SWARM_BOOT_DEPTH = 0.35;
+
 /* Three brightnesses of resting point. Saturation and lightness are the
    design's; the hue comes from the voice state at draw time. */
 const SWARM_TIERS = [
@@ -219,7 +230,7 @@ function drawSwarmOrb(ctx, W, H, t, env) {
      further out still, both of which run off a square canvas and read as the
      cloud being cut to a box. The camera pulls back instead, by exactly as much
      as the cloud has grown. */
-  const unit = (Rpx * 0.78) / (1 + spread * 0.45 + (1 - reveal) * 0.8);
+  const unit = (Rpx * 0.78) / (1 + spread * 0.45 + (1 - reveal) * SWARM_BOOT_PULL);
   const colours = swarmColours(ctx, hue);
 
   ctx.clearRect(0, 0, W, H);
@@ -288,13 +299,20 @@ function drawSwarmOrb(ctx, W, H, t, env) {
 
     /* During boot the points arrive from outside, nearest first. */
     if (reveal < 1) {
-      const order = 1 - (i / SWARM_N) * 0.45;
+      const order = 1 - (i / SWARM_N) * SWARM_BOOT_STAGGER;
       const k = Math.max(0, Math.min(1, (reveal - (1 - order)) / order));
       if (k <= 0) continue;
-      const from = 2.1 + (1 - 2.1) * k;
+      /* Eased, so a point crosses the distance fast and then settles onto its
+         shell rather than stopping dead on arrival. */
+      const travelled = 1 - Math.pow(1 - k, 2.2);
+      const from = SWARM_BOOT_FROM + (1 - SWARM_BOOT_FROM) * travelled;
       x *= from;
       y *= from;
-      z *= from;
+      /* Depth travels a fraction of what the plane does. The camera sits
+         SWARM_CAMERA radii out, so a point given the full distance towards it
+         crosses the lens and comes out mirrored through the centre; and the
+         flight that can actually be seen is the one across the frame. */
+      z *= 1 + (from - 1) * SWARM_BOOT_DEPTH;
     }
 
     /* Spin about y, then the thinking roll about z, then the fixed tilt. */
@@ -319,7 +337,7 @@ function drawSwarmOrb(ctx, W, H, t, env) {
 
     /* Depth reads as brightness, which additive compositing gives for free. An
        active point keeps most of its light, so a wave shows through the body. */
-    const dz = (z + 1) / 2;
+    const dz = Math.max(0, Math.min(1, (z + 1) / 2));
     /* Whatever the camera does, a point near the edge of the frame fades out
        rather than meeting the canvas border, so the cloud never has a corner. */
     const edge = Math.hypot(sx - cx, sy - cy) / Rpx;

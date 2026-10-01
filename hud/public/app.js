@@ -114,6 +114,10 @@ const orbBoot = {
   contain: true, /* outer containment hairline */
 };
 
+/* How long the swarm takes to arrive on boot. It reads as one move, so it is
+   one number rather than the ring orb's staged build. */
+const SWARM_BOOT_MS = 2200;
+
 /* Deterministic plasma particles (seeded RNG — freeze frames stay stable) */
 const PARTICLES = (() => {
   const rnd = seeded(0x4a525649); /* JARV */
@@ -1906,7 +1910,12 @@ function easeOutCubic(x) {
   return 1 - Math.pow(1 - x, 3);
 }
 
-function animateValue(from, to, dur, onUpdate) {
+function easeInOutQuad(x) {
+  return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+}
+
+function animateValue(from, to, dur, onUpdate, ease) {
+  const curve = ease || easeOutCubic;
   return new Promise((resolve) => {
     if (dur <= 0 || reducedMotion) {
       onUpdate(to);
@@ -1916,7 +1925,7 @@ function animateValue(from, to, dur, onUpdate) {
     const t0 = performance.now();
     function tick(now) {
       const p = Math.min(1, (now - t0) / dur);
-      onUpdate(from + (to - from) * easeOutCubic(p));
+      onUpdate(from + (to - from) * curve(p));
       if (p < 1) requestAnimationFrame(tick);
       else resolve();
     }
@@ -1984,21 +1993,40 @@ async function runBootSequence() {
 
   setOrbBootEmpty();
 
-  /* 1) Core blooms ~550ms */
-  await animateValue(0, 1, 550, (v) => {
-    orbBoot.core = v;
-  });
-
-  /* 2) Rings draw in one-by-one inside→out (~130ms each) */
-  for (let i = 0; i < RING_LAYERS.length; i++) {
-    orbBoot.rings = i + 1;
-    orbBoot.ringDraw = 0;
-    await animateValue(0, 1, 120, (v) => {
-      orbBoot.ringDraw = v;
+  if (orbStyle === 'swarm') {
+    /* The swarm has no rings to draw: its whole build is the cloud flying in
+       from outside the frame, so it is given the time the ring pass would have
+       taken too. Eased both ends -- the points drift in, close fast, and settle
+       -- because at ring speed the shell simply was there. */
+    await animateValue(
+      0,
+      1,
+      SWARM_BOOT_MS,
+      (v) => {
+        orbBoot.core = v;
+      },
+      easeInOutQuad,
+    );
+    orbBoot.rings = RING_LAYERS.length;
+    orbBoot.ringDraw = 1;
+    orbBoot.contain = true;
+  } else {
+    /* 1) Core blooms ~550ms */
+    await animateValue(0, 1, 550, (v) => {
+      orbBoot.core = v;
     });
+
+    /* 2) Rings draw in one-by-one inside→out (~130ms each) */
+    for (let i = 0; i < RING_LAYERS.length; i++) {
+      orbBoot.rings = i + 1;
+      orbBoot.ringDraw = 0;
+      await animateValue(0, 1, 120, (v) => {
+        orbBoot.ringDraw = v;
+      });
+    }
+    orbBoot.contain = true;
+    await waitMs(80);
   }
-  orbBoot.contain = true;
-  await waitMs(80);
 
   /* 3) Sweep arms after rings */
   orbBoot.sweep = true;
