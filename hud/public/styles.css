@@ -2191,6 +2191,20 @@ html.is-focusing .footer {
   /* ----- selection ----- */
   .stage .panel[data-panel] > .panel-flash { display: block; }
 
+  /* The boot's arrival returns a panel to the flow and slides it up a few
+     pixels, which on the stage means falling into the grid -- over the orb --
+     and overriding the place the stage just put it. Here the panel arrives
+     where it already stands, and only the light changes. */
+  .stage .panel[data-panel].fui-enter {
+    position: absolute;
+    animation-name: fui-panel-arrive;
+  }
+  @keyframes fui-panel-arrive {
+    0%   { opacity: 0; filter: blur(3px); }
+    55%  { opacity: 1; filter: blur(0); }
+    100% { opacity: 1; filter: blur(0); pointer-events: auto; }
+  }
+
   /* ----- the orb leaves the middle ----- */
   .orb-wrap {
     position: absolute;
@@ -2229,7 +2243,9 @@ html.is-focusing .footer {
     position: absolute;
     left: 50%;
     top: 50%;
-    transform: translateX(-50%) translateY(196px);
+    /* Clear of the swarm: the orb is 560 across, and a state line inside its
+       lower half reads as part of it rather than as a caption under it. */
+    transform: translateX(-50%) translateY(268px);
     display: flex;
     flex-direction: column;
     align-items: center;

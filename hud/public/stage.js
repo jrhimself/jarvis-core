@@ -364,11 +364,15 @@
       const fe = t - (state.flashAt[id] == null ? -99 : state.flashAt[id]);
       const f = flashCurve(fe);
 
+      /* The centring comes first, so it is the only step not multiplied by the
+         scale that follows it: a panel at the centre is scaled to twice its
+         size, and a half-width shift taken after that would push it a hundred
+         and forty pixels off the middle of the stage. */
       el.style.transform =
-        'translate3d(' + v.x.toFixed(1) + 'px,' + v.y.toFixed(1) + 'px,' + v.z.toFixed(1) + 'px)' +
+        'translate(-50%,-50%)' +
+        ' translate3d(' + v.x.toFixed(1) + 'px,' + v.y.toFixed(1) + 'px,' + v.z.toFixed(1) + 'px)' +
         ' rotateY(' + v.ry.toFixed(2) + 'deg) rotateX(' + v.rx.toFixed(2) + 'deg)' +
-        ' scale(' + (v.s * (1 + f * 0.035)).toFixed(4) + ')' +
-        ' translate(-50%,-50%)';
+        ' scale(' + (v.s * (1 + f * 0.035)).toFixed(4) + ')';
       if (!curtain) {
         el.style.opacity = v.o.toFixed(3);
         el.style.visibility = v.o < 0.01 ? 'hidden' : 'visible';
@@ -413,7 +417,7 @@
          corner and anchored by its left edge, or a strip of pack cards would
          run off the stage rather than into the room. */
       const dx = tx - 56 * e;
-      const dy = ty + 196 * (1 - e) + 64 * e;
+      const dy = ty + 268 * (1 - e) + 64 * e;
       n.dock.style.transform =
         'translate(' + (-50 + 50 * e).toFixed(1) + '%,0)' +
         ' translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
