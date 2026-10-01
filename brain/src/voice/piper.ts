@@ -69,6 +69,32 @@ export function warmPiper(config: Config): void {
     });
 }
 
+/**
+ * Loads one voice into the running process now, and fails if it will not load.
+ *
+ * A voice that has just been chosen is not among the ones the process preloaded
+ * from the env file, so the first sentence read with it would wait a second and
+ * a half for the model -- and that sentence is the one saying which voice this
+ * now is. Reading a full stop nobody hears gets both the load and the verdict
+ * out of the way: a model that is missing or broken says so here rather than
+ * halfway through the next answer.
+ */
+export async function preloadPiperVoice(config: Config, voice: string): Promise<void> {
+  if (voice === "") return;
+  const pipe = pipeFor(config);
+  await pipe.ready();
+  await new Promise<void>((resolve, reject) => {
+    pipe.request(
+      { voice, text: ".", speed: config.voiceSpeed },
+      {
+        onData: () => {},
+        onDone: () => resolve(),
+        onError: (reason) => reject(new Error(reason)),
+      },
+    );
+  });
+}
+
 /** Stops the shared process; the next voice starts a fresh one. For tests and shutdown. */
 export function stopPiper(): void {
   pipe?.stop();
@@ -100,6 +126,8 @@ export class PiperVoice implements SpeakingVoice {
     private readonly config: Config,
     private readonly handlers: VoiceHandlers,
     private readonly lang: SpeechLang = "nl",
+    /** Which voice reads it; the deployment's own unless one was asked for. */
+    private readonly voice: string = piperVoiceIdFor(config, lang),
   ) {
     pipeFor(config)
       .ready()
@@ -132,7 +160,7 @@ export class PiperVoice implements SpeakingVoice {
     this.#outstanding++;
     this.#jobs.push(
       pipeFor(this.config).request(
-        { voice: piperVoiceIdFor(this.config, this.lang), text: sentence, speed: this.config.voiceSpeed },
+        { voice: this.voice, text: sentence, speed: this.config.voiceSpeed },
         {
           onData: (pcm) => {
             if (!this.#failed) this.handlers.onAudio(pcm.toString("base64"));

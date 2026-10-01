@@ -19,6 +19,23 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Added
 
+- The voice an answer is read in can be asked for: `list_voices` and `set_voice`. "Speak with another
+  voice from now on" was three jobs for a person -- find the id, edit the env file, restart the
+  service -- and none of the three needed one. A voice is now a setting like the language is a
+  setting, kept per service and per language in the deployment's own database, so it holds for every
+  turn after it and survives a restart without a file being edited or a tag deployed. A name is
+  looked up rather than guessed at, because an id that is almost right is a voice that fails on the
+  first sentence of the next answer, where nothing can be done about it: the catalogue is asked, an
+  exact id or name wins, then a whole word inside an id, and the highest quality of several equal
+  matches reads while the rest are offered as alternatives. What a catalogue is differs per service
+  and is answered per service -- an account's voices from ElevenLabs, the models on this machine for
+  Piper, and nothing for Fish, whose voices are reference ids from a dashboard with no list this side
+  of it, so there the id is taken as given. A Piper voice the machine does not have yet is fetched
+  from the published collection (`JARVIS_PIPER_VOICES_URL`) against the sizes and digests its index
+  declares, written to a temporary name and moved into place, and loaded before the choice is kept,
+  so a model that will not load leaves the deployment reading exactly as it was. The recorded lines
+  that fill a silence are keyed on the voice as well, so a switch re-records them in the new one
+  rather than answering in the old one. `set_voice default` goes back to the env file's own voices.
 - The desk is a room rather than a grid. The six panels stand angled either side of the orb, and
   when one of them has the floor the whole room turns until that one faces the viewer, the others
   falling away behind it, while the orb withdraws to the corner of the stage. One eased number is

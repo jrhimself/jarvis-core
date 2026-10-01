@@ -91,6 +91,9 @@ import {
   planUsage,
 } from "./plan.js";
 import { createSetupServer, SETUP_SERVER_NAME, SETUP_TOOLS } from "./setup-tools.js";
+import { createVoiceServer, VOICE_SERVER_NAME, VOICE_TOOLS } from "./voice-tools.js";
+import { voiceChoice } from "./voice/choice.js";
+import { voiceConfigured } from "./voice/index.js";
 import { createScheduleServer, SCHEDULE_SERVER_NAME, SCHEDULE_TOOLS } from "./schedule-tools.js";
 import { createTodoServer, TodoList, TODO_SERVER_NAME, TODO_TOOLS } from "./todo.js";
 import { createVisionServer, VISION_SERVER_NAME, VISION_TOOLS } from "./vision.js";
@@ -117,6 +120,7 @@ const haConfigured = home !== null;
 // can only answer "I have not been watching" is worth neither its description
 // nor the chance of being called.
 const insightConfigured = proactiveAtLeast(config.proactive, "observe");
+const speaks = voiceConfigured(config);
 // Self-development needs somewhere to build; without a repository the tools
 // would only ever be able to explain why they cannot do anything.
 // Read once: an assistant whose character changed halfway through a
@@ -497,6 +501,9 @@ export class AgentSession {
           // Asks the same dependencies the HUD's panel asks, from the packs this
           // session loaded rather than from a list written here.
           [LANGUAGE_SERVER_NAME]: createLanguageServer(language(), interfaceLanguage(), store),
+          // Only where something speaks: a deployment with no voice has no
+          // voices to list and nothing to read the next answer with.
+          ...(speaks ? { [VOICE_SERVER_NAME]: createVoiceServer(config, voiceChoice()) } : {}),
           [SETUP_SERVER_NAME]: createSetupServer(deployment, () =>
             runHealthChecks(specsFor(config, store, Object.keys(packs.servers), packs.probes, packs.delegate)),
           ),
@@ -527,6 +534,7 @@ export class AgentSession {
           ...(devConfigured ? DEV_TOOLS : []),
           ...SETUP_TOOLS,
           ...LANGUAGE_TOOLS,
+          ...(speaks ? VOICE_TOOLS : []),
           ...TODO_TOOLS,
           ...VISION_TOOLS,
           ...(config.schedule ? SCHEDULE_TOOLS : []),

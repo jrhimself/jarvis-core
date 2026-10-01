@@ -21,7 +21,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import { loadConfig, type Config } from "../dist/config.js";
 import { FishVoice, fishVoiceIdFor, readEvent, startEvent } from "../dist/voice/fish.js";
-import { openVoice, voiceConfigured, voiceFor, voiceKeyVariable } from "../dist/voice/index.js";
+import { defaultVoiceFor, openVoice, voiceConfigured, voiceKeyVariable } from "../dist/voice/index.js";
 import { lineKey, recordLine, RecordedLines } from "../dist/voice/lines.js";
 import { withEnv } from "./helpers.ts";
 
@@ -115,7 +115,7 @@ test("the free model is the default, and the voices fall back the way ElevenLabs
   assert.equal(config.fishModel, "s2.1-pro-free");
   assert.equal(fishVoiceIdFor(config, "nl"), "nl-voice");
   assert.equal(fishVoiceIdFor(config, "en"), "nl-voice", "no English voice: the Dutch one reads it");
-  assert.equal(voiceFor(config, "nl"), "nl-voice");
+  assert.equal(defaultVoiceFor(config, "nl"), "nl-voice");
 
   const both = configWith({
     FISH_AUDIO_API_KEY: "f",
@@ -371,5 +371,9 @@ test("a fixed line is recorded once, kept on disk, and read back in the same voi
   const faster = { ...config, voiceSpeed: 1.1 };
   assert.equal(new RecordedLines(faster, dir).get("Momentje.", "nl"), null, "another speed is another voice");
   assert.notEqual(lineKey(config, "Momentje.", "nl"), lineKey(config, "Momentje.", "en"));
+  // A voice asked for in conversation is a voice of its own: the lines recorded
+  // in the one before it are on disk and are not read back.
+  assert.notEqual(lineKey(config, "Momentje.", "nl"), lineKey(config, "Momentje.", "nl", "other"));
+  assert.equal(new RecordedLines(config, dir, () => "other").get("Momentje.", "nl"), null);
   server.close();
 });

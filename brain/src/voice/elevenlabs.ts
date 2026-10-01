@@ -56,6 +56,8 @@ export class Voice implements SpeakingVoice {
      * glued into a Dutch sentence.
      */
     private readonly lang: SpeechLang = "nl",
+    /** Which voice reads it; the deployment's own unless one was asked for. */
+    private readonly voice: string = voiceIdFor(config, lang),
   ) {
     this.#connect();
   }
@@ -66,7 +68,8 @@ export class Voice implements SpeakingVoice {
 
   #connect(): void {
     const url =
-      `wss://api.elevenlabs.io/v1/text-to-speech/${voiceIdFor(this.config, this.lang)}/stream-input` +
+      // A path segment, and no longer one that only the env file can set.
+      `wss://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(this.voice)}/stream-input` +
       `?model_id=${MODEL_ID}&output_format=${OUTPUT_FORMAT}&language_code=${this.lang}`;
 
     const socket = new WebSocket(url, {

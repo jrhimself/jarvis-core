@@ -12,7 +12,13 @@ import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 
 import { loadConfig, type Config } from "../dist/config.js";
-import { openVoice, voiceConfigured, voiceCreditsLeft, voiceFor, voiceKeyVariable } from "../dist/voice/index.js";
+import {
+  defaultVoiceFor,
+  openVoice,
+  voiceConfigured,
+  voiceCreditsLeft,
+  voiceKeyVariable,
+} from "../dist/voice/index.js";
 import { PiperVoice, piperVoiceIdFor, stopPiper } from "../dist/voice/piper.js";
 import { withEnv } from "./helpers.ts";
 
@@ -96,8 +102,8 @@ test("there is nothing to run out of", async () => {
 
 test("each language has its voice, and each falls back to the other's", () => {
   const both = piperConfig();
-  assert.equal(voiceFor(both, "nl"), "nl-voice");
-  assert.equal(voiceFor(both, "en"), "en-voice");
+  assert.equal(defaultVoiceFor(both, "nl"), "nl-voice");
+  assert.equal(defaultVoiceFor(both, "en"), "en-voice");
 
   // An empty variable means "the default", so a voice is emptied on the config.
   const onlyEnglish = { ...both, piperVoice: "" };
