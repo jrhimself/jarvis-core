@@ -25,7 +25,10 @@
  * `dev/store.ts`: one attempt per gap at a time, two per week, a handful a day.
  *
  * Merging is the one that matters most, and it keeps both turns: merging means
- * JARVIS restarts on code he wrote himself.
+ * JARVIS restarts on code he wrote himself. Which pull request is merged is a
+ * separate question from whether it may be -- `propose_merge` takes any open
+ * one, named however it was said, because a runner's work and a pack's pull
+ * request wait for exactly the same yes as a fix written here.
  */
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
@@ -34,15 +37,16 @@ import { z } from "zod";
 import type { Config } from "./config.js";
 import { DAILY_LIMIT, MAX_FILES, slugify } from "./dev/guard.js";
 import { SelfDevelopment } from "./dev/run.js";
+import { describePullRequest } from "./dev/pull-requests.js";
 import { answerFirst, lookUp } from "./dev/stand-in.js";
 import { language } from "./language.js";
 import { DAILY_GAPS, GAP_ATTEMPTS, type DevTask } from "./dev/store.js";
-import { describeTarget } from "./dev/trial.js";
+import { describeTarget, readTargetKey, targetKey } from "./dev/trial.js";
 
 /** What was proposed, so a later turn can carry out that and nothing else. */
 export interface PendingDevAction {
   kind: "task" | "merge";
-  /** The instruction for a task; the pull request number for a merge. */
+  /** The instruction for a task; which pull request, as `targetKey` writes it, for a merge. */
   key: string;
   /**
    * The route the guard chose when the job was proposed.
@@ -375,9 +379,10 @@ export function createDevServer(
   const status = tool(
     "dev_status",
     "Where JARVIS' own building work stands: what is running, what is waiting for " +
-      "the user's yes, what runners are doing, how the last attempt failed and what the " +
-      "output said, how the last deploy ended. The only acceptable source for claims like " +
-      "'that fix is ready' or 'the tests failed on this' -- never say either from memory.",
+      "the user's yes, what runners are doing, which pull requests are open on his own " +
+      "code, how the last attempt failed and what the output said, how the last deploy " +
+      "ended. The only acceptable source for claims like 'that fix is ready', 'nothing is " +
+      "waiting to be merged' or 'the tests failed on this' -- never say any of them from memory.",
     {},
     async () => {
       const lines: string[] = [];
@@ -407,6 +412,17 @@ export function createDevServer(
       }
       if (!dev.canOpenPullRequests) {
         lines.push("Note: there is no GitHub token, so a branch can be pushed but no pull request opened.");
+      }
+
+      // Every open pull request, not only the ones a task row knows about: a
+      // runner's work and anything pushed by hand are waiting for the same yes,
+      // and propose_merge can land any of them.
+      const open = await dev.openPullRequests();
+      if (open.length > 0) {
+        lines.push(
+          "Open pull requests on your own code, any of which propose_merge can land:",
+          ...open.map(describePullRequest),
+        );
       }
 
       const onTrial = await dev.trial();
@@ -446,20 +462,35 @@ export function createDevServer(
 
   const proposeMerge = tool(
     "propose_merge",
-    "Register that you intend to merge the pull request that is waiting, before " +
-      "asking the user. Merging deploys the change and restarts JARVIS on his own new " +
-      "code, so say that out loud along with the link, ask whether to go ahead, and " +
-      "stop. Carry it out with approve_merge in a later turn.",
-    {},
-    async () => {
-      const waiting = dev.awaiting();
-      if (waiting === null) return refused("No fix is waiting for approval.");
-      if (waiting.prNumber === null) return refused("That fix has no pull request to merge.");
+    "Register that you intend to merge a pull request, before asking the user. Any " +
+      "open one, however it came about: the fix you wrote yourself, what a runner built, " +
+      "a pack's, one somebody pushed by hand. Say which pull request it is in `reference`, " +
+      "in the words he used; leave it out only when he means the fix that is waiting for " +
+      "his yes. Merging your own code deploys it and restarts you, so say that out loud " +
+      "along with the title and the link, ask whether to go ahead, and stop. Carry it out " +
+      "with approve_merge in a later turn. When this comes back with several candidates, " +
+      "ask which one rather than picking one.",
+    {
+      reference: z.string().default("")
+        .describe(
+          "Which pull request, in whatever words he used: '25', '#25', a link, " +
+            "'jarvis-pack-gmail#6', a branch name, or words from its title. Empty means the " +
+            "fix that is waiting for approval, or the only thing open",
+        ),
+    },
+    async (args) => {
+      const chosen = await dev.chooseMerge(args.reference);
+      if (!chosen.ok) return refused(chosen.error);
       const { turnId, setPending } = context();
-      setPending({ kind: "merge", key: String(waiting.prNumber), askedInTurn: turnId });
+      setPending({ kind: "merge", key: targetKey(chosen.target), askedInTurn: turnId });
+      const state =
+        chosen.pull.mergeable_state === "blocked"
+          ? " Its checks are not green yet, so GitHub may refuse it; say that too."
+          : "";
       return ok(
-        `Ready to merge: ${describeTask(waiting)} Ask out loud whether you may, mention that ` +
-          "you restart afterwards, and stop there.",
+        `Ready to merge ${describeTarget(chosen.target)}: "${chosen.pull.title}" ${chosen.pull.url}` +
+          `${chosen.task === null ? "" : ` -- ${describeTask(chosen.task)}`}${state} Ask out loud whether ` +
+          `you may, ${chosen.target.repo === "core" ? "mention that you restart afterwards" : "say it is a pack, so you do not restart on it"}, and stop there.`,
       );
     },
     { annotations: { readOnlyHint: false, idempotentHint: true } },
@@ -467,38 +498,35 @@ export function createDevServer(
 
   const approveMerge = tool(
     "approve_merge",
-    "Merge the waiting pull request and restart on it. Needs propose_merge and a " +
-      "spoken yes from an earlier turn. The restart happens after the suite has run " +
-      "again on the merged commit, so it is a minute or two away -- say so, and check " +
-      "dev_status afterwards rather than claiming it worked.",
+    "Merge the pull request that propose_merge registered, and restart on it when it is " +
+      "your own code. Needs propose_merge and a spoken yes from an earlier turn. The restart " +
+      "happens after the suite has run again on the merged commit, so it is a minute or two " +
+      "away -- say so, and check dev_status afterwards rather than claiming it worked.",
     {
       confirmed: z.boolean().default(false)
         .describe("True only after the user answered yes to a question you asked in an earlier turn"),
     },
     async (args) => {
       const { turnId, pending, setPending } = context();
-      const waiting = dev.awaiting();
-      const matches =
-        pending !== null &&
-        pending.kind === "merge" &&
-        waiting !== null &&
-        pending.key === String(waiting.prNumber);
-      if (!matches || pending?.askedInTurn === turnId) {
+      const target = pending === null || pending.kind !== "merge" ? null : readTargetKey(pending.key);
+      if (target === null || pending?.askedInTurn === turnId) {
         return refused(
-          "This has to be proposed first. Call propose_merge, ask out loud, and try again " +
-            "once he has answered in a later turn.",
+          "This has to be proposed first. Call propose_merge with the pull request he means, " +
+            "ask out loud, and try again once he has answered in a later turn.",
         );
       }
       if (!args.confirmed) return refused("He has not confirmed anything yet. Ask, then set confirmed to true.");
       setPending(null);
 
-      const merged = await dev.approve(new Date());
-      return merged.ok
-        ? ok(
-            `Merged as ${merged.sha.slice(0, 7)}. The deploy runs the suite again and restarts ` +
-              "you afterwards; check it later with dev_status.",
-          )
-        : refused(merged.error);
+      const merged = await dev.merge(target, new Date());
+      if (!merged.ok) return refused(merged.error);
+      return ok(
+        merged.deploying
+          ? `Merged as ${merged.sha.slice(0, 7)}. The deploy runs the suite again and restarts ` +
+              "you afterwards; check it later with dev_status."
+          : `Merged as ${merged.sha.slice(0, 7)}. It is a pack, so nothing restarts here: the running ` +
+              "copy of that pack stays as it is until it is updated. Say that.",
+      );
     },
     { annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } },
   );

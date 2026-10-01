@@ -135,6 +135,41 @@ function target(repo: string, pack: string | undefined, number: number): PullTar
   return PACK_ID.test(id) ? { repo: "pack", pack: id, number } : null;
 }
 
+/** Whether two targets are the same pull request. */
+export function sameTarget(a: PullTarget | null, b: PullTarget | null): boolean {
+  if (a === null || b === null || a.number !== b.number) return false;
+  if (a.repo === "core") return b.repo === "core";
+  return b.repo === "pack" && a.pack === b.pack;
+}
+
+/**
+ * The repository a target lives in, as GitHub spells it.
+ *
+ * A pack is `<owner>/jarvis-pack-<id>` beside the assistant's own source, which
+ * is the convention the pack tooling already assumes. A pack published under
+ * another owner is GitHub's 404 to give, not a guess to make here.
+ */
+export function repoName(coreRepo: string, target: PullTarget): string {
+  if (target.repo === "core") return coreRepo;
+  const owner = coreRepo.split("/")[0] ?? "";
+  return `${owner}/jarvis-pack-${target.pack}`;
+}
+
+/**
+ * A target as one word, to carry between the turn that proposes a merge and the
+ * turn that carries it out.
+ */
+export function targetKey(target: PullTarget): string {
+  return target.repo === "core" ? `core#${target.number}` : `pack:${target.pack}#${target.number}`;
+}
+
+/** The other half of `targetKey`; anything else reads as nothing. */
+export function readTargetKey(key: string): PullTarget | null {
+  const match = /^(?:core|pack:([a-z0-9-]+))#(\d+)$/.exec(key.trim());
+  if (match === null) return null;
+  return target(match[1] === undefined ? "jarvis-core" : "jarvis-pack", match[1], Number(match[2]));
+}
+
 /** The one line the root side reads. */
 export function trialLine(target: PullTarget | null): string {
   if (target === null) return "untry";
