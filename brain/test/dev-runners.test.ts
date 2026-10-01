@@ -26,7 +26,10 @@ import {
   QUIET_MS,
   readConsideration,
   readVerdict,
+  sayStalled,
   settled,
+  STALL_MS,
+  stalledMessage,
 } from "../dist/dev/runners.js";
 import { readReport } from "../dist/dev/report-endpoint.js";
 import type { Press } from "../dist/telegram.js";
@@ -419,11 +422,12 @@ test("a quiet runner is looked in on, and an unchanged screen is judged once", a
   const tail = async () => ({ ok: true as const, text: "same screen" });
   const report = async (r: { slot: number }) => reports.push(r.slot);
   const gone = async () => assert.fail("not gone");
+  const stalled = async () => {};
 
-  await lookIn([job], [31], tail, report, gone, QUIET_MS - 1);
+  await lookIn([job], [31], tail, report, gone, stalled, QUIET_MS - 1);
   assert.deepEqual(reports, [], "too soon to look");
-  await lookIn([job], [31], tail, report, gone, QUIET_MS);
-  await lookIn([job], [31], tail, report, gone, 3 * QUIET_MS);
+  await lookIn([job], [31], tail, report, gone, stalled, QUIET_MS);
+  await lookIn([job], [31], tail, report, gone, stalled, 3 * QUIET_MS);
   assert.deepEqual(reports, [31]);
 });
 
@@ -432,8 +436,79 @@ test("a runner that is not running any more, or not a slot any more, is gone", a
   const onGone = async (job: { slot: number }) => {
     gone.push(job.slot);
   };
+  const stalled = async () => {};
   const dead = async () => ({ ok: false as const, error: "jarvis-delegate: slot 32 is not running" });
-  await lookIn([{ slot: 32, task: "x", since: 0 }], [32], dead, async () => {}, onGone, QUIET_MS);
-  await lookIn([{ slot: 4, task: "x", since: 0 }], [11, 12, 13], dead, async () => {}, onGone, QUIET_MS);
+  await lookIn([{ slot: 32, task: "x", since: 0 }], [32], dead, async () => {}, onGone, stalled, QUIET_MS);
+  await lookIn([{ slot: 4, task: "x", since: 0 }], [11, 12, 13], dead, async () => {}, onGone, stalled, QUIET_MS);
   assert.deepEqual(gone, [32, 4]);
+});
+
+test("a screen that stops moving is passed on once, and timed from when it stopped", async () => {
+  const stalls: Array<[number, number]> = [];
+  const job = { slot: 33, task: "build it", since: 0 };
+  const tail = async () => ({ ok: true as const, text: "a prompt nobody answered" });
+  const report = async () => {};
+  const gone = async () => assert.fail("not gone");
+  const stalled = async (j: { slot: number }, stillFor: number) => {
+    stalls.push([j.slot, stillFor]);
+  };
+
+  // A look only reads the screen once the runner has been quiet for QUIET_MS,
+  // so every one of these is that far apart or further.
+  const look = (now: number) => lookIn([job], [33], tail, report, gone, stalled, now);
+  const stopped = QUIET_MS;
+  await look(stopped);
+  await look(stopped + STALL_MS - QUIET_MS);
+  assert.deepEqual(stalls, [], "a screen is allowed to stand still for a while");
+
+  await look(stopped + STALL_MS);
+  await look(stopped + 4 * STALL_MS);
+  assert.deepEqual(stalls, [[33, STALL_MS]], "said once, and not from the job's start");
+});
+
+test("a screen that moves again starts its standstill over", async () => {
+  const stalls: number[] = [];
+  const job = { slot: 34, task: "build it", since: 0 };
+  let screen = "working on it";
+  const tail = async () => ({ ok: true as const, text: screen });
+  const stalled = async (_j: { slot: number }, stillFor: number) => {
+    stalls.push(stillFor);
+  };
+  const look = (now: number) =>
+    lookIn([job], [34], tail, async () => {}, async () => assert.fail("not gone"), stalled, now);
+
+  await look(QUIET_MS);
+  await look(QUIET_MS + STALL_MS);
+  assert.deepEqual(stalls, [STALL_MS]);
+
+  screen = "moved on";
+  const moved = 2 * QUIET_MS + STALL_MS;
+  await look(moved);
+  await look(moved + STALL_MS - QUIET_MS);
+  assert.deepEqual(stalls, [STALL_MS], "the new screen has not stood still long enough");
+  await look(moved + STALL_MS);
+  assert.deepEqual(stalls, [STALL_MS, STALL_MS], "a second standstill is news again");
+});
+
+test("a standstill offers the buttons, and a reply when one can be typed in", async () => {
+  const { bot, sent } = messages();
+  const job = { slot: 35, task: "build it\nmore detail", since: 0 };
+
+  await sayStalled(bot, "chat", job, STALL_MS);
+  assert.match(sent[0] ?? "", /has stopped moving/);
+  assert.match(sent[0] ?? "", /2 hours/);
+  assert.doesNotMatch(sent[0] ?? "", /Reply to this message/);
+
+  await sayStalled(bot, "chat", job, STALL_MS, { reply: async () => ({ ok: true }) });
+  assert.match(sent[1] ?? "", /Reply to this message/);
+});
+
+test("a standstill in an unconfigured chat is not sent anywhere", async () => {
+  const { bot, sent } = messages();
+  await sayStalled(bot, "", { slot: 36, task: "x", since: 0 }, STALL_MS);
+  assert.deepEqual(sent, []);
+});
+
+test("the brief of a stalled runner is escaped before it becomes a message", () => {
+  assert.match(stalledMessage(4, "fix <b>x</b>", STALL_MS), /&lt;b&gt;/);
 });

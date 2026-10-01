@@ -296,8 +296,11 @@ answered. What is the owner's to decide — taste, money, access, anything that 
 what JARVIS is unsure of goes to the owner's chat. A reply to that message goes back into the runner.
 After five answers in one job, or the same question twice, the owner hears of it instead. Runners
 that stay quiet for half an hour are looked in on from this side, because one stuck on a prompt never
-ends a turn. A job whose runner has disappeared is marked as failed. A job the runner declared done
-has its slot closed, and its record says what the runner left behind.
+ends a turn. A pane that is byte for byte what it was two hours ago is not working on anything — a
+runner at work redraws its own line every second — so that standstill goes to the chat once, with
+the buttons that close the slot and the offer to type an answer into it, and again if the screen
+moves and stops again. A job whose runner has disappeared is marked as failed. A job the runner
+declared done has its slot closed, and its record says what the runner left behind.
 
 Which of the two it is comes from `brain/src/dev/guard.ts`, from a described shape — which
 repository, which files, does this need a package, a secret, another machine — and never from asking

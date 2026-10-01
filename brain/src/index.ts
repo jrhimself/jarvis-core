@@ -36,6 +36,7 @@ import {
   handleRunnerPress,
   handleRunnerReply,
   lookIn,
+  sayStalled,
   supervise,
   type RunnerSeam,
 } from "./dev/runners.js";
@@ -354,6 +355,12 @@ async function main(): Promise<void> {
               if (Date.now() - job.since < RUNNER_NEWS_MS) {
                 await bot.send(config.suggestChat, goneMessage(job.slot, job.task));
               }
+            },
+            // A pane that has stopped moving is the owner's to look at: nothing
+            // is closed and nothing is typed in without him, because a job that
+            // is only slow would lose its work either way.
+            async (job, stillFor) => {
+              await sayStalled(bot, config.suggestChat, job, stillFor, runnerSeam);
             },
             Date.now(),
           ),

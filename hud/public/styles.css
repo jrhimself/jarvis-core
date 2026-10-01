@@ -1714,8 +1714,9 @@ html.is-focusing .footer {
 .fit-item.fit-hidden { display: none; }
 
 /* Runners in the System panel: a question waiting is the one row that asks
-   something of the owner, so it is the one that stands out; a job whose slot
-   went idle without saying it was done is dimmed and flagged. */
+   something of the owner, so it is the one that stands out, and a pane that has
+   stopped moving asks the same of him; a job whose slot went idle without
+   saying it was done is dimmed and flagged. */
 .fit-item.runner .t { color: var(--cyan); }
 .fit-item.runner .body { white-space: normal; }
 .fit-item.runner .sub {
@@ -1728,6 +1729,8 @@ html.is-focusing .footer {
 .fit-item.runner-asking .sub { color: var(--orange); }
 .fit-item.runner-stopped .t,
 .fit-item.runner-stopped .sub { color: var(--red); }
+.fit-item.runner-stalled .t,
+.fit-item.runner-stalled .sub { color: var(--orange); }
 .fit-item.runner-done .sub { color: var(--cyan-bright); }
 .fit-item.runner-idle .body { color: var(--text-muted); }
 .list.facts-list li {

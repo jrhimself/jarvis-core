@@ -19,6 +19,17 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Added
 
+- A delegated runner whose screen has stopped moving is reported by itself. A quiet runner was
+  already looked in on, but a look that found the same screen as the last one ended there, so the one
+  state nobody ever heard about was the pane that had stopped entirely -- and that is the state worth
+  hearing about: a runner at work redraws its own line every second, so a screen that is byte for
+  byte what it was two hours ago is waiting for something it will not get, or its session died with
+  the window still up. Either way the slot is held and the job is going nowhere. The standstill goes
+  to the chat once, timed from when the screen stopped rather than from when the job started, with
+  the buttons that close the slot and the offer to type an answer into the pane; if the screen moves
+  and stops again, that is news again. Nothing is closed and nothing is typed in without the owner,
+  because a job that is merely slow would lose its work either way. On the runner board it is a row
+  that asks something of him, like a waiting question.
 - A voice that runs on the machine: `JARVIS_VOICE_PROVIDER=piper`. Piper needs no account, no key and
   no balance, so the assistant can no longer go mute when a free tier runs out. One Python process
   keeps the voices loaded and the brain sends it sentences as they close; audio is resampled to the
