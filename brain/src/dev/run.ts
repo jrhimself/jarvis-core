@@ -232,7 +232,7 @@ export class SelfDevelopment {
       { instruction, size: "big", state: "delegated", detail: reason, gap },
       now,
     );
-    updateDevTask(this.db, id, { slot: handed.slot }, now);
+    updateDevTask(this.db, id, { slot: handed.slot, job: handed.job ?? null }, now);
     refreshBoard();
     return { ok: true, slot: handed.slot, id };
   }

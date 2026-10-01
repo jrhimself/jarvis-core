@@ -23,10 +23,25 @@ export interface DelegatedTask {
   reason: string;
 }
 
-/** Where a handed-on job ended up, or why it did not. */
+/**
+ * Where a handed-on job ended up, or why it did not.
+ *
+ * `job` is the far side's name for this particular job, when it names them. A
+ * slot is only ever borrowed: the moment a runner dies the slot is handed to
+ * the next job, and then "slot 12" no longer says which work is on it. The
+ * name does.
+ */
 export type Delegated =
-  | { ok: true; slot: number }
+  | { ok: true; slot: number; job?: string }
   | { ok: false; error: string };
+
+/** What the far side says about one of its slots. */
+export interface SlotReport {
+  slot: number;
+  busy: boolean;
+  /** The job in it, when the far side names its jobs and this slot has one. */
+  job?: string;
+}
 
 /** What a runner is showing right now. */
 export type RunnerOutput = { ok: true; text: string } | { ok: false; error: string };
@@ -50,6 +65,19 @@ export interface Delegate {
 
   /** Which slots are idle, or null when the far side could not be reached. */
   free(): Promise<number[] | null>;
+
+  /**
+   * Every slot and what is in it, or null when the far side could not be
+   * reached.
+   *
+   * Optional, and the reason it exists next to `free()` is the supervision: a
+   * slot that is busy with a job this assistant did not hand it is a slot
+   * whose own job has ended, and no amount of reading that screen will say so
+   * -- the screen belongs to somebody else's work. A delegate that cannot name
+   * its jobs leaves that to be found the slower way, by a runner that stops
+   * answering.
+   */
+  occupancy?(): Promise<SlotReport[] | null>;
 
   /**
    * Whether the far side answers, for the health panel.

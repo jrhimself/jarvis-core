@@ -73,6 +73,15 @@ export interface DevTask {
    * starting work unasked are counted per ability, not per sentence.
    */
   gap?: string | null;
+  /**
+   * The runner's own name for the job that was handed this slot, when it names
+   * them.
+   *
+   * The slot number cannot stand in for it. A slot is handed to the next job
+   * the moment its runner dies, so a row that only knows "slot 12" cannot say
+   * whether the work on that screen is still its own.
+   */
+  job?: string | null;
 }
 
 /** Attempts at one gap in a week before JARVIS stops and asks instead. */
@@ -117,6 +126,11 @@ export function migrateDev(db: DatabaseSync): void {
   if (!columns.some((column) => column.name === "gap")) {
     db.exec("ALTER TABLE dev_tasks ADD COLUMN gap TEXT");
   }
+  // And later again: which job on the far side a delegated row belongs to, so
+  // supervision can tell its own runner from the next one to borrow the slot.
+  if (!columns.some((column) => column.name === "job")) {
+    db.exec("ALTER TABLE dev_tasks ADD COLUMN job TEXT");
+  }
 }
 
 /** node:sqlite hands back null-prototype rows; this shapes one. */
@@ -136,6 +150,7 @@ function row(raw: Record<string, unknown>): DevTask {
     detail: raw.detail === null || raw.detail === undefined ? "" : String(raw.detail),
     log: raw.log === null || raw.log === undefined ? null : String(raw.log),
     gap: raw.gap === null || raw.gap === undefined ? null : String(raw.gap),
+    job: raw.job === null || raw.job === undefined ? null : String(raw.job),
   };
 }
 
@@ -158,7 +173,10 @@ export function updateDevTask(
   db: DatabaseSync,
   id: number,
   patch: Partial<
-    Pick<DevTask, "state" | "branch" | "worktree" | "prUrl" | "prNumber" | "slot" | "detail" | "log">
+    Pick<
+      DevTask,
+      "state" | "branch" | "worktree" | "prUrl" | "prNumber" | "slot" | "job" | "detail" | "log"
+    >
   >,
   at: Date,
 ): void {
@@ -169,6 +187,7 @@ export function updateDevTask(
     prUrl: "pr_url",
     prNumber: "pr_number",
     slot: "slot",
+    job: "job",
     detail: "detail",
     log: "log",
   };

@@ -506,11 +506,22 @@ const toldStalled = new Set<number>();
 
 /** One job that is with a runner, as the look needs it. */
 export interface Watched {
+  /**
+   * The dev task this is.
+   *
+   * Carried rather than looked up by slot afterwards, because a slot can have
+   * more than one row that still says "delegated": the newest one is the job
+   * that is running, and ending a job by its slot ends that one instead of the
+   * one that is actually over.
+   */
+  id: number;
   slot: number;
   /** The instruction it was handed. */
   task: string;
   /** When it was handed on, in epoch milliseconds. */
   since: number;
+  /** The far side's name for it, when the far side names its jobs. */
+  job?: string | null;
 }
 
 /**
@@ -522,20 +533,35 @@ export interface Watched {
  * exactly like a runner hard at work. A screen that changed is judged like a
  * report; one that has not changed for `STALL_MS` is `stalled`; a slot that is
  * not running any more, or that this delegate no longer has, is `gone`.
+ *
+ * `running` names the job each slot holds now, where the far side names them.
+ * A slot holding a different job than this one is the one case that needs no
+ * waiting at all: the work this row is about is over, whatever its screen
+ * shows, because the screen is somebody else's.
  */
 export async function lookIn(
   watched: readonly Watched[],
   slots: readonly number[],
+  running: ReadonlyMap<number, string>,
   tail: (slot: number, lines: number) => Promise<{ ok: true; text: string } | { ok: false; error: string }>,
   report: (report: RunnerReport) => Promise<unknown>,
-  gone: (job: Watched) => Promise<void>,
+  gone: (job: Watched, why: "stopped" | "taken") => Promise<void>,
   stalled: (job: Watched, stillFor: number) => Promise<void>,
   now: number,
 ): Promise<void> {
   for (const job of watched) {
     if (!slots.includes(job.slot)) {
       forget(job.slot);
-      await gone(job);
+      await gone(job, "stopped");
+      continue;
+    }
+    // Only a name that disagrees ends a job here. A slot the far side said
+    // nothing about is a slot nobody can speak for, and an unnamed job is one
+    // handed over before there were names.
+    const inSlot = running.get(job.slot);
+    if (job.job && inSlot !== undefined && inSlot !== job.job) {
+      forget(job.slot);
+      await gone(job, "taken");
       continue;
     }
     const heard = Math.max(lastHeard.get(job.slot) ?? 0, job.since);
@@ -545,7 +571,7 @@ export async function lookIn(
     if (!read.ok) {
       if (/not running/i.test(read.error)) {
         forget(job.slot);
-        await gone(job);
+        await gone(job, "stopped");
       }
       continue;
     }
