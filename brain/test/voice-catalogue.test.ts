@@ -361,8 +361,11 @@ test("`like` narrows both lists to what contains it", () => {
     "cori",
   );
   assert.match(answer, /1 voice\(s\) matching "cori"/);
-  assert.doesNotMatch(answer, /pim/);
-  assert.doesNotMatch(answer, /amy/);
+  // The opening line names what reads each language now, which `like` has no say
+  // over, so the narrowing is read off the lists under it rather than the whole.
+  const lists = answer.slice(answer.indexOf("\n"));
+  assert.doesNotMatch(lists, /pim/);
+  assert.doesNotMatch(lists, /amy/);
 });
 
 test("what the model is told after a switch says when it takes effect", () => {
