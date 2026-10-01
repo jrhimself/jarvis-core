@@ -232,3 +232,50 @@ test("a runner's ending lands on the newest job in its slot only", () => {
   assert.equal(devTask(db, older)?.state, "delegated");
   assert.equal(endDelegated(db, 12, { state: "failed", detail: "gone" }, AT), null);
 });
+
+test("the far side's name for a job is kept on the row, and a row without one reads as null", () => {
+  const db = devDb();
+  const named = createDevTask(db, { instruction: "named", size: "big", state: "delegated" }, AT);
+  updateDevTask(db, named, { slot: 12, job: "slot-12-20261001-163144" }, AT);
+  assert.equal(devTask(db, named)?.job, "slot-12-20261001-163144");
+
+  const unnamed = createDevTask(db, { instruction: "unnamed", size: "big", state: "delegated" }, AT);
+  updateDevTask(db, unnamed, { slot: 13, job: null }, AT);
+  assert.equal(devTask(db, unnamed)?.job, null);
+});
+
+test("a database written before jobs had names gets the column and keeps its rows", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE dev_tasks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL,
+      instruction TEXT NOT NULL,
+      size        TEXT NOT NULL,
+      state       TEXT NOT NULL,
+      branch      TEXT,
+      worktree    TEXT,
+      pr_url      TEXT,
+      pr_number   INTEGER,
+      slot        INTEGER,
+      detail      TEXT NOT NULL DEFAULT '',
+      log         TEXT,
+      gap         TEXT
+    );
+  `);
+  const iso = AT.toISOString();
+  db.prepare(
+    `INSERT INTO dev_tasks (created_at, updated_at, instruction, size, state, detail, slot)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(iso, iso, "handed over yesterday", "big", "delegated", "too big", 11);
+
+  migrateDev(db);
+  migrateDev(db);
+
+  const [old] = delegatedDevTasks(db);
+  assert.equal(old?.instruction, "handed over yesterday");
+  assert.equal(old?.job, null, "a job from before the names has none, and is watched the old way");
+  updateDevTask(db, Number(old?.id), { job: "slot-11-20261001-163144" }, AT);
+  assert.equal(devTask(db, Number(old?.id))?.job, "slot-11-20261001-163144");
+});

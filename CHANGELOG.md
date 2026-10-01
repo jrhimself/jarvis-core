@@ -85,6 +85,17 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 - The squash commit takes the pull request's own title, which for a pull request nothing here
   opened is the only title there is. A merged branch is deleted only when it lives in the
   repository it was merged into.
+- A delegated job is followed by the far side's name for it and not only by its slot number. A slot
+  is borrowed: the moment a runner dies the slot is handed to the next job, and a job whose runner
+  died that way was never noticed to be over -- the slot was busy, its screen moved, and everything
+  that watched it was watching somebody else's work. Measured on this deployment: a job handed over
+  at 20:24 stayed open on the board for nine hours while two later jobs ran in the same slot, and
+  the look that should have found it dead was reading the newest of them. A slot holding a job this
+  assistant did not hand it now ends that job on the first look, without waiting and without
+  touching the slot, which is not its own any more. The ending is written to the job it belongs to
+  rather than to the newest job in its slot -- in exactly this situation the wrong one. A delegate
+  whose far side does not name its jobs keeps the slower way of noticing, and so does a job that was
+  handed over before there were names.
 
 ## [2.3.0] - 2026-09-30
 

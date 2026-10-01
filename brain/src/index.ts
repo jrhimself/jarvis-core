@@ -40,7 +40,7 @@ import {
   supervise,
   type RunnerSeam,
 } from "./dev/runners.js";
-import { delegatedDevTasks, endDelegated } from "./dev/store.js";
+import { delegatedDevTasks, endDelegated, updateDevTask } from "./dev/store.js";
 import { pullRequestIn, spokenReady } from "./dev/notify.js";
 import { pullRequestTarget, rememberOffer } from "./dev/trial.js";
 import { channelsFor, notify, spoken, type Channel, type Notice } from "./notify.js";
@@ -330,25 +330,54 @@ async function main(): Promise<void> {
     const look = () => {
       const db = store.devConnection();
       const watched = delegatedDevTasks(db).map((task) => ({
+        id: task.id,
         slot: task.slot ?? -1,
         task: task.instruction,
         since: Date.parse(task.createdAt),
+        job: task.job,
       }));
       if (watched.length === 0) return;
       void packSummary()
-        .then((packs) =>
-          lookIn(
+        .then(async (packs) => {
+          // Which job is in which slot, where the far side names them. One
+          // question for the whole look: the answer is what tells a job that
+          // ended from a job whose slot has been handed on.
+          const seen = (await packs.delegate.occupancy?.()) ?? null;
+          const running = new Map<number, string>(
+            (seen ?? [])
+              .filter((slot) => slot.busy && slot.job !== undefined)
+              .map((slot) => [slot.slot, slot.job as string]),
+          );
+          await lookIn(
             watched,
             packs.delegate.slots,
+            running,
             (slot, lines) => packs.delegate.tail(slot, lines),
             (report) => supervise(store, bot, config.suggestChat, report, closeSlot, runnerSeam),
-            async (job) => {
-              endDelegated(db, job.slot, { state: "failed", detail: "the runner stopped without saying it was done" }, new Date());
-              forgetRunner(job.slot);
-              // A runner that died still leaves its job directory behind, and
-              // closing the slot is what clears it; a slot that is already gone
-              // is only tidied.
-              void closeSlot(job.slot).catch(() => undefined);
+            async (job, why) => {
+              // By id, not by slot: a slot with a stale row and a running job
+              // has two rows that say "delegated", and the one that is over is
+              // not the newest of them.
+              updateDevTask(
+                db,
+                job.id,
+                {
+                  state: "failed",
+                  detail:
+                    why === "taken"
+                      ? "the runner was gone and its slot had been handed to another job"
+                      : "the runner stopped without saying it was done",
+                },
+                new Date(),
+              );
+              // A slot that has been handed on belongs to somebody else's work
+              // now, so neither its note nor its runner is this job's to touch.
+              // A runner that died does still leave its job directory behind,
+              // and closing the slot is what clears it.
+              if (why === "stopped") {
+                forgetRunner(job.slot);
+                void closeSlot(job.slot).catch(() => undefined);
+              }
               refreshBoard();
               // A job from weeks ago that nobody closed off is tidied quietly;
               // only one that was still news is worth a message.
@@ -363,8 +392,8 @@ async function main(): Promise<void> {
               await sayStalled(bot, config.suggestChat, job, stillFor, runnerSeam);
             },
             Date.now(),
-          ),
-        )
+          );
+        })
         .catch((error: unknown) => console.error("runners: could not look in:", error));
     };
     look();

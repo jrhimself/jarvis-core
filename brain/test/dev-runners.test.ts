@@ -418,34 +418,75 @@ test("a job the runner declared done is marked finished", async () => {
 
 test("a quiet runner is looked in on, and an unchanged screen is judged once", async () => {
   const reports: number[] = [];
-  const job = { slot: 31, task: "build it", since: 0 };
+  const job = { id: 1, slot: 31, task: "build it", since: 0 };
   const tail = async () => ({ ok: true as const, text: "same screen" });
   const report = async (r: { slot: number }) => reports.push(r.slot);
   const gone = async () => assert.fail("not gone");
   const stalled = async () => {};
+  const nobody = new Map<number, string>();
 
-  await lookIn([job], [31], tail, report, gone, stalled, QUIET_MS - 1);
+  await lookIn([job], [31], nobody, tail, report, gone, stalled, QUIET_MS - 1);
   assert.deepEqual(reports, [], "too soon to look");
-  await lookIn([job], [31], tail, report, gone, stalled, QUIET_MS);
-  await lookIn([job], [31], tail, report, gone, stalled, 3 * QUIET_MS);
+  await lookIn([job], [31], nobody, tail, report, gone, stalled, QUIET_MS);
+  await lookIn([job], [31], nobody, tail, report, gone, stalled, 3 * QUIET_MS);
   assert.deepEqual(reports, [31]);
 });
 
 test("a runner that is not running any more, or not a slot any more, is gone", async () => {
-  const gone: number[] = [];
-  const onGone = async (job: { slot: number }) => {
-    gone.push(job.slot);
+  const gone: Array<[number, string]> = [];
+  const onGone = async (job: { slot: number }, why: string) => {
+    gone.push([job.slot, why]);
   };
   const stalled = async () => {};
+  const nobody = new Map<number, string>();
   const dead = async () => ({ ok: false as const, error: "jarvis-delegate: slot 32 is not running" });
-  await lookIn([{ slot: 32, task: "x", since: 0 }], [32], dead, async () => {}, onGone, stalled, QUIET_MS);
-  await lookIn([{ slot: 4, task: "x", since: 0 }], [11, 12, 13], dead, async () => {}, onGone, stalled, QUIET_MS);
-  assert.deepEqual(gone, [32, 4]);
+  await lookIn([{ id: 1, slot: 32, task: "x", since: 0 }], [32], nobody, dead, async () => {}, onGone, stalled, QUIET_MS);
+  await lookIn([{ id: 2, slot: 4, task: "x", since: 0 }], [11, 12, 13], nobody, dead, async () => {}, onGone, stalled, QUIET_MS);
+  assert.deepEqual(gone, [
+    [32, "stopped"],
+    [4, "stopped"],
+  ]);
+});
+
+test("a job whose slot now holds another job is over at once, and its screen is never read", async () => {
+  const gone: Array<[number, string]> = [];
+  const onGone = async (job: { id: number }, why: string) => {
+    gone.push([job.id, why]);
+  };
+  const mine = { id: 26, slot: 12, task: "x", since: 0, job: "slot-12-20260930-202401" };
+  const theirs = new Map([[12, "slot-12-20260930-204116"]]);
+  const tail = async () => assert.fail("the screen belongs to the other job");
+
+  // Not after QUIET_MS, but on the first look: nothing about that screen can
+  // say anything about this job any more.
+  await lookIn([mine], [12], theirs, tail, async () => {}, onGone, async () => {}, 0);
+  assert.deepEqual(gone, [[26, "taken"]]);
+});
+
+test("a job is left alone while its own name is in the slot, or while nobody is named", async () => {
+  const mine = { id: 27, slot: 12, task: "x", since: 0, job: "slot-12-20260930-204116" };
+  const screen = async () => ({ ok: true as const, text: "working" });
+  const notGone = async () => assert.fail("not gone");
+
+  await lookIn([mine], [12], new Map([[12, mine.job]]), screen, async () => {}, notGone, async () => {}, QUIET_MS);
+  // A far side that names no jobs, and a job handed over before there were
+  // names, both leave the old way of noticing in place.
+  await lookIn([mine], [12], new Map(), screen, async () => {}, notGone, async () => {}, 2 * QUIET_MS);
+  await lookIn(
+    [{ id: 28, slot: 13, task: "x", since: 0 }],
+    [13],
+    new Map([[13, "slot-13-20261001-090000"]]),
+    screen,
+    async () => {},
+    notGone,
+    async () => {},
+    3 * QUIET_MS,
+  );
 });
 
 test("a screen that stops moving is passed on once, and timed from when it stopped", async () => {
   const stalls: Array<[number, number]> = [];
-  const job = { slot: 33, task: "build it", since: 0 };
+  const job = { id: 3, slot: 33, task: "build it", since: 0 };
   const tail = async () => ({ ok: true as const, text: "a prompt nobody answered" });
   const report = async () => {};
   const gone = async () => assert.fail("not gone");
@@ -455,7 +496,8 @@ test("a screen that stops moving is passed on once, and timed from when it stopp
 
   // A look only reads the screen once the runner has been quiet for QUIET_MS,
   // so every one of these is that far apart or further.
-  const look = (now: number) => lookIn([job], [33], tail, report, gone, stalled, now);
+  const look = (now: number) =>
+    lookIn([job], [33], new Map<number, string>(), tail, report, gone, stalled, now);
   const stopped = QUIET_MS;
   await look(stopped);
   await look(stopped + STALL_MS - QUIET_MS);
@@ -468,14 +510,23 @@ test("a screen that stops moving is passed on once, and timed from when it stopp
 
 test("a screen that moves again starts its standstill over", async () => {
   const stalls: number[] = [];
-  const job = { slot: 34, task: "build it", since: 0 };
+  const job = { id: 4, slot: 34, task: "build it", since: 0 };
   let screen = "working on it";
   const tail = async () => ({ ok: true as const, text: screen });
   const stalled = async (_j: { slot: number }, stillFor: number) => {
     stalls.push(stillFor);
   };
   const look = (now: number) =>
-    lookIn([job], [34], tail, async () => {}, async () => assert.fail("not gone"), stalled, now);
+    lookIn(
+      [job],
+      [34],
+      new Map<number, string>(),
+      tail,
+      async () => {},
+      async () => assert.fail("not gone"),
+      stalled,
+      now,
+    );
 
   await look(QUIET_MS);
   await look(QUIET_MS + STALL_MS);
@@ -492,7 +543,7 @@ test("a screen that moves again starts its standstill over", async () => {
 
 test("a standstill offers the buttons, and a reply when one can be typed in", async () => {
   const { bot, sent } = messages();
-  const job = { slot: 35, task: "build it\nmore detail", since: 0 };
+  const job = { id: 5, slot: 35, task: "build it\nmore detail", since: 0 };
 
   await sayStalled(bot, "chat", job, STALL_MS);
   assert.match(sent[0] ?? "", /has stopped moving/);
@@ -505,7 +556,7 @@ test("a standstill offers the buttons, and a reply when one can be typed in", as
 
 test("a standstill in an unconfigured chat is not sent anywhere", async () => {
   const { bot, sent } = messages();
-  await sayStalled(bot, "", { slot: 36, task: "x", since: 0 }, STALL_MS);
+  await sayStalled(bot, "", { id: 6, slot: 36, task: "x", since: 0 }, STALL_MS);
   assert.deepEqual(sent, []);
 });
 
