@@ -207,8 +207,12 @@ function drawSwarmOrb(ctx, W, H, t, env) {
   const cx = W / 2;
   const cy = H / 2;
   const Rpx = (Math.min(W, H) / 2) * 0.9;
-  const unit = Rpx * 0.78;
   const reveal = Math.max(0, Math.min(1, env.boot ?? 1));
+  /* A burst throws points to nearly twice the shell radius and boot starts them
+     further out still, both of which run off a square canvas and read as the
+     cloud being cut to a box. The camera pulls back instead, by exactly as much
+     as the cloud has grown. */
+  const unit = (Rpx * 0.78) / (1 + spread * 0.45 + (1 - reveal) * 0.8);
   const colours = swarmColours(ctx, hue);
 
   ctx.clearRect(0, 0, W, H);
@@ -306,7 +310,12 @@ function drawSwarmOrb(ctx, W, H, t, env) {
     /* Depth reads as brightness, which additive compositing gives for free. An
        active point keeps most of its light, so a wave shows through the body. */
     const dz = (z + 1) / 2;
-    const alpha = reveal * (active ? 0.6 + 0.4 * dz : 0.3 + 0.7 * dz);
+    /* Whatever the camera does, a point near the edge of the frame fades out
+       rather than meeting the canvas border, so the cloud never has a corner. */
+    const edge = Math.hypot(sx - cx, sy - cy) / Rpx;
+    if (edge > 1.06) continue;
+    const fade = edge > 0.88 ? 1 - (edge - 0.88) / 0.18 : 1;
+    const alpha = reveal * fade * (active ? 0.6 + 0.4 * dz : 0.3 + 0.7 * dz);
     const step = active ? Math.min(SWARM_K - 1, k) : -1;
     ctx.globalAlpha = alpha;
     ctx.fillStyle = active ? colours.steps[step] : colours.tiers[p.tier];
