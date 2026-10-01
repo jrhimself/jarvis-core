@@ -10,13 +10,13 @@
 
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 
-import { isCommitSha, readDeployResult } from "../dist/dev/deploy.js";
+import { isCommitSha, isPackId, readDeployResult, requestDeploy, requestPackDeploy } from "../dist/dev/deploy.js";
 import { readPullRequest } from "../dist/dev/github.js";
 import { escapeHtml, failureMessage, pullRequestIn, reviewMessage, spokenFailure, spokenReady } from "../dist/dev/notify.js";
 import { titleFor } from "../dist/dev/run.js";
@@ -40,6 +40,55 @@ test("only a full lowercase hex hash may be asked for", () => {
     "../../etc/passwd",
   ]) {
     assert.equal(isCommitSha(bad), false, `${JSON.stringify(bad)} should be refused`);
+  }
+});
+
+test("only a pack name the root side can turn into a path may be asked for", () => {
+  assert.equal(isPackId("hass"), true);
+  assert.equal(isPackId("ado-pr"), true);
+  for (const bad of [
+    "",
+    "-hass",
+    "Hass",
+    "hass/gmail",
+    "../../etc",
+    "hass..",
+    "hass main",
+    "hass\n",
+    "a".repeat(41),
+  ]) {
+    assert.equal(isPackId(bad), false, `${JSON.stringify(bad)} should be refused`);
+  }
+});
+
+test("a pack deploy is asked for as one line naming the pack and the commit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deploy-"));
+  try {
+    assert.deepEqual(await requestPackDeploy(dir, "hass", SHA), { ok: true });
+    assert.equal(await readFile(join(dir, "deploy-request"), "utf8"), `pack hass ${SHA}\n`);
+
+    // The core form stays what the root side has always read.
+    assert.deepEqual(await requestDeploy(dir, SHA), { ok: true });
+    assert.equal(await readFile(join(dir, "deploy-request"), "utf8"), `${SHA}\n`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a pack deploy with a name or a hash that is not one writes nothing at all", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deploy-"));
+  try {
+    for (const [pack, sha] of [
+      ["../hass", SHA],
+      ["hass", "main"],
+      ["hass", `${SHA} && reboot`],
+    ]) {
+      const asked = await requestPackDeploy(dir, pack as string, sha as string);
+      assert.equal(asked.ok, false, `${pack} ${sha} should be refused`);
+    }
+    assert.equal(existsSync(join(dir, "deploy-request")), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

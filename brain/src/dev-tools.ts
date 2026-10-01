@@ -490,7 +490,7 @@ export function createDevServer(
       return ok(
         `Ready to merge ${describeTarget(chosen.target)}: "${chosen.pull.title}" ${chosen.pull.url}` +
           `${chosen.task === null ? "" : ` -- ${describeTask(chosen.task)}`}${state} Ask out loud whether ` +
-          `you may, ${chosen.target.repo === "core" ? "mention that you restart afterwards" : "say it is a pack, so you do not restart on it"}, and stop there.`,
+          `you may, mention that you restart afterwards${chosen.target.repo === "core" ? "" : " to pick the pack up"}, and stop there.`,
       );
     },
     { annotations: { readOnlyHint: false, idempotentHint: true } },
@@ -498,8 +498,9 @@ export function createDevServer(
 
   const approveMerge = tool(
     "approve_merge",
-    "Merge the pull request that propose_merge registered, and restart on it when it is " +
-      "your own code. Needs propose_merge and a spoken yes from an earlier turn. The restart " +
+    "Merge the pull request that propose_merge registered and restart on it: on the new " +
+      "commit for your own code, on the merged pack for a pack's. Needs propose_merge and a " +
+      "spoken yes from an earlier turn. The restart " +
       "happens after the suite has run again on the merged commit, so it is a minute or two " +
       "away -- say so, and check dev_status afterwards rather than claiming it worked.",
     {
@@ -521,11 +522,11 @@ export function createDevServer(
       const merged = await dev.merge(target, new Date());
       if (!merged.ok) return refused(merged.error);
       return ok(
-        merged.deploying
+        merged.deploying === "core"
           ? `Merged as ${merged.sha.slice(0, 7)}. The deploy runs the suite again and restarts ` +
               "you afterwards; check it later with dev_status."
-          : `Merged as ${merged.sha.slice(0, 7)}. It is a pack, so nothing restarts here: the running ` +
-              "copy of that pack stays as it is until it is updated. Say that.",
+          : `Merged as ${merged.sha.slice(0, 7)}. The deploy puts the running copy of that pack on it, ` +
+              "runs the suite and restarts you afterwards; check it later with dev_status.",
       );
     },
     { annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } },
