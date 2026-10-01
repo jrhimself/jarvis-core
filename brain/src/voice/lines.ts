@@ -26,15 +26,20 @@ import { join } from "node:path";
 import type { SpeechLang } from "@jarvis/shared";
 
 import type { Config } from "../config.js";
-import { openVoice, voiceConfigured, voiceFor, voiceProviderName } from "./index.js";
+import { defaultVoiceFor, openVoice, voiceConfigured, voiceProviderName } from "./index.js";
 
 /** Longest a single line may take to come back before it is given up on. */
 const RECORD_TIMEOUT_MS = 20_000;
 
 /** Everything that changes how a line sounds, in one string. */
-export function lineKey(config: Config, text: string, lang: SpeechLang): string {
+export function lineKey(
+  config: Config,
+  text: string,
+  lang: SpeechLang,
+  voice: string = defaultVoiceFor(config, lang),
+): string {
   const model = config.voiceProvider === "fish" ? config.fishModel : "";
-  const facts = [config.voiceProvider, model, voiceFor(config, lang), config.voiceSpeed, lang, text];
+  const facts = [config.voiceProvider, model, voice, config.voiceSpeed, lang, text];
   return createHash("sha1").update(JSON.stringify(facts)).digest("hex");
 }
 
@@ -42,7 +47,12 @@ export function lineKey(config: Config, text: string, lang: SpeechLang): string 
  * Speaks one line through the configured voice and returns the audio, or null
  * when the voice would not or could not.
  */
-export function recordLine(config: Config, text: string, lang: SpeechLang): Promise<Buffer | null> {
+export function recordLine(
+  config: Config,
+  text: string,
+  lang: SpeechLang,
+  voice: string = defaultVoiceFor(config, lang),
+): Promise<Buffer | null> {
   if (!voiceConfigured(config)) return Promise.resolve(null);
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
@@ -54,10 +64,10 @@ export function recordLine(config: Config, text: string, lang: SpeechLang): Prom
       resolve(result);
     };
     const timer = setTimeout(() => {
-      voice.abort();
+      speaking.abort();
       settle(null);
     }, RECORD_TIMEOUT_MS);
-    const voice = openVoice(
+    const speaking = openVoice(
       config,
       {
         onOpen: () => {},
@@ -66,9 +76,10 @@ export function recordLine(config: Config, text: string, lang: SpeechLang): Prom
         onError: () => settle(null),
       },
       lang,
+      voice,
     );
-    voice.speak(text);
-    voice.finish();
+    speaking.speak(text);
+    speaking.finish();
   });
 }
 
@@ -80,6 +91,12 @@ export class RecordedLines {
   constructor(
     private readonly config: Config,
     dir: string,
+    /**
+     * Which voice reads a line now. A function rather than a string because the
+     * voice can be asked to change while the process runs, and a line recorded
+     * in the voice before it is the one thing a deployment would notice.
+     */
+    private readonly voiceOf: (lang: SpeechLang) => string = (lang) => defaultVoiceFor(config, lang),
   ) {
     this.#dir = dir;
     try {
@@ -100,7 +117,7 @@ export class RecordedLines {
 
   /** The recording of this line in this voice, or null when there is none. */
   get(text: string, lang: SpeechLang): Buffer | null {
-    return this.#clips.get(lineKey(this.config, text, lang)) ?? null;
+    return this.#clips.get(lineKey(this.config, text, lang, this.voiceOf(lang))) ?? null;
   }
 
   /**
@@ -113,12 +130,13 @@ export class RecordedLines {
     let made = 0;
     for (const text of lines) {
       if (text === "" || this.get(text, lang) !== null) continue;
-      const clip = await recordLine(this.config, text, lang);
+      const voice = this.voiceOf(lang);
+      const clip = await recordLine(this.config, text, lang, voice);
       if (clip === null) {
         console.warn(`voice: could not record "${text}"`);
         continue;
       }
-      const key = lineKey(this.config, text, lang);
+      const key = lineKey(this.config, text, lang, voice);
       try {
         writeFileSync(join(this.#dir, `${key}.pcm`), clip);
       } catch (error) {

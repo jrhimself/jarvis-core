@@ -258,6 +258,12 @@ export interface Config {
   piperVoice: string;
   /** Which Piper voice reads English. */
   piperVoiceEn: string;
+  /**
+   * Where the published Piper voices are, so that a voice this machine does not
+   * have can be fetched when somebody asks for it by name. Empty makes the set
+   * of voices exactly what is in `piperModels` and nothing more.
+   */
+  piperVoicesUrl: string;
   /** Which service listens: ElevenLabs Scribe, or Whisper on this machine. */
   listenProvider: ListenProvider;
   /** The Python that runs Whisper, with `faster-whisper` installed. */
@@ -599,6 +605,14 @@ export function loadConfig(): Config {
     // out word for word, where MLS came out as noise.
     piperVoice: envString("JARVIS_PIPER_VOICE", "nl_NL-pim-medium"),
     piperVoiceEn: envString("JARVIS_PIPER_VOICE_EN", "en_GB-alan-medium"),
+    // The collection the voices themselves were downloaded from, with an index
+    // of every published voice and the files each one is. Set so that "speak
+    // with Cori" is a download rather than an errand for somebody; a deployment
+    // that wants no downloads empties it.
+    piperVoicesUrl: envString(
+      "JARVIS_PIPER_VOICES_URL",
+      "https://huggingface.co/rhasspy/piper-voices/resolve/main/",
+    ),
     // Listening is separate from speaking: naming Piper does not move the
     // microphone off ElevenLabs, and the other way around.
     listenProvider: envEnum("JARVIS_LISTEN_PROVIDER", LISTEN_PROVIDERS, "elevenlabs"),

@@ -24,6 +24,7 @@ import { language } from "./language.js";
 import { Opening } from "./opening.js";
 import { SectionMarks, type SectionPass } from "./sections.js";
 import { SpokenText } from "./spoken.js";
+import { voiceChoice } from "./voice/choice.js";
 import { RecordedLines } from "./voice/lines.js";
 import { pcmDurationMs, spreadAlignment } from "./voice/pace.js";
 import type { PendingDevAction } from "./dev-tools.js";
@@ -31,7 +32,6 @@ import {
   openVoice,
   voiceConfigured,
   voiceCreditsLeft,
-  voiceFor,
   voiceProviderName,
   type Alignment,
   type SpeakingVoice,
@@ -43,7 +43,9 @@ const config = loadConfig();
  * The lines that fill a silence, recorded once. Next to the database because
  * that is the deployment's own directory, and never tracked.
  */
-const recorded = new RecordedLines(config, join(dirname(config.memoryPath), "voice-lines"));
+const recorded = new RecordedLines(config, join(dirname(config.memoryPath), "voice-lines"), (lang) =>
+  voiceChoice().for(lang),
+);
 
 /**
  * Records one language's lines that are not on disk yet. Called at startup for
@@ -507,8 +509,9 @@ export class Conversation {
      */
     play: (clip: Buffer, text: string) => void;
   } | null> {
+    const reads = voiceChoice().for(lang);
     console.log(
-      `voice: opening (${voiceProviderName(config)}, key ${voiceConfigured(config) ? "present" : "missing"}, voice ${voiceFor(config, lang) || "default"}, lang ${lang})`,
+      `voice: opening (${voiceProviderName(config)}, key ${voiceConfigured(config) ? "present" : "missing"}, voice ${reads || "default"}, lang ${lang})`,
     );
     if (!voiceConfigured(config)) {
       this.callbacks.onVoice(turnId, false, "de stem is niet ingesteld");
@@ -580,6 +583,7 @@ export class Conversation {
         },
       },
       lang,
+      reads,
     );
 
     return {

@@ -159,6 +159,11 @@ earlier exchanges, including the conversation still going; `conversations` reads
 finished ones. `todo` is a scratchpad for the steps of a long question, kept for the length of one
 conversation.
 
+**Its own voice.** `list_voices` says which voices can read an answer and `set_voice` picks one, by
+the name a person uses rather than by an id. It holds for the whole deployment and survives a
+restart, and a local Piper voice this machine does not have yet is fetched before it reads. See
+[The voice it reads with](#the-voice-it-reads-with).
+
 **Itself.** What it noticed about the house and about its own jobs (`anomalies`), what earlier
 conversations were about, what it remembers and why, what every model call cost, and what the last
 attempt to extend itself did. The HUD's own panels say the same thing without being asked: one row
@@ -432,6 +437,27 @@ The clock is a different matter and is not baked in: see `JARVIS_TIMEZONE` and
 `JARVIS_LOCALE` below. Set the zone before the proactive side has run for a fortnight,
 because what it learns about a Tuesday evening is only as good as its idea of an evening.
 
+## The voice it reads with
+
+Which voice reads an answer is a setting like the language is a setting, and it changes the
+same way: by being asked for. "Speak with Cori from now on" calls `set_voice`, and the next
+sentence is read in it -- per language, or both at once, for the whole deployment. The
+choice is kept in the deployment's own database (`settings`, key `voice.<service>.<lang>`),
+so it survives a restart without an env file being edited or a tag being deployed, and it is
+kept per service because an id means nothing on another one.
+
+`list_voices` is what it is chosen from: an ElevenLabs account's own voices, or the Piper
+models on this machine. Fish publishes no list -- a Fish voice is a reference id from a
+dashboard -- so there the id is taken as given. A name that is not an id is looked up rather
+than guessed at: `cori` finds `en_GB-cori-high`, and the highest quality of several wins
+while the rest are offered as alternatives.
+
+A Piper voice that is not on the machine yet is two files and a download, so `set_voice`
+fetches it: the published collection's index says which files and how big, each is verified
+against the size and digest it declares, and a voice that would not load leaves the
+deployment reading as it was. The voices in the env file are the ones a deployment starts
+with and what `set_voice default` returns to.
+
 ## Configuration
 
 The brain reads environment variables at startup. Nothing here is required to start: an unconfigured
@@ -450,7 +476,8 @@ capability is simply not offered.
 | `JARVIS_VOICE_ID`, `JARVIS_VOICE_ID_EN` | Which ElevenLabs voice speaks; empty English means one voice speaks both. |
 | `FISH_AUDIO_API_KEY` | A second voice, from Fish Audio. Its `s2.1-pro-free` model has no character cap and costs nothing, where the free ElevenLabs tier runs out after ten minutes of speech a month; what it gives up is per-character timing (the transcript is paced by the audio's length instead), latency guarantees, and the promise not to train on what it is sent. |
 | `JARVIS_VOICE_PROVIDER` | `elevenlabs`, `fish` or `piper`: who speaks. Piper has no key to notice, so it speaks only when named; between the other two, this decides who speaks when both keys are given. Unset, whichever key was given speaks, and ElevenLabs when both are. |
-| `JARVIS_PIPER_PYTHON`, `JARVIS_PIPER_MODELS`, `JARVIS_PIPER_VOICE`, `JARVIS_PIPER_VOICE_EN` | A voice that runs on this machine, with no account and nothing to run out of: Piper, in a Python environment with `piper-tts` installed (`JARVIS_PIPER_PYTHON`, default `python3`). `JARVIS_PIPER_MODELS` is the directory of downloaded voices (`<name>.onnx` beside `<name>.onnx.json`, default `data/piper`), and the two voice variables name one for Dutch (`nl_NL-pim-medium`) and one for English (`en_GB-alan-medium`). A sentence is spoken about a tenth of its length on two ageing cores, and the model is kept loaded in one process shared by all turns. Like Fish it sends no per-character timing. |
+| `JARVIS_PIPER_PYTHON`, `JARVIS_PIPER_MODELS`, `JARVIS_PIPER_VOICE`, `JARVIS_PIPER_VOICE_EN` | A voice that runs on this machine, with no account and nothing to run out of: Piper, in a Python environment with `piper-tts` installed (`JARVIS_PIPER_PYTHON`, default `python3`). `JARVIS_PIPER_MODELS` is the directory of downloaded voices (`<name>.onnx` beside `<name>.onnx.json`, default `data/piper`), and the two voice variables name one for Dutch (`nl_NL-pim-medium`) and one for English (`en_GB-alan-medium`). A sentence is spoken about a tenth of its length on two ageing cores, and the model is kept loaded in one process shared by all turns. Like Fish it sends no per-character timing. The two voice variables are what the deployment starts with; from there `set_voice` decides, as above. |
+| `JARVIS_PIPER_VOICES_URL` | Where a Piper voice comes from when somebody asks for one that is not on this machine: the `rhasspy/piper-voices` collection on Hugging Face by default. Its index is read for the voice's files, sizes and digests, and both files are fetched into `JARVIS_PIPER_MODELS` and verified against them. Empty makes the voices available exactly what is already in that directory. |
 | `JARVIS_FISH_MODEL`, `JARVIS_FISH_VOICE_ID`, `JARVIS_FISH_VOICE_ID_EN` | Which Fish model (`s2.1-pro-free` by default; `s2.1-pro` is the same model with guarantees, paid per byte) and which Fish voice reads Dutch and English. Empty voices leave Fish's own default. `JARVIS_FISH_ENDPOINT` moves the socket, for a proxy or a test; nothing else needs it. `JARVIS_FISH_LATENCY` is `normal` (the sentence is synthesised whole, stress and melody right, first audio after about three seconds) or `balanced` (a second to the first word, at the prosody's expense); `JARVIS_FISH_NORMALIZE` (on) has Fish write numbers and times out before reading them. |
 | `JARVIS_VOICE_STABILITY`, `JARVIS_VOICE_SIMILARITY`, `JARVIS_VOICE_SPEED` | How the voice reads: even against expressive, how closely it holds its own timbre, and its pace. Fractions, defaulting to `0.4`, `0.75` and `1.0`. |
 | `JARVIS_VOICE_TIMBRE` | How far the browser colours the voice, `0`-`100`. `0` is the voice as it came. Filtering happens in the page, so it costs no credit and no latency. |

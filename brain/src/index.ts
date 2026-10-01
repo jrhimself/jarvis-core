@@ -49,6 +49,7 @@ import { runUnattended } from "./headless.js";
 import { startScheduler } from "./scheduler.js";
 import { escapeHtml } from "./dev/notify.js";
 import { warmRecordedLines } from "./conversation.js";
+import { voiceChoice } from "./voice/choice.js";
 import { warmPiper } from "./voice/piper.js";
 import { warmWhisper } from "./voice/whisper.js";
 import { language } from "./language.js";
@@ -185,6 +186,13 @@ async function main(): Promise<void> {
   if (config.listenProvider === "whisper") warmWhisper(config);
   void warmRecordedLines().catch((error: unknown) => {
     console.warn("voice: could not record the opening lines:", error);
+  });
+  // The lines are kept per voice, so a voice that was just asked for has none
+  // of them yet and the next silence would be filled live.
+  voiceChoice().onChange((lang) => {
+    void warmRecordedLines(lang).catch((error: unknown) =>
+      console.warn("voice: could not record the lines in the new voice:", error),
+    );
   });
   // A language nobody spoke before has no recorded lines yet; a switch asked
   // for in conversation needs them as much as the start does.

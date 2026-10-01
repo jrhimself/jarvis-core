@@ -102,6 +102,8 @@ export class FishVoice implements SpeakingVoice {
      * English well, and the other way around.
      */
     private readonly lang: SpeechLang = "nl",
+    /** Which voice reads it; the deployment's own unless one was asked for. */
+    private readonly voice: string = fishVoiceIdFor(config, lang),
   ) {
     this.#connect();
   }
@@ -130,7 +132,7 @@ export class FishVoice implements SpeakingVoice {
       clearTimeout(timeout);
       this.#open = true;
 
-      socket.send(encode(startEvent(this.config, this.lang)));
+      socket.send(encode(startEvent(this.config, this.lang, this.voice)));
 
       this.handlers.onOpen();
 
@@ -268,8 +270,11 @@ export function fishVoiceIdFor(config: Config, lang: SpeechLang): string {
  *
  * Exported for the tests, which run a socket of their own and read what arrives.
  */
-export function startEvent(config: Config, lang: SpeechLang): Record<string, unknown> {
-  const voice = fishVoiceIdFor(config, lang);
+export function startEvent(
+  config: Config,
+  lang: SpeechLang,
+  voice: string = fishVoiceIdFor(config, lang),
+): Record<string, unknown> {
   return {
     event: "start",
     request: {
