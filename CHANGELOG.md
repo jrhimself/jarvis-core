@@ -63,6 +63,16 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   rather than quietly rolled off it.
 - `dev_status` lists the open pull requests, so "is anything waiting for me?" is answered from
   GitHub rather than from the task table, which only ever knew about half of them.
+- A second orb to look at: `?orb=swarm` draws a shell of nine hundred points instead of the rings.
+  It reads the state the rings read, so it is a look to compare rather than a mode to configure,
+  and the rings stay the default until the comparison has been made. The cloud is generated from a
+  single seed rather than shipped as data, which keeps the file small and the frozen frames
+  identical. Each state moves it differently -- speech runs in bands up the body, listening ripples
+  out of the equator, thought flickers in patches that drift -- and the one event the state alone
+  does not carry is the interesting one: a thought breaking into speech throws the shell outwards
+  for a beat and a half. Colour is the desk's: every point sits on the eased state hue and activity
+  moves it up a ramp of that same hue, so the swarm turns violet while listening and amber while
+  thinking with everything else.
 
 ### Changed
 

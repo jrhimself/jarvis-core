@@ -551,6 +551,18 @@ function drawOrb(ctx, W, H, t) {
   const R = Math.min(W, H) / 2 * 0.90;
   const energy = idleEnergy(t);
 
+  if (orbStyle === 'swarm') {
+    drawSwarmOrb(ctx, W, H, t, {
+      hue: HUE,
+      amp: waveAmp,
+      energy,
+      boot: orbBoot.core,
+      state: voiceState,
+      frozen: !animate,
+    });
+    return;
+  }
+
   ctx.clearRect(0, 0, W, H);
 
   /* outer soft atmosphere (blooms with core during boot) */
@@ -1011,6 +1023,9 @@ const freezeT = parseFloat(params.get('t') || '4.2');
 const demoBriefing = params.get('demo') === 'briefing';
 const initialVoice = (params.get('voice') || 'idle').toLowerCase();
 const usageDevRaw = params.get('usage'); /* e.g. 34,62 or rejected */
+/* ?orb=swarm draws the point cloud instead of the rings. Both read the same
+   state, so this is a look to compare rather than a mode to configure. */
+const orbStyle = params.get('orb') === 'swarm' ? 'swarm' : 'rings';
 /* Default animated. ?t= freezes for shots. ?live=0 forces off. ?live=1 forces on. */
 const animate =
   liveParam === '0' ? false : liveParam === '1' ? true : !hasT || demoBriefing;
