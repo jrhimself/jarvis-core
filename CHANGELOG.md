@@ -52,9 +52,15 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   asking again.
 - A bare number only counts when it is said as a pull request number. "The one runner 11 built"
   names a runner, and a yes meant for that one must not land pull request 11.
-- Merging reaches a pack's own repository as well as the assistant's source. A pack is merged and
-  no more: the running copy of a pack is not the brain's to replace, and the answer says so
-  instead of promising a restart that is not coming.
+- Merging reaches a pack's own repository as well as the assistant's source.
+- A merged pack reaches the running process. Merging a pack's pull request used to be the end of
+  it: the checkout under `packs/<id>` stayed where it was until somebody moved it by hand, so every
+  ability JARVIS built in a pack was dead work until then -- the one place where finishing a job
+  changed nothing. The deploy boundary takes a second request now, `pack <id> <sha>`, and the root
+  side asks that pack's own `main` whether the commit is on it before putting the running copy
+  there, building it, running the suite and restarting. A pack that does not build, or that reddens
+  the suite, is put back on the commit it came from; a pack with a pull request on trial is refused
+  rather than quietly rolled off it.
 - `dev_status` lists the open pull requests, so "is anything waiting for me?" is answered from
   GitHub rather than from the task table, which only ever knew about half of them.
 

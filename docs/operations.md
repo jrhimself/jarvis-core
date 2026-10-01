@@ -58,8 +58,8 @@ Four things a push does **not** carry, and must reach the host some other way: t
 
 ### 1.2 Self-deploy — restarting on code it wrote
 
-The brain runs with `NoNewPrivileges=yes` and cannot restart anything. The privilege boundary is a
-**single 40-character string in a file**.
+The brain runs with `NoNewPrivileges=yes` and cannot restart anything. The privilege boundary is
+**one line in a file**, and for its own code that line is a single 40-character string.
 
 ```mermaid
 sequenceDiagram
@@ -89,6 +89,11 @@ sequenceDiagram
 Everything git and npm touch runs as the service account via `runuser`; only the restart is root. The
 answer comes back as a file because the process that asked for it no longer exists by the time it
 lands.
+
+A pack is its own repository, so it has its own line in that vocabulary: `pack <id> <sha>` moves the
+running checkout under `packs/<id>`, after asking **that pack's** `main` whether the commit is on it,
+then builds the pack, runs the suite and restarts. The rollback is the commit the pack came from.
+Without this a merged pack pull request never reached the process.
 
 ### 1.3 What produces that sha
 

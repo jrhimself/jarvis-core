@@ -29,7 +29,7 @@ import { NO_DELEGATE } from "@jarvis/shared";
 import type { Config } from "../config.js";
 import { notify, type Channel } from "../notify.js";
 
-import { lastDeploy, requestDeploy } from "./deploy.js";
+import { lastDeploy, requestDeploy, requestPackDeploy } from "./deploy.js";
 import {
   budgetVerdict,
   branchName,
@@ -580,19 +580,19 @@ export class SelfDevelopment {
   }
 
   /**
-   * Merges one pull request and, when it is this assistant's own code, asks to
-   * be restarted on it.
+   * Merges one pull request and asks to be restarted on it.
    *
    * Whichever door opened it: a fix written here, a runner's work, a pack's
    * pull request, something pushed by hand. What keeps it the owner's decision
-   * is the tool that calls this, which needs his yes in an earlier turn. A pack
-   * is merged and no more -- the running checkout of a pack is not this
-   * process's to replace -- and the caller is told which of the two happened.
+   * is the tool that calls this, which needs his yes in an earlier turn. Core
+   * and a pack take different routes across the deploy boundary -- a pack's
+   * running copy is a checkout of its own repository -- and the caller is told
+   * which of the two is on its way.
    */
   async merge(
     target: PullTarget,
     now: Date,
-  ): Promise<{ ok: true; sha: string; deploying: boolean } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; sha: string; deploying: "core" | "pack" } | { ok: false; error: string }> {
     if (!this.canOpenPullRequests) return { ok: false, error: "I have no GitHub token." };
     const github = inRepo(githubConfig(this.config), repoName(this.config.devGitHubRepo, target));
     const task = this.#taskFor(target);
@@ -622,18 +622,16 @@ export class SelfDevelopment {
     };
     const landed = `merged as ${merged.value.slice(0, 7)}`;
 
-    if (target.repo !== "core") {
-      record(landed);
-      return { ok: true, sha: merged.value, deploying: false };
-    }
-
-    const asked = await requestDeploy(this.config.dataDir, merged.value);
+    const asked =
+      target.repo === "core"
+        ? await requestDeploy(this.config.dataDir, merged.value)
+        : await requestPackDeploy(this.config.dataDir, target.pack, merged.value);
     if (!asked.ok) {
       record(asked.error);
       return { ok: false, error: `Merged, but ${asked.error}` };
     }
     record(landed);
-    return { ok: true, sha: merged.value, deploying: true };
+    return { ok: true, sha: merged.value, deploying: target.repo === "core" ? "core" : "pack" };
   }
 
   /** How the last requested deploy ended, once the root side has written it down. */

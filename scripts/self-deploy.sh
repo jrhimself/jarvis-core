@@ -8,6 +8,8 @@
 # lines, each checked here rather than taken on trust:
 #
 #   <40-hex sha>            run a commit that is already on origin/main
+#   pack <id> <40-hex sha>  put the running copy of the pack in packs/<id> on a
+#                           commit that is already on that pack's own main
 #   try core <n>            put open pull request <n> of this repository live on
 #                           top of what runs now, to be tried before it is merged
 #   try pack <id> <n>       the same for pull request <n> of the pack in packs/<id>
@@ -166,6 +168,42 @@ if [ "$LINE" = untry ]; then
   SHA=$BASE
   systemctl restart "$SERVICE" || finish false restart "the service would not restart"
   finish true untried "back on ${BASE:0:7}"
+fi
+
+# ---------------------------------------------------------------- merged pack
+# A pack is its own repository, so "already reviewed" is asked of that pack's
+# main, in that pack's checkout, and never of this one.
+if [[ "$LINE" =~ ^pack\ ([a-z0-9][a-z0-9-]{0,39})\ ([0-9a-f]{40})$ ]]; then
+  PACK=${BASH_REMATCH[1]} SHA=${BASH_REMATCH[2]} DIR=$REPO/packs/$PACK
+  [ -d "$DIR/.git" ] || finish false pack "no pack checkout named $PACK"
+  if [ -f "$TRIAL" ] && [ "$(trial_field kind)" = pack ] && [ "$(trial_field pack)" = "$PACK" ]; then
+    finish false busy "pull request $(trial_field pr) is on trial in the $PACK pack; take it off first"
+  fi
+
+  git_as -C "$DIR" fetch --quiet origin main \
+    || finish false fetch "could not reach the $PACK pack's origin"
+  # FETCH_HEAD rather than origin/main: a pack checkout is cloned by packs-sync
+  # and its refspec is not this script's to assume.
+  git_as -C "$DIR" merge-base --is-ancestor "$SHA" FETCH_HEAD \
+    || finish false ancestry "$SHA is not on the $PACK pack's main"
+
+  ROLLBACK=$(git_as -C "$DIR" rev-parse HEAD)
+  if ! pack_to "$DIR" "$SHA"; then
+    pack_to "$DIR" "$ROLLBACK"
+    finish false build "pack $PACK does not build on ${SHA:0:7}"
+  fi
+
+  if ! why=$(suite); then
+    pack_to "$DIR" "$ROLLBACK"
+    finish false "${why%%:*}" "${why#*: }"
+  fi
+
+  if ! systemctl restart "$SERVICE"; then
+    pack_to "$DIR" "$ROLLBACK"
+    systemctl restart "$SERVICE"
+    finish false restart "the service would not restart with pack $PACK on ${SHA:0:7}"
+  fi
+  finish true restarted "pack $PACK is on ${SHA:0:7}"
 fi
 
 # ---------------------------------------------------------------- merged code

@@ -9,9 +9,14 @@
  * So the brain writes a commit hash into a file and stops. A systemd path unit
  * notices the file and starts a root one-shot that fetches, checks the hash is
  * really on `origin/main`, runs the suite and restarts the service, rolling
- * back if any of that fails. The whole vocabulary across the boundary is one
- * forty-character string, and the only thing it can ask for is "run the code
- * that is already merged".
+ * back if any of that fails. The whole vocabulary across the boundary is a
+ * forty-character string, or a pack's name and one, and the only thing it can
+ * ask for is "run the code that is already merged".
+ *
+ * A pack is asked for separately because it is its own repository with its own
+ * main: the running copy under `packs/<id>` is moved to the merged commit,
+ * built, and the service restarted on it. Without that nothing a merged pack
+ * pull request adds would ever reach this process.
  *
  * The answer comes back the same way, as a small JSON file, because by the time
  * the deploy finishes the process that asked for it no longer exists.
@@ -39,6 +44,26 @@ export function isCommitSha(value: string): boolean {
   return /^[0-9a-f]{40}$/.test(value);
 }
 
+/**
+ * A pack is named by its directory under `packs/`, and the root side turns that
+ * name into a path, so the shape is as much a boundary as the hash is.
+ */
+export function isPackId(value: string): boolean {
+  return /^[a-z0-9][a-z0-9-]{0,39}$/.test(value);
+}
+
+async function request(
+  dataDir: string,
+  line: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await writeFile(join(dataDir, REQUEST_FILE), `${line}\n`, "utf8");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: `Could not request the deploy: ${String(error)}` };
+  }
+}
+
 export async function requestDeploy(
   dataDir: string,
   sha: string,
@@ -46,12 +71,22 @@ export async function requestDeploy(
   if (!isCommitSha(sha)) {
     return { ok: false, error: "That is not a full commit hash." };
   }
-  try {
-    await writeFile(join(dataDir, REQUEST_FILE), `${sha}\n`, "utf8");
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: `Could not request the deploy: ${String(error)}` };
+  return request(dataDir, sha);
+}
+
+/** The same, for the running copy of one pack rather than for this repository. */
+export async function requestPackDeploy(
+  dataDir: string,
+  pack: string,
+  sha: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isPackId(pack)) {
+    return { ok: false, error: "That is not a pack I can name." };
   }
+  if (!isCommitSha(sha)) {
+    return { ok: false, error: "That is not a full commit hash." };
+  }
+  return request(dataDir, `pack ${pack} ${sha}`);
 }
 
 /** Reads back what the root side made of the last request, if anything. */
