@@ -1023,9 +1023,9 @@ const freezeT = parseFloat(params.get('t') || '4.2');
 const demoBriefing = params.get('demo') === 'briefing';
 const initialVoice = (params.get('voice') || 'idle').toLowerCase();
 const usageDevRaw = params.get('usage'); /* e.g. 34,62 or rejected */
-/* ?orb=swarm draws the point cloud instead of the rings. Both read the same
-   state, so this is a look to compare rather than a mode to configure. */
-const orbStyle = params.get('orb') === 'swarm' ? 'swarm' : 'rings';
+/* The point cloud is the orb. ?orb=rings brings back the ring orb, which reads
+   the same state and is kept for the comparison rather than as a setting. */
+const orbStyle = params.get('orb') === 'rings' ? 'rings' : 'swarm';
 /* Default animated. ?t= freezes for shots. ?live=0 forces off. ?live=1 forces on. */
 const animate =
   liveParam === '0' ? false : liveParam === '1' ? true : !hasT || demoBriefing;

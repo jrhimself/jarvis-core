@@ -1,5 +1,5 @@
-/* The swarm orb: a shell of 900 points instead of the ring orb, drawn from the
-   same voice state. ?orb=swarm picks it; nothing else changes.
+/* The swarm orb: a shell of 900 points, drawn from the voice state. It is the
+   orb; ?orb=rings brings back the ring orb beside it.
 
    The cloud is not data. It is a pure function of one seed, so this file stays
    small, the frozen test frames match everywhere, and the shape can be read
