@@ -287,7 +287,11 @@ brain is a silent one. Whatever else watches your machines should watch this one
 4. **The OAuth token expires roughly monthly and takes everything with it.** The failure surfaces as
    "it stopped answering", which is a bad way to learn about it.
 5. **Restart-on-certificate-renewal is a weekly blip** nobody asked for. See §4.
-6. **No offline path**, deferred from the start. Every spoken interaction needs the internet, even
+6. **A delegate pool's slot count can promise more than its memory allows.** Where the slots in a
+   shared cap are more than the cap holds, a job is admitted and then killed, and not necessarily the
+   one that was admitted. Measurements and the options are in
+   [delegate-scaling.md](delegate-scaling.md).
+7. **No offline path**, deferred from the start. Every spoken interaction needs the internet, even
    "turn the light off". A local intent shortcut for the ten most common commands would survive a WAN
    outage — worth doing only if outages actually bite.
 
