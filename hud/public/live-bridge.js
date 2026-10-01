@@ -207,7 +207,10 @@
     const rows = Array.prototype.slice.call(body.querySelectorAll('.fit-item'));
     rows.forEach(function (r) { r.classList.remove('fit-hidden'); });
     const panel = body.closest('.panel');
+    /* Enlarged, or at the centre of the stage: the panel has the room for the
+       rows it was given back, and scrolls for the rest. */
     if (!panel || panel.classList.contains('is-focused')) return;
+    if (panel.classList.contains('is-centre')) return;
     if (getComputedStyle(body).overflowY === 'visible') return;   /* narrow layout: panels grow */
     for (let i = rows.length - 1; i >= 0 && body.scrollHeight > body.clientHeight + 1; i--) {
       rows[i].classList.add('fit-hidden');
@@ -633,6 +636,13 @@
     return window.JarvisI18n ? JarvisI18n.locale() : 'en-GB';
   }
 
+  /* A card has the floor as much as the carousel does — a camera feed is the
+     clearest case — so the orb withdraws to the corner for either, by the same
+     path and for the same reason. */
+  function cardsHaveFloor() {
+    if (window.JarvisStage) JarvisStage.setBusy(!!Object.keys(freeCards).length);
+  }
+
   function showFreeCard(id, payload, meta) {
     const layer = document.getElementById('free-card-layer');
     if (!layer) return;
@@ -660,6 +670,7 @@
       dismissFreeCard(id, 'closed');
     });
     card.prepend(close);
+    cardsHaveFloor();
 
     const dismiss = (meta && meta.dismiss) || { mode: 'next-turn' };
     if (card._timer) clearTimeout(card._timer);
@@ -681,6 +692,7 @@
     }
     if (card._timer) clearTimeout(card._timer);
     delete freeCards[id];
+    cardsHaveFloor();
     releaseMedia(card);
     const layer = document.getElementById('free-card-layer');
     const last = !Object.keys(freeCards).length;
@@ -848,14 +860,15 @@
 
     l.onDesk(function (slots) {
       renderPackStrip(slots);
+      if (window.JarvisV2 && JarvisV2.noteDeskSlots) JarvisV2.noteDeskSlots(slots);
       const desk = document.getElementById('pill-desk-text');
       if (desk) desk.textContent = 'DESK LIVE';
     });
 
-    l.onFocus(function (panelId) {
+    l.onFocus(function (panelId, section) {
       if (!window.JarvisV2) return;
       if (panelId) {
-        JarvisV2.focusPanel(panelId);
+        JarvisV2.focusPanel(panelId, { section: section });
         armStaleFocusGuard();
       } else {
         clearStaleFocusGuard();

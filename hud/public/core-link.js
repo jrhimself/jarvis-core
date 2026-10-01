@@ -456,10 +456,14 @@ registerProcessor('mic-tap', MicTap);
       bus.emit('voiceState', vs);
     }
 
-    function setFocus(panelId) {
+    /* `section` says the panel was named by a marker in the answer rather than
+       inferred from a word in it: the difference between a briefing arriving at
+       its next subject and a single answer that happens to be about one. The
+       screen is entitled to treat the two differently. */
+    function setFocus(panelId, section) {
       if (focusedPanel === panelId) return;
       focusedPanel = panelId;
-      bus.emit('focus', panelId);
+      bus.emit('focus', panelId, section === true);
     }
 
     /** v1-style cue gate (simplified): anchor any-of, else chars into spoken text. */
@@ -509,7 +513,7 @@ registerProcessor('mic-tap', MicTap);
        else in it -- tiles, displays with their anchors -- is dropped. */
     function queueSection(panel, chars) {
       if (!panel) return;
-      if (!turn) { setFocus(String(panel)); return; }
+      if (!turn) { setFocus(String(panel), true); return; }
       sectionTurn = true;
       focusQueue = focusQueue.filter((q) => q.section);
       focusQueue.push({ panel: String(panel), anchors: [], chars: Number(chars) || 0, section: true });
@@ -545,7 +549,7 @@ registerProcessor('mic-tap', MicTap);
           if (q.section && spokenText.length >= q.chars && (due < 0 || q.chars < focusQueue[due].chars)) due = i;
         });
         if (due >= 0) {
-          setFocus(focusQueue.splice(due, 1)[0].panel);
+          setFocus(focusQueue.splice(due, 1)[0].panel, true);
           continue;
         }
         let best = -1, at = Infinity, end = 0;

@@ -1347,7 +1347,8 @@ html.boot-reduced .orb-gauges {
    left out of the orb's filter because a focused pack card lives in it. */
 html.is-focusing .hud { z-index: 41; }
 .col.has-focus { z-index: 4; }
-html.is-focusing .orb-wrap > :not(.pack-strip),
+html.is-focusing .orb-wrap > .orb-core,
+html.is-focusing .orb-dock > :not(.pack-strip),
 html.is-focusing .header,
 html.is-focusing .footer {
   filter: brightness(0.55) saturate(0.85) !important;
@@ -1931,24 +1932,94 @@ html.is-focusing .footer {
   .ask, .btn-talk, .compose-veil { transition: none !important; }
 }
 
-/* ===== Transcript: the caption under the orb, and the drawer of today ===== */
-.orb-label .caption {
-  margin: 6px 0 0;
-  width: min(560px, 44vw);
-  font-size: 14px;
+/* ===== Transcript: the caption under the desk, and the drawer of today ===== */
+/* The caption sits below the stage rather than under the orb, because in the
+   carousel the orb is in a corner and the words are not. Its width stops short
+   of the panels at the side so a long sentence cannot run under them. */
+.stage-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 6px;
+  text-align: center;
+  position: relative;
+  z-index: 6;
+}
+.stage-foot .caption {
+  margin: 0;
+  width: clamp(300px, 100vw - 680px, 760px);
+  max-width: 92vw;
+  font-size: 15px;
   line-height: 1.45;
   letter-spacing: 0;
   text-transform: none;
   color: hsla(var(--hue), 30%, 94%, 0.95);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 0 18px hsla(var(--hue), 100%, 65%, 0.35), 0 1px 8px rgba(0, 0, 0, 0.85);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
   transition: opacity 0.6s ease;
 }
-.orb-label .caption[hidden] { display: none; }
-.orb-label .caption.fading { opacity: 0; }
+.stage-foot .caption[hidden] { display: none; }
+.stage-foot .caption.fading { opacity: 0; }
+
+/* The nav row is only a way of walking the carousel, so it is there when there
+   is a carousel to walk and absent on the resting desk. */
+.stage-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+.stage-foot[data-on="1"] .stage-nav {
+  opacity: 1;
+  pointer-events: auto;
+}
+.stage-nav .nav-step {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid hsla(var(--hue), 70%, 65%, 0.35);
+  background: transparent;
+  color: var(--cyan-bright);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.stage-nav .nav-step:hover {
+  background: hsla(var(--hue), 100%, 60%, 0.12);
+  border-color: var(--panel-border-hot);
+}
+.stage-nav .nav-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px/1 var(--mono);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: hsla(var(--hue), 100%, 82%, 0.95);
+  min-width: 11ch;
+  justify-content: center;
+}
+.stage-nav .nav-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cyan-bright);
+  box-shadow: 0 0 6px hsla(var(--hue), 100%, 70%, 0.9);
+}
+.stage-sub {
+  font: 9px/1 var(--mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-height: 9px;
+}
 
 .footer-spacer { display: flex; justify-content: flex-end; }
 .btn-transcript {
@@ -2052,8 +2123,158 @@ html.is-focusing .footer {
 
 @media (max-width: 800px) {
   .footer-spacer { display: flex !important; justify-content: center; }
-  .orb-label .caption { width: min(92vw, 520px); font-size: 13px; }
+  .stage-foot .caption { width: min(92vw, 520px); font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .transcript, .transcript.open, .caption { transition: none; }
+}
+
+/* ===== The stage in three dimensions =====
+   Only where there is room for two panels either side of the orb, and only
+   where motion is welcome. Below this width, and for a reader who asked for
+   less movement, the stacked layout above is the layout and stage.js writes
+   nothing: there is one set of rules per arrangement, not a set that has to
+   undo another. */
+@media (min-width: 1101px) and (prefers-reduced-motion: no-preference) {
+  .stage {
+    display: block;
+    padding: 0;
+    perspective: 1600px;
+    perspective-origin: 50% 50%;
+    overflow: visible;
+  }
+  /* The columns stay in the markup for the stacked layout and stop existing
+     here, so a panel's containing block is the stage itself. */
+  .col { display: contents; }
+
+  .stage .panel[data-panel] {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--pw, 288px);
+    height: var(--ph, 200px);
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    border-radius: 2px;
+    transform-origin: 50% 50%;
+    backface-visibility: hidden;
+    will-change: transform, opacity, filter;
+    /* Transform is written every frame; size changes when a panel takes the
+       centre, and that one is left to the browser to carry. */
+    transition: width 560ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                height 560ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    /* A hairline along the top and a sheen across the corner: a sheet of glass
+       catching the light of the room rather than a rectangle with a border.
+       Both are background layers, so no element has to exist to hold them. */
+    background-image:
+      linear-gradient(90deg, transparent, hsla(var(--hue), 100%, 88%, 0.55), transparent),
+      linear-gradient(155deg,
+        hsla(var(--hue), 100%, 85%, 0.13) 0%,
+        hsla(var(--hue), 100%, 85%, 0.03) 32%,
+        transparent 48%);
+    background-size: 100% 1px, 100% 100%;
+    background-position: 0 0, 0 0;
+    background-repeat: no-repeat;
+    -webkit-box-reflect: below 10px linear-gradient(transparent 55%, rgba(255, 255, 255, 0.16));
+  }
+  .stage .panel[data-panel] > .panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  /* The panel at the centre of the carousel is the one being read, so it is
+     the only one that scrolls when its rows outrun the room it was given. */
+  .stage .panel.is-centre > .panel-body { overflow-y: auto; scrollbar-width: none; }
+  .stage .panel.is-centre > .panel-body::-webkit-scrollbar { display: none; }
+
+  /* ----- selection ----- */
+  .stage .panel[data-panel] > .panel-flash { display: block; }
+
+  /* ----- the orb leaves the middle ----- */
+  .orb-wrap {
+    position: absolute;
+    inset: 0;
+    display: block;
+    min-height: 0;
+    height: auto;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .orb-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform-origin: 50% 50%;
+    /* Half its own size, so the box is centred on the stage and every journey
+       out of the middle is a translation of its centre. */
+    margin: -280px 0 0 -280px;
+    width: 560px;
+    height: 560px;
+    cursor: pointer;
+  }
+  #orb {
+    width: 560px;
+    height: 560px;
+    max-width: none;
+    max-height: none;
+  }
+  .orb-wrap::before {
+    /* The vignette belongs to the orb, so it travels with it. */
+    display: none;
+  }
+  /* Placed entirely from stage.js: it travels with the orb, and a step in a
+     margin halfway through the journey would read as a stumble. */
+  .orb-dock {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translateX(-50%) translateY(196px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+  }
+  /* In the corner the state line is a light left on, not a readout: the word
+     and its dot, at the size of a label. */
+  .orb-dock[data-mini="1"] { align-items: flex-start; }
+  .orb-dock[data-mini="1"] .orb-label .state { font-size: 8px; letter-spacing: 0.22em; }
+  .orb-dock[data-mini="1"] .orb-label .sub,
+  .orb-dock[data-mini="1"] #status-wave { display: none; }
+  .orb-dock .orb-label {
+    position: static;
+    transform: none;
+    left: auto;
+    bottom: auto;
+  }
+}
+
+/* The flash is the stage's, and the stage does not exist below it. */
+.panel-flash {
+  display: none;
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  border: 1px solid hsla(var(--hue), 100%, 90%, 0.9);
+  background: linear-gradient(180deg,
+    hsla(var(--hue), 100%, 78%, 0.22),
+    hsla(var(--hue), 100%, 66%, 0.06));
+  box-shadow:
+    0 0 28px hsla(var(--hue), 100%, 72%, 0.75),
+    inset 0 0 34px hsla(var(--hue), 100%, 72%, 0.35);
+}
+/* One pass down the panel, once, so a selection reads as something being
+   looked at rather than something blinking. */
+.panel-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, hsla(var(--hue), 100%, 96%, 0.95), transparent);
+  box-shadow: 0 0 12px hsla(var(--hue), 100%, 82%, 0.9);
 }
