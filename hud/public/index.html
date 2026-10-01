@@ -23,10 +23,6 @@
   <span></span><span></span><span></span><span></span><span></span><span></span>
 </div>
 
-<div id="voice-chip" class="voice-chip" hidden>
-  <span class="chip-label">You</span>
-  <span class="chip-text" id="voice-chip-text"></span>
-</div>
 <div id="mic-error" class="mic-error" hidden></div>
 
 <div class="hud">
@@ -51,33 +47,39 @@
         <div class="panel-body" data-body="weather">
           <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
         </div>
+        <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="agenda" data-panel="agenda">
         <div class="panel-title"><h2>Agenda</h2><span class="meta" data-meta="agenda"></span></div>
         <div class="panel-body" data-body="agenda">
           <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
         </div>
+        <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="notes" data-panel="notes">
         <div class="panel-title"><h2>Facts</h2><span class="meta" data-meta="notes"></span></div>
         <div class="panel-body" data-body="notes">
           <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
         </div>
+        <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
     </div>
 
     <div class="orb-wrap">
-      <canvas id="orb" width="600" height="600" aria-label="Jarvis soft energy orb"></canvas>
-      <div class="orb-label">
-        <div class="state-row">
-          <span class="state-dot" id="orb-dot" aria-hidden="true"></span>
-          <div class="state" id="orb-state">STANDBY</div>
-          <canvas id="status-wave" width="100" height="18" aria-hidden="true"></canvas>
-        </div>
-        <div class="sub" id="orb-sub">Neural core · idle breathe</div>
-        <p id="caption" class="caption" aria-live="polite" hidden></p>
+      <div class="orb-core">
+        <canvas id="orb" width="600" height="600" aria-label="Jarvis soft energy orb"></canvas>
       </div>
-      <div id="pack-strip" class="pack-strip" hidden aria-label="Pack topics"></div>
+      <div class="orb-dock" data-mini="0">
+        <div class="orb-label">
+          <div class="state-row">
+            <span class="state-dot" id="orb-dot" aria-hidden="true"></span>
+            <div class="state" id="orb-state">STANDBY</div>
+            <canvas id="status-wave" width="100" height="18" aria-hidden="true"></canvas>
+          </div>
+          <div class="sub" id="orb-sub">Neural core · idle breathe</div>
+        </div>
+        <div id="pack-strip" class="pack-strip" hidden aria-label="Pack topics"></div>
+      </div>
     </div>
 
     <div class="col col-right">
@@ -86,23 +88,43 @@
         <div class="panel-body" data-body="mail">
           <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
         </div>
+        <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="work" data-panel="work">
         <div class="panel-title"><h2>Work · PRs</h2><span class="meta" data-meta="work"></span></div>
         <div class="panel-body" data-body="work">
           <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
         </div>
+        <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="system" data-panel="system">
         <div class="panel-title"><h2>System</h2><span class="meta" data-meta="system"></span></div>
         <div class="panel-body" data-body="system">
           <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
         </div>
+        <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
     </div>
   </main>
 
   <div id="pack-overflow" class="pack-overflow" hidden></div>
+
+  <div class="stage-foot" data-on="0">
+    <div id="voice-chip" class="say-chip voice-chip" hidden>
+      <span class="chip-label">You</span>
+      <span class="chip-text" id="voice-chip-text"></span>
+    </div>
+    <p id="caption" class="say-chip caption" aria-live="polite" hidden>
+      <span class="chip-label">Jarvis</span>
+      <span class="chip-text" id="caption-text"></span>
+    </p>
+    <div class="stage-nav">
+      <button type="button" class="nav-step" id="stage-prev" aria-label="Previous panel">‹</button>
+      <span class="nav-name"><span class="nav-dot" aria-hidden="true"></span><span id="stage-label"></span></span>
+      <button type="button" class="nav-step" id="stage-next" aria-label="Next panel">›</button>
+    </div>
+    <div class="stage-sub" id="stage-sub"></div>
+  </div>
 
   <footer class="footer">
     <div class="metrics">
@@ -143,6 +165,7 @@
 <script src="i18n.js"></script>
 <script src="core-link.js"></script>
 <script src="orb-swarm.js"></script>
+<script src="stage.js"></script>
 <script src="app.js"></script>
 <script src="transcript.js"></script>
 <script src="live-bridge.js"></script>

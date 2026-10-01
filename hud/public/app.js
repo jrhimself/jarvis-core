@@ -1035,9 +1035,14 @@ const sparkIds = ['spark-cpu', 'spark-net'];
 
 function sizeOrb() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const css = canvas.getBoundingClientRect();
-  const tw = Math.round(css.width * dpr);
-  const th = Math.round(css.height * dpr);
+  /* The layout box, not the painted one: on the stage the orb is scaled by a
+     transform, and a measured width would shrink the backing store with it and
+     reallocate the canvas on every frame of the journey to the corner. */
+  const rect = canvas.getBoundingClientRect();
+  const cw = canvas.offsetWidth || rect.width;
+  const ch = canvas.offsetHeight || rect.height;
+  const tw = Math.round(cw * dpr);
+  const th = Math.round(ch * dpr);
   if (canvas.width !== tw || canvas.height !== th) {
     canvas.width = tw;
     canvas.height = th;
@@ -1088,6 +1093,7 @@ function advanceMotion(t) {
 }
 
 function paintFrame(t) {
+  if (window.JarvisStage) JarvisStage.frame(t, animate);
   advanceMotion(t);
   sizeOrb();
   const ctx = canvas.getContext('2d');
@@ -1308,6 +1314,9 @@ let focusSource = null;
 let idleUnfocusTimer = null;
 let bootDone = false;
 let bootRunning = false;
+/* Which panels this briefing is going to visit, in the order the desk listed
+   them, so the footer can say how far through it is. Empty outside one. */
+let briefingRoute = [];
 
 /* ---------- Per-panel data layer ---------- */
 const Panels = {
@@ -1431,6 +1440,19 @@ function topicFromDisplayPayload(payload) {
   return null;
 }
 
+/* Core's standing desk. The panels are rendered from it in live-bridge; what
+   is wanted here is only which subjects this briefing is going to visit and in
+   what order, so the line under the orb can count along them. */
+function noteDeskSlots(slots) {
+  const route = [];
+  (Array.isArray(slots) ? slots : []).forEach((s) => {
+    if (!s || !s.briefing) return;
+    const id = s.panelId || panelIdFromTopic(s.topic);
+    if (id && !route.includes(id)) route.push(id);
+  });
+  if (route.length) briefingRoute = route;
+}
+
 function handleDeskMessage(m) {
   const slots = Array.isArray(m.slots) ? m.slots : [];
   let briefing = false;
@@ -1447,6 +1469,7 @@ function handleDeskMessage(m) {
     Panels.save(id, data);
   });
   if (briefing) inBriefing = true;
+  noteDeskSlots(slots);
 }
 
 function handleTilesMessage(m) {
@@ -1476,6 +1499,7 @@ function handleDisplayMessage(m) {
 function handleDoneMessage(m) {
   if (m.briefing === true || inBriefing) {
     inBriefing = false;
+    briefingRoute = [];
     unfocusPanel();
   }
 }
@@ -1492,6 +1516,7 @@ onCoreMessage = function onCoreMessageExtended(m) {
   }
   if (m.kind === 'unfocus') {
     inBriefing = false;
+    briefingRoute = [];
     unfocusPanel();
     return;
   }
@@ -1562,6 +1587,52 @@ function dimOthers(exceptId, on) {
   document.documentElement.classList.toggle('is-focusing', !!on);
 }
 
+/* The stage holds the six fixed panels, and only where there is room to stand
+   them up and no request to keep still. A pack card, a phone, a window that
+   would rather not move: those keep the FLIP focus below. */
+function onStage(id) {
+  return !!(window.JarvisStage && JarvisStage.enabled() && JarvisStage.has(id));
+}
+
+/* How far through the briefing the panel being shown is. */
+function briefingStep(id) {
+  if (!inBriefing) return '';
+  const i = briefingRoute.indexOf(id);
+  if (i < 0) return 'BRIEFING';
+  const pad = (n) => (n < 10 ? '0' + n : String(n));
+  return 'BRIEFING · ' + pad(i + 1) + ' / ' + pad(briefingRoute.length);
+}
+
+/* The room turns for a briefing and for a hand on a panel; a single answer
+   only lights the panel where it stands, because turning the whole desk for
+   one line would be more movement than the line is worth. */
+function _stageSelect(id, carousel) {
+  const held = focusedPanelId && !onStage(focusedPanelId)
+    ? _unfocusPanelNow()
+    : Promise.resolve();
+  return held.then(() => {
+    focusedPanelId = id;
+    JarvisStage.select(id, { carousel: carousel });
+    JarvisStage.setSub(briefingStep(id));
+  });
+}
+
+/* One panel along the carousel. From the core view the step is a way into the
+   carousel as well, landing beside whatever was last spoken about. */
+function stageStep(dir) {
+  if (!window.JarvisStage || !JarvisStage.enabled()) return;
+  if (JarvisStage.view() !== 'car') {
+    const order = JarvisStage.order;
+    const from = JarvisStage.active() || JarvisStage.centre();
+    const i = Math.max(0, order.indexOf(from));
+    focusPanel(order[(((i + dir) % order.length) + order.length) % order.length], { user: true });
+    return;
+  }
+  focusSource = 'user';
+  focusedPanelId = JarvisStage.browse(dir);
+  JarvisStage.setSub(briefingStep(focusedPanelId));
+}
+
 function focusPanel(id, opts) {
   if (!id || typeof id !== 'string') return;
   const source = opts && opts.user ? 'user' : 'auto';
@@ -1569,8 +1640,14 @@ function focusPanel(id, opts) {
   const fixed = ['weather', 'agenda', 'notes', 'mail', 'work', 'system'];
   const el = document.querySelector('[data-panel="' + id + '"]');
   if (!fixed.includes(id) && !el) return;
+  /* A panel named by a marker in the answer is a briefing reaching its next
+     subject. Nothing else says so as plainly, and it says so at the moment the
+     voice gets there rather than a turn earlier. */
+  if (opts && opts.section) inBriefing = true;
+  const carousel = !!(opts && opts.section) || source === 'user' || inBriefing;
   const run = () => {
     if (!(source === 'auto' && focusedPanelId === id)) focusSource = source;
+    if (onStage(id)) return _stageSelect(id, carousel);
     return _focusPanelNow(id);
   };
   if (focusHandOff) {
@@ -1708,6 +1785,10 @@ function unfocusPanel(opts) {
   const run = () => {
     if (!user && focusSource === 'user') return undefined;
     focusSource = null;
+    /* Leaving the desk ends the briefing; moving between panels within one does
+       not, which is why this sits here and not in the private hand-off. */
+    inBriefing = false;
+    if (user && window.JarvisTranscript && JarvisTranscript.release) JarvisTranscript.release();
     return _unfocusPanelNow(false);
   };
   if (focusHandOff) {
@@ -1722,6 +1803,18 @@ function _unfocusPanelNow(/* silent */) {
   return new Promise((resolve) => {
     const id = focusedPanelId;
     if (!id) {
+      setVeil(false);
+      dimOthers(null, false);
+      resolve();
+      return;
+    }
+    /* On the stage there is nothing to put back: the floor is given up by
+       asking for the core view, and one eased number carries the room there
+       from wherever it had got to. */
+    if (onStage(id)) {
+      focusedPanelId = null;
+      JarvisStage.release();
+      JarvisStage.setSub('');
       setVeil(false);
       dimOthers(null, false);
       resolve();
@@ -1998,6 +2091,12 @@ function boot() {
     if (voiceMap[e.key] && allowVoiceTest) { applyVoicePreset(voiceMap[e.key]); return; }
     if (e.key === 'b' || e.key === 'B') { runBootSequence().then(afterBootHooks); return; }
     if (e.key === 'Escape') { unfocusPanel({ user: true }); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (window.JarvisStage && JarvisStage.enabled() && JarvisStage.view() === 'car') {
+        stageStep(e.key === 'ArrowRight' ? 1 : -1);
+        return;
+      }
+    }
     const focusMap = {
       w: 'weather', W: 'weather',
       a: 'agenda', A: 'agenda',
@@ -2009,21 +2108,59 @@ function boot() {
     if (focusMap[e.key]) { focusPanel(focusMap[e.key], { user: true }); return; }
   });
 
-  /* A click on a panel enlarges it; a click anywhere outside the enlarged
-     panel puts it back. Buttons inside a panel keep their own meaning. */
+  /* A click on a panel gives it the floor; a click on nothing gives it back.
+     Buttons inside a panel keep their own meaning. */
   document.addEventListener('click', (e) => {
     const target = e.target instanceof Element ? e.target : null;
     if (!target || target.closest('button, a')) return;
+    /* The orb is a thing in the room, not the background behind it: turning it
+       by hand must not also be read as dismissing what is on screen. */
+    if (target.closest('.orb-core')) return;
+    const panel = target.closest('.panel[data-panel], .pack-card[data-panel]');
+    const id = panel ? panel.getAttribute('data-panel') : null;
     if (focusedPanelId) {
+      if (id === focusedPanelId) return;
       const held = Panels.el(focusedPanelId);
       if (held && held.contains(target)) return;
+      /* On the stage a click on another panel turns the room to it; off it,
+         the enlarged panel closes first, as it always did. */
+      if (id && onStage(id)) { focusPanel(id, { user: true }); return; }
       unfocusPanel({ user: true });
       return;
     }
     if (target.closest('input, form')) return;
-    const panel = target.closest('.panel[data-panel], .pack-card[data-panel]');
-    if (panel) focusPanel(panel.getAttribute('data-panel'), { user: true });
+    if (id) focusPanel(id, { user: true });
   });
+
+  /* The swarm can be turned by hand. It is the one thing on the desk that is
+     an object rather than a readout, and a shell of points only reads as a
+     sphere once you have moved it yourself. */
+  if (canvas && window.JarvisSwarm) {
+    let dragging = null;
+    canvas.addEventListener('pointerdown', (e) => {
+      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      canvas.setPointerCapture(e.pointerId);
+      canvas.classList.add('is-turning');
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging || e.pointerId !== dragging.id) return;
+      JarvisSwarm.drag(e.clientX - dragging.x, e.clientY - dragging.y);
+      dragging.x = e.clientX;
+      dragging.y = e.clientY;
+    });
+    const letGo = (e) => {
+      if (!dragging || e.pointerId !== dragging.id) return;
+      dragging = null;
+      canvas.classList.remove('is-turning');
+    };
+    canvas.addEventListener('pointerup', letGo);
+    canvas.addEventListener('pointercancel', letGo);
+  }
+
+  const stepPrev = document.getElementById('stage-prev');
+  const stepNext = document.getElementById('stage-next');
+  if (stepPrev) stepPrev.addEventListener('click', () => stageStep(-1));
+  if (stepNext) stepNext.addEventListener('click', () => stageStep(1));
 
   if (demoBriefing) runBriefingDemo();
 
@@ -2067,7 +2204,7 @@ if (document.readyState === 'loading') {
 window.JarvisV2 = {
   applyVoicePreset, paintFrame, freezeT, animate, applyUsage, usageView,
   Panels, focusPanel, unfocusPanel, runBootSequence, orbBoot,
-  setLiveAudioLevel,
+  setLiveAudioLevel, noteDeskSlots,
   hue: () => HUE,
   /* aliases used by live-bridge */
   applyVoicePreset,

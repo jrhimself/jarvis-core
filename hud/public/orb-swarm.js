@@ -23,6 +23,9 @@ const SWARM_K = 8;
    instead of a funnel. */
 const SWARM_CAMERA = 3.4;
 const SWARM_TILT = -0.16;
+/* Radians a second at rest. Slow enough to be weather rather than motion, fast
+   enough that a glance a minute apart does not find the same face. */
+const SWARM_IDLE_SPIN = 0.17;
 /* A thought breaking into speech throws the shell outwards for this long. */
 const SWARM_BURST_S = 1.4;
 
@@ -93,6 +96,10 @@ const swarmMotion = {
   last: null,
   drift: 0,
   spin: 0,
+  /* Where a hand has left the cloud. The idle turn carries on from here rather
+     than from zero, so letting go does not snap the swarm back. */
+  yaw: 0,
+  pitch: 0,
   lv: { listening: 0, thinking: 0, speaking: 0 },
   envSpeak: 0,
   burstAt: -Infinity,
@@ -180,7 +187,7 @@ function drawSwarmOrb(ctx, W, H, t, env) {
     envSpeak = syl * lv.speaking;
     burst = 0;
     drift = t * (1 + lv.listening * 2.5 + lv.thinking * 3 + envSpeak * 2);
-    spin = t * (0.06 + lv.thinking * 0.7);
+    spin = t * (SWARM_IDLE_SPIN + lv.thinking * 0.7);
   } else {
     const dt = m.last === null ? 0 : Math.min(0.05, Math.max(0, t - m.last));
     m.last = t;
@@ -193,7 +200,7 @@ function drawSwarmOrb(ctx, W, H, t, env) {
     burst = bx >= 0 && bx < 1 ? Math.pow(Math.sin(Math.PI * Math.pow(bx, 0.6)), 2) : 0;
     m.drift +=
       dt * (1 + lv.listening * 2.5 + lv.thinking * 3 + envSpeak * 2 + burst * 6);
-    m.spin += dt * (0.06 + lv.thinking * 0.7 + burst * 2.4);
+    m.spin += dt * (SWARM_IDLE_SPIN + lv.thinking * 0.7 + burst * 2.4);
     drift = m.drift;
     spin = m.spin;
   }
@@ -220,12 +227,15 @@ function drawSwarmOrb(ctx, W, H, t, env) {
 
   /* The whole cloud rolls while thinking, as the design's orb does. */
   const roll = Math.sin(t * 0.8) * 0.12 * T;
-  const cs = Math.cos(spin);
-  const ss = Math.sin(spin);
+  const cs = Math.cos(spin + m.yaw);
+  const ss = Math.sin(spin + m.yaw);
   const cr = Math.cos(roll);
   const sr = Math.sin(roll);
-  const ct = Math.cos(SWARM_TILT);
-  const st = Math.sin(SWARM_TILT);
+  /* The tilt is where the cloud is being looked at from, so a drag up or down
+     belongs here rather than in a rotation of its own. */
+  const tilt = SWARM_TILT + m.pitch;
+  const ct = Math.cos(tilt);
+  const st = Math.sin(tilt);
 
   ctx.save();
   /* Additive, so the draw order does not matter and no depth sort is needed —
@@ -347,3 +357,14 @@ function drawSwarmOrb(ctx, W, H, t, env) {
 
   ctx.restore();
 }
+
+/* A hand on the cloud turns it. Yaw accumulates without limit -- all the way
+   round is the point -- while the tilt stops short of the poles, where a shell
+   of points seen end-on stops reading as a sphere at all. */
+window.JarvisSwarm = {
+  drag: function (dx, dy) {
+    const m = swarmMotion;
+    m.yaw += dx * 0.007;
+    m.pitch = Math.max(-1.35, Math.min(1.35, m.pitch + dy * 0.007));
+  },
+};

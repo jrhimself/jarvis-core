@@ -19,6 +19,20 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 
 ### Added
 
+- The desk is a room rather than a grid. The six panels stand angled either side of the orb, and
+  when one of them has the floor the whole room turns until that one faces the viewer, the others
+  falling away behind it, while the orb withdraws to the corner of the stage. One eased number is
+  the entire distance between the two arrangements, which is why the view can be changed in the
+  middle of a briefing without anything falling out of step: there is no second layout to drift
+  from, only a position along the way. A briefing turns the room at each subject and counts itself
+  off under the caption; a single answer leaves the desk where it is and only lights the panel it
+  concerns, because turning a room for one line is more movement than the line is worth. The arrow
+  keys and the two steps under the caption move along the ring, and Escape puts the desk back.
+  Anything that takes the floor in its own right moves the orb by the same path -- a camera feed is
+  the clearest case, and it was the one that showed the orb had no business staying in the middle of
+  a picture. Below the width where two panels fit either side of the orb, and for a reader whose
+  browser asks for less movement, the panels stay stacked and still: there is one set of rules per
+  arrangement rather than a set that has to undo another.
 - A delegated runner whose screen has stopped moving is reported by itself. A quiet runner was
   already looked in on, but a look that found the same screen as the last one ended there, so the one
   state nobody ever heard about was the pane that had stopped entirely -- and that is the state worth

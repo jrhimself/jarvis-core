@@ -48,6 +48,7 @@
 
   function wire(link) {
     const caption = document.getElementById('caption');
+    const captionText = document.getElementById('caption-text');
     const drawer = document.getElementById('transcript');
     const list = document.getElementById('transcript-list');
     const button = document.getElementById('btn-transcript');
@@ -64,14 +65,22 @@
       caption.classList.remove('fading');
     }
 
-    function fadeCaption() {
+    function fadeCaption(hold) {
       if (!caption) return;
       clearTimeout(hideTimer);
       hideTimer = setTimeout(function () {
         caption.classList.add('fading');
         hideTimer = setTimeout(function () { caption.hidden = true; }, 600);
-      }, CAPTION_HOLD_MS);
+      }, hold == null ? CAPTION_HOLD_MS : hold);
     }
+
+    /* An answer cut short -- the briefing stopped, the desk sent back to rest --
+       has no `done` behind it, and the line it left would otherwise stay under
+       an orb that is no longer saying anything. */
+    JarvisTranscript.release = function () {
+      captionTurn = null;
+      if (caption && !caption.hidden) fadeCaption(0);
+    };
 
     /* ---------- drawer ---------- */
     /* The turn in progress: its entry in the drawer, filled as it streams. */
@@ -173,7 +182,7 @@
       if (caption) {
         clearTimeout(hideTimer);
         caption.hidden = true;
-        caption.textContent = '';
+        if (captionText) captionText.textContent = '';
       }
 
       live = { id: m.turnId, you: entry('you', text), jarvis: null };
@@ -202,7 +211,7 @@
       if (!m || m.turnId !== captionTurn) return;
       const text = clean(m.text);
       if (!text || !caption) return;
-      caption.textContent = tail(text);
+      if (captionText) captionText.textContent = tail(text);
       showCaption();
     });
 
@@ -216,7 +225,7 @@
       const text = clean(m && m.text);
       if (!text) return;
       captionTurn = null;
-      if (caption) caption.textContent = tail(text);
+      if (captionText) captionText.textContent = tail(text);
       showCaption();
       fadeCaption();
       if (isOpen()) add(entry('jarvis', text));

@@ -18,6 +18,13 @@ the middle changes colour with what it is doing: listening, thinking, speaking. 
 the bottom has the cursor as the page opens and takes a typed question; with the field left
 (Escape), the space bar takes a spoken one.
 
+It is a room rather than a grid. The six panels stand angled either side of the orb, and when one of
+them has the floor — a briefing reaching its next subject, a panel clicked — the room turns until
+that one faces you and the rest fall away behind it, while the orb withdraws to the corner. The
+arrow keys step along; Escape puts the desk back. Anything that takes the floor in its own right,
+a camera feed above all, moves the orb the same way for the same reason. On a narrow screen, and for
+a reader who has asked for less movement, the panels stay stacked and still.
+
 ## Overview
 
 The browser captures the microphone. The brain transcribes the audio, reasons about the house state,
