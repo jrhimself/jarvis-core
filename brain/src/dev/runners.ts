@@ -29,6 +29,17 @@
  * A runner that goes quiet without reporting -- stuck on a prompt, or gone --
  * is looked in on from this side, so a job cannot disappear unnoticed.
  *
+ * A look that finds the same screen as the last one says nothing new, and used
+ * to end there: the screen was judged once and never again, so a pane that had
+ * stopped moving altogether was the one state nobody ever heard about. It is
+ * also the state worth hearing about. A runner at work redraws its own line
+ * every second -- elapsed time, tokens, the file it is reading -- so a pane that
+ * is byte for byte what it was two hours ago is not working: it is waiting
+ * for something it will not get, or its session is dead with the window still
+ * up. That is told once per standstill, with the buttons that close the slot and
+ * the offer to type a reply into it, and again if the screen moves and stops
+ * again.
+ *
  * An ending closes the slot by itself, but only when two things agree: the model
  * reads the screen as finished, and the runner wrote its own `DONE:` line, which
  * its brief asks it to end every turn with. Slots are opened on demand, so one
@@ -390,6 +401,8 @@ export function forget(slot: number): void {
   asking.delete(slot);
   lastHeard.delete(slot);
   lastScreen.delete(slot);
+  stillSince.delete(slot);
+  toldStalled.delete(slot);
   for (const [key, held] of withOwner) if (held === slot) withOwner.delete(key);
   forgetRunner(slot);
 }
@@ -470,11 +483,26 @@ export async function handleRunnerReply(
 /** How long a delegated runner may stay silent before it is looked in on. */
 export const QUIET_MS = 30 * 60_000;
 
+/**
+ * How long a screen may stand perfectly still before the owner hears of it.
+ *
+ * Long enough that no ordinary wait reaches it -- a dependency install, a slow
+ * test run, a model thinking about a large diff all keep redrawing -- and short
+ * enough that a slot is not held for an evening by a prompt nobody answered.
+ */
+export const STALL_MS = 2 * 3_600_000;
+
 /** When each slot was last heard from, by its own report or by a look. */
 const lastHeard = new Map<number, number>();
 
 /** The screen each slot showed at the last look, so an unchanged one is judged once. */
 const lastScreen = new Map<number, string>();
+
+/** When each slot's screen last changed, so a standstill can be timed. */
+const stillSince = new Map<number, number>();
+
+/** Slots whose current standstill has already been passed on, so it is said once. */
+const toldStalled = new Set<number>();
 
 /** One job that is with a runner, as the look needs it. */
 export interface Watched {
@@ -492,8 +520,8 @@ export interface Watched {
  * the rest. A runner stuck on a prompt never ends a turn and so never reports,
  * and one whose session died reports nothing at all -- both look, from here,
  * exactly like a runner hard at work. A screen that changed is judged like a
- * report; a slot that is not running any more, or that this delegate no longer
- * has, is `gone`.
+ * report; one that has not changed for `STALL_MS` is `stalled`; a slot that is
+ * not running any more, or that this delegate no longer has, is `gone`.
  */
 export async function lookIn(
   watched: readonly Watched[],
@@ -501,6 +529,7 @@ export async function lookIn(
   tail: (slot: number, lines: number) => Promise<{ ok: true; text: string } | { ok: false; error: string }>,
   report: (report: RunnerReport) => Promise<unknown>,
   gone: (job: Watched) => Promise<void>,
+  stalled: (job: Watched, stillFor: number) => Promise<void>,
   now: number,
 ): Promise<void> {
   for (const job of watched) {
@@ -521,10 +550,73 @@ export async function lookIn(
       continue;
     }
     lastHeard.set(job.slot, now);
-    if (lastScreen.get(job.slot) === read.text) continue;
-    lastScreen.set(job.slot, read.text);
-    await report({ slot: job.slot, task: job.task, tail: read.text });
+
+    if (lastScreen.get(job.slot) !== read.text) {
+      lastScreen.set(job.slot, read.text);
+      stillSince.set(job.slot, now);
+      toldStalled.delete(job.slot);
+      await report({ slot: job.slot, task: job.task, tail: read.text });
+      continue;
+    }
+
+    // The same screen twice. Timed from when it was first seen, not from the
+    // job's start: a runner that worked for a day and then stopped has stopped
+    // for however long it has stopped, and the day before it is not the news.
+    const still = stillSince.get(job.slot) ?? now;
+    if (now - still < STALL_MS || toldStalled.has(job.slot)) continue;
+    toldStalled.add(job.slot);
+    await stalled(job, now - still);
   }
+}
+
+/** A span of time as a sentence says it. */
+function howLong(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 90) return minutes === 1 ? "a minute" : `${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? "an hour" : `${hours} hours`;
+}
+
+/** The message that says a runner's screen has stopped moving. */
+export function stalledMessage(
+  slot: number,
+  task: string,
+  stillFor: number,
+  replyable = false,
+): string {
+  return [
+    `<b>Runner ${slot} has stopped moving</b>`,
+    "",
+    `Its screen has not changed in ${howLong(stillFor)}. It is waiting for something, or it is gone.`,
+    ...(replyable ? ["", "Reply to this message and I will type your answer into it."] : []),
+    "",
+    `<i>${escapeHtml(firstLine(task))}</i>`,
+  ].join("\n");
+}
+
+/**
+ * Passes a standstill on to the owner, with the two ways out of it.
+ *
+ * Nothing here is decided on the owner's behalf. A pane that has stopped is
+ * either a question in a shape the judge did not recognise or a session that
+ * died, and those want opposite things done to them -- an answer typed in, or
+ * the slot given back. Both are one tap away, and neither happens by itself.
+ */
+export async function sayStalled(
+  bot: Sender,
+  chatId: string,
+  job: Watched,
+  stillFor: number,
+  seam: RunnerSeam = {},
+): Promise<void> {
+  if (chatId === "") return;
+  const replyable = seam.reply !== undefined;
+  noteRunner(job.slot, { state: "stalled", text: `no change in ${howLong(stillFor)}`, at: Date.now() });
+  const body = stalledMessage(job.slot, job.task, stillFor, replyable);
+  const messageId = await bot.send(chatId, body, buttonsFor(job.slot));
+  if (messageId === null) return;
+  offered.set(job.slot, { chatId, messageId, body });
+  if (replyable) withOwner.set(messageKey(chatId, messageId), job.slot);
 }
 
 /**

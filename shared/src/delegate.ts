@@ -123,8 +123,8 @@ export interface RunnerRow {
   };
   /** What the last judged screen of the runner meant. */
   note?: {
-    state: "working" | "asking" | "done";
-    /** The question it asked, or what it said it did. */
+    state: "working" | "asking" | "done" | "stalled";
+    /** The question it asked, what it said it did, or how long its screen has stood still. */
     text?: string;
     /** When that screen was judged, ISO 8601. */
     at: string;

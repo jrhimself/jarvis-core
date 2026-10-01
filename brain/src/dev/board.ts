@@ -26,8 +26,8 @@ import { delegatedDevTasks, type DevTask } from "./store.js";
 
 /** What the last judged screen of a slot meant, and when it was judged. */
 export interface RunnerNote {
-  state: "working" | "asking" | "done";
-  /** The question or the summary; absent while it is simply working. */
+  state: "working" | "asking" | "done" | "stalled";
+  /** The question, the summary, or how long the screen has stood still; absent while it is simply working. */
   text?: string;
   /** Epoch milliseconds. */
   at: number;

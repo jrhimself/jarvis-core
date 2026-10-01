@@ -357,6 +357,7 @@
       let cls = 'runner';
       if (r.busy === false) { bits.push('stopped'); cls += ' runner-stopped'; }
       else if (note && note.state === 'asking') { bits.push('asks: ' + (note.text || 'a question')); cls += ' mark runner-asking'; }
+      else if (note && note.state === 'stalled') { bits.push('not moving: ' + (note.text || 'no change')); cls += ' mark runner-stalled'; }
       else if (note && note.state === 'done') { bits.push('done'); cls += ' runner-done'; }
       else bits.push('working');
       bits.push(ageOf(job.since));
