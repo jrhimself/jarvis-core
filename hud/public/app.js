@@ -116,7 +116,7 @@ const orbBoot = {
 
 /* How long the swarm takes to arrive on boot. It reads as one move, so it is
    one number rather than the ring orb's staged build. */
-const SWARM_BOOT_MS = 2200;
+const SWARM_BOOT_MS = 2400;
 
 /* Deterministic plasma particles (seeded RNG — freeze frames stay stable) */
 const PARTICLES = (() => {
@@ -1910,8 +1910,11 @@ function easeOutCubic(x) {
   return 1 - Math.pow(1 - x, 3);
 }
 
-function easeInOutQuad(x) {
-  return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+/* Barely eased: the swarm must be moving from the first frame, because a held
+   black screen reads as a page that has not loaded, so only the landing is
+   softened. */
+function easeSwarmBoot(x) {
+  return 1 - Math.pow(1 - x, 1.3);
 }
 
 function animateValue(from, to, dur, onUpdate, ease) {
@@ -1995,9 +1998,8 @@ async function runBootSequence() {
 
   if (orbStyle === 'swarm') {
     /* The swarm has no rings to draw: its whole build is the cloud flying in
-       from outside the frame, so it is given the time the ring pass would have
-       taken too. Eased both ends -- the points drift in, close fast, and settle
-       -- because at ring speed the shell simply was there. */
+       from the frame's own corners, so it is given the time the ring pass would
+       have taken too. At ring speed the shell simply was there. */
     await animateValue(
       0,
       1,
@@ -2005,7 +2007,7 @@ async function runBootSequence() {
       (v) => {
         orbBoot.core = v;
       },
-      easeInOutQuad,
+      easeSwarmBoot,
     );
     orbBoot.rings = RING_LAYERS.length;
     orbBoot.ringDraw = 1;
