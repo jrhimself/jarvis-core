@@ -47,7 +47,7 @@ import { channelsFor, notify, spoken, type Channel, type Notice } from "./notify
 import { closeSharedBrowser } from "./browser.js";
 import { runUnattended } from "./headless.js";
 import { startScheduler } from "./scheduler.js";
-import { escapeHtml } from "./dev/notify.js";
+import { escapeHtml, withBold } from "./dev/notify.js";
 import { warmRecordedLines } from "./conversation.js";
 import { voiceChoice } from "./voice/choice.js";
 import { warmPiper } from "./voice/piper.js";
@@ -249,7 +249,7 @@ async function main(): Promise<void> {
         // A failure is for whoever runs the assistant, so it stays on the main bot; only a result
         // is a digest. A digest that could not be sent falls through rather than being lost.
         if (job.deliver === "digest" && kind === "result" && digestBot !== null) {
-          if ((await digestBot.send(config.digestChat, escapeHtml(text))) !== null) return;
+          if ((await digestBot.send(config.digestChat, withBold(text))) !== null) return;
           console.error(`schedule: job ${job.id} (${job.name}): digest bot could not send, using the main channels`);
         }
         const short = text.length <= 300 && kind === "result" && job.deliver === "all";

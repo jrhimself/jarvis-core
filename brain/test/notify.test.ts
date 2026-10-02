@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { withBold } from "../dist/dev/notify.js";
 import { channelsFor, renderBody, webhook, written, type NotifyConfig } from "../dist/notify.js";
 
 const bare: NotifyConfig = {
@@ -122,4 +123,10 @@ test("a webhook that answers badly is a failure, not a delivery", async () => {
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("bold runs become bold and nothing else becomes markup", () => {
+  assert.equal(withBold("**Mail Digest 02/10/2026**\n\nplain"), "<b>Mail Digest 02/10/2026</b>\n\nplain");
+  assert.equal(withBold("<b>no</b> & **yes**"), "&lt;b&gt;no&lt;/b&gt; &amp; <b>yes</b>");
+  assert.equal(withBold("a ** b\nc ** d"), "a ** b\nc ** d");
 });

@@ -25,7 +25,7 @@ rather than narrated: [README](README.md) for what it is and how it learns,
   bot only sends: no poller is opened on its token, so it answers nobody and takes no orders. A
   failure of such a job still goes to the main bot, a digest the bot could not send falls back to
   the ordinary written channels instead of being lost, and a deployment without a digest bot behaves
-  as if the job were `written`.
+  as if the job were `written`. In a digest, `**text**` is sent as bold; nothing else is read as markup.
 
 ## [2.4.0] - 2026-10-02
 

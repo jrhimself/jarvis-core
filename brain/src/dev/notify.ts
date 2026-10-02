@@ -15,6 +15,17 @@ export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/**
+ * Escapes a text and turns its `**bold**` runs into Telegram bold.
+ *
+ * Escaping comes first, so the only tags in the result are the ones made here:
+ * a model that writes `<b>` gets it shown, not obeyed. A run stops at the end
+ * of its line, so an unmatched pair of asterisks stays as written.
+ */
+export function withBold(text: string): string {
+  return escapeHtml(text).replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>");
+}
+
 /** The message a finished small fix sends, as HTML. */
 export function reviewMessage(task: {
   instruction: string;
