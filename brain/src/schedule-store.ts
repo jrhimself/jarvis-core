@@ -14,8 +14,12 @@ import { decodeSchedule, encodeSchedule, nextRun, type Schedule } from "./schedu
 
 export type JobState = "active" | "paused" | "done";
 
-/** Where a job's result goes. `quiet` keeps it for a later `list` and tells nobody. */
-export type Delivery = "all" | "written" | "quiet";
+/**
+ * Where a job's result goes. `quiet` keeps it for a later `list` and tells nobody.
+ * `digest` is written only, through the digest bot when a deployment has one, and
+ * through the ordinary written channels when it does not.
+ */
+export type Delivery = "all" | "written" | "digest" | "quiet";
 
 export interface Job {
   id: number;

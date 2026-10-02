@@ -61,14 +61,15 @@ export function createScheduleServer(db: DatabaseSync, options: { unattended: bo
       "`when` is one of: 'in 30m', 'in 2h' (once); 'every 2h', 'every 30m' (at least 5m); 'daily at " +
       "09:00', 'weekdays at 8:30', 'every monday at 9am'; a five-field cron expression; or a local " +
       "timestamp '2026-10-01T09:00'. Results go to the owner's phone, and are spoken as well if a " +
-      "screen is open; `deliver: quiet` keeps them for `list` only.",
+      "screen is open; `deliver: written` is never spoken, `deliver: digest` is written to the separate " +
+      "digest bot when there is one, and `deliver: quiet` keeps them for `list` only.",
     {
       action: z.enum(["create", "list", "pause", "resume", "remove", "run"]),
       id: z.number().int().optional().describe("The job's number, from `list`"),
       name: z.string().min(2).max(60).optional().describe("Short name, for create"),
       when: z.string().optional().describe("When it runs, for create"),
       prompt: z.string().min(5).max(2000).optional().describe("Self-contained instruction, for create"),
-      deliver: z.enum(["all", "written", "quiet"]).default("all").describe("Where the result goes"),
+      deliver: z.enum(["all", "written", "digest", "quiet"]).default("all").describe("Where the result goes"),
       repeat: z
         .number()
         .int()

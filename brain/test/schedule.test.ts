@@ -103,6 +103,13 @@ test("a job is stored, comes due, and works out what is next from when it ran", 
   assert.equal(after?.runs, 1);
 });
 
+test("a digest job keeps its delivery through a round trip", () => {
+  const conn = db();
+  const t0 = at("2026-10-01T10:00:00Z");
+  const job = addJob(conn, { name: "mail", spec: "every 1h", schedule: { kind: "every", ms: 3_600_000 }, prompt: "Summarise the mail", deliver: "digest", repeat: null }, t0);
+  assert.equal(job.deliver, "digest");
+});
+
 test("a one-off is done after it ran, and so is a job that has run its count", () => {
   const conn = db();
   const t0 = at("2026-10-01T10:00:00Z");

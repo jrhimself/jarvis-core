@@ -186,6 +186,15 @@ export interface Config {
   /** Where suggestions are sent, and the only chat whose answers are taken. */
   suggestChat: string;
   /**
+   * A second bot that only ever sends: the results of jobs scheduled with
+   * `deliver: digest`. It is never polled, so it answers nobody and takes no
+   * orders; a stranger who finds it gets silence. Either empty leaves digest
+   * results on the ordinary written channels.
+   */
+  digestToken: string;
+  /** The one chat the digest bot writes to. */
+  digestChat: string;
+  /**
    * House Ops triage webhook for ripe anomalies.
    *
    * When set, Core POSTs each ripe finding here instead of Telegram. Empty keeps
@@ -565,6 +574,8 @@ export function loadConfig(): Config {
     notifyWebhookHeaders: envObject("JARVIS_NOTIFY_WEBHOOK_HEADERS") as Record<string, string>,
     suggestToken: envString("JARVIS_TELEGRAM_TOKEN", ""),
     suggestChat: envString("JARVIS_TELEGRAM_CHAT", ""),
+    digestToken: envString("JARVIS_DIGEST_TELEGRAM_TOKEN", ""),
+    digestChat: envString("JARVIS_DIGEST_TELEGRAM_CHAT", ""),
     houseOpsWebhookUrl: envString("HOUSE_OPS_WEBHOOK_URL", ""),
     houseOpsWebhookKey: envString("HOUSE_OPS_WEBHOOK_KEY", ""),
     runnerToken: envString("JARVIS_RUNNER_TOKEN", ""),

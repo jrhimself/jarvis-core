@@ -47,7 +47,7 @@ import { channelsFor, notify, spoken, type Channel, type Notice } from "./notify
 import { closeSharedBrowser } from "./browser.js";
 import { runUnattended } from "./headless.js";
 import { startScheduler } from "./scheduler.js";
-import { escapeHtml } from "./dev/notify.js";
+import { escapeHtml, withBold } from "./dev/notify.js";
 import { warmRecordedLines } from "./conversation.js";
 import { voiceChoice } from "./voice/choice.js";
 import { warmPiper } from "./voice/piper.js";
@@ -116,6 +116,9 @@ async function main(): Promise<void> {
   const listening = config.suggestToken !== "" && config.suggestChat !== "";
   const bot = listening ? new Telegram(config.suggestToken) : null;
   const chat = bot === null ? null : new Chat(bot, config.suggestChat);
+  // Send-only on purpose: no poller is ever opened on this token.
+  const digestBot =
+    config.digestToken !== "" && config.digestChat !== "" ? new Telegram(config.digestToken) : null;
 
   // What the runner supervisor can do over the delegate seam, which is the
   // pack's business rather than core's: close a slot, type into it, and mark
@@ -243,6 +246,12 @@ async function main(): Promise<void> {
       db: store.scheduleConnection(),
       run: (prompt, job) => runUnattended(prompt, `job-${job.id}-${Date.now()}`),
       deliver: async (job, text, kind) => {
+        // A failure is for whoever runs the assistant, so it stays on the main bot; only a result
+        // is a digest. A digest that could not be sent falls through rather than being lost.
+        if (job.deliver === "digest" && kind === "result" && digestBot !== null) {
+          if ((await digestBot.send(config.digestChat, withBold(text))) !== null) return;
+          console.error(`schedule: job ${job.id} (${job.name}): digest bot could not send, using the main channels`);
+        }
         const short = text.length <= 300 && kind === "result" && job.deliver === "all";
         const notice: Notice =
           kind === "failure"
