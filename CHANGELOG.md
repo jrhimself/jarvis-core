@@ -15,6 +15,18 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.5.0] - 2026-10-02
+
+### Added
+
+- Scheduled summaries can have a bot of their own. A job created with `deliver: digest` is written to
+  a second Telegram bot (`JARVIS_DIGEST_TELEGRAM_TOKEN`, `JARVIS_DIGEST_TELEGRAM_CHAT`) instead of the
+  one the assistant is talked to through, so a daily overview is not buried in a conversation. That
+  bot only sends: no poller is opened on its token, so it answers nobody and takes no orders. A
+  failure of such a job still goes to the main bot, a digest the bot could not send falls back to
+  the ordinary written channels instead of being lost, and a deployment without a digest bot behaves
+  as if the job were `written`.
+
 ## [2.4.0] - 2026-10-02
 
 ### Added
