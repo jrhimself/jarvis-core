@@ -15,7 +15,7 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
-## [Unreleased]
+## [2.4.0] - 2026-10-02
 
 ### Added
 
