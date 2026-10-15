@@ -12,7 +12,9 @@
    towards white. So the swarm turns violet while listening and amber while
    thinking along with the rest of the screen. */
 
-const SWARM_N = 900;
+/* A wall tablet gets a sparser shell: the same golden-angle sphere, so the
+   shape reads the same, at a point count its GPU can carry. */
+const SWARM_N = window.JARVIS_TABLET ? 250 : 900;
 /* The design's world radius. Point sizes below are in the same units, so what
    reaches the screen is the ratio size / SWARM_R. */
 const SWARM_R = 0.12;

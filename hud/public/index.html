@@ -10,6 +10,16 @@
   var p = new URLSearchParams(location.search);
   var skip = p.has('t') || p.get('live') === '0';
   document.documentElement.classList.add(skip ? 'boot-skip' : 'boot-pending');
+  /* Tablet mode, decided before any script reads it; app.js repeats the same
+     test and is where the mode is explained. */
+  var tablet = /[?&]mode=tablet/.test(location.search);
+  try {
+    if (tablet) localStorage.jarvisMode = 'tablet';
+    else if (/[?&]mode=full/.test(location.search)) localStorage.removeItem('jarvisMode');
+    tablet = tablet || localStorage.jarvisMode === 'tablet';
+  } catch (e) { /* no storage: the query alone decides */ }
+  window.JARVIS_TABLET = tablet;
+  if (tablet) document.documentElement.classList.add('tablet');
 })();
 </script>
 </head>

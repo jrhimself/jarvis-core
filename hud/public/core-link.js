@@ -683,7 +683,7 @@ registerProcessor('mic-tap', MicTap);
         clearInterval(local.tick);
         local.tick = setInterval(() => {
           localReach(seg.base + Math.min(seg.text.length, Math.floor((performance.now() - t) / 1000 * LOCAL_CPS * u.rate)));
-        }, 60);
+        }, window.JARVIS_TABLET ? 100 : 60);
       };
       u.onboundary = (e) => {
         clearInterval(local.tick); local.tick = null;
@@ -1574,7 +1574,7 @@ registerProcessor('mic-tap', MicTap);
           voice.playing = false;
           if (voice.done) voiceFinish();
         }
-      }, 40);
+      }, window.JARVIS_TABLET ? 100 : 40);
     }
 
     /* Everything played (or the voice gave out): stop, then let the turn end. */
