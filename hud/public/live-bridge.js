@@ -14,6 +14,8 @@
   let packSlots = [];
   let freeCards = Object.create(null);
   let staleFocusTimer = null;
+  let micNoticeTimer = null;
+  const MIC_NOTICE_MS = 5000;
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -815,6 +817,23 @@
     }
   }
 
+  /* #mic-error is the line on the desk. If that node is missing, a toast with
+     the same class stands in for it. Either one hides itself. */
+  function showMicNotice(text) {
+    let el = document.getElementById('mic-error');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'mic-error';
+      el.className = 'mic-error';
+      el.hidden = true;
+      (document.body || document.documentElement).appendChild(el);
+    }
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(micNoticeTimer);
+    micNoticeTimer = setTimeout(function () { el.hidden = true; }, MIC_NOTICE_MS);
+  }
+
   function wire(l) {
     link = l;
 
@@ -900,12 +919,14 @@
       clearTimeout(askHintTimer);
       askHintTimer = setTimeout(function () { input.placeholder = ASK_PLACEHOLDER; }, 4000);
     });
+    /* Capture can fail after it starts (micError) or be unusable before it
+       starts (listenFallback: blocked, or no mic API). Same line either way. */
     l.on('micError', function (err) {
-      const el = document.getElementById('mic-error');
-      if (!el) return;
-      el.textContent = 'Mic: ' + (err || 'unavailable');
-      el.hidden = false;
-      setTimeout(function () { el.hidden = true; }, 5000);
+      showMicNotice('Mic: ' + (err || 'unavailable'));
+    });
+    l.on('listenFallback', function (info) {
+      const reason = info && info.reason;
+      showMicNotice('Mic: ' + (reason === 'blocked' ? 'blocked' : (reason || 'unavailable')));
     });
     l.on('displayClear', function (m) {
       if (m && m.id) dismissFreeCard(m.id, 'cleared');

@@ -16,7 +16,7 @@
 
    Single WebSocket owned by CoreLink (live-bridge.js). ?usage= still overrides gauges.
    ?t= / ?live=0 skip boot to resting. ?boot=replay / B. ?focus= after boot.
-   Keys: Space talk (CoreLink) · 1-4 voice test only with ?dev=1|?live=0 ·
+   Keys: Space or a tap on the orb talks (CoreLink) · 1-4 voice test only with ?dev=1|?live=0 ·
          B boot · W/A/N/M/P/S focus · Esc unfocus.
 */
 
@@ -2257,24 +2257,53 @@ function boot() {
 
   /* The swarm can be turned by hand. It is the one thing on the desk that is
      an object rather than a readout, and a shell of points only reads as a
-     sphere once you have moved it yourself. */
+     sphere once you have moved it yourself. A short tap on that same surface
+     talks, in every mode: it unlocks audio and toggles listen. Anything that
+     moves or is held is still a turn, and does not talk. */
+  const TAP_MAX_MS = 250;
+  const TAP_MAX_MOVE_PX = 10;
   if (canvas && window.JarvisSwarm) {
     let dragging = null;
     canvas.addEventListener('pointerdown', (e) => {
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      if (e.isPrimary === false || (e.button != null && e.button !== 0)) return;
+      dragging = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        t0: performance.now(),
+        moved: 0,
+        dx: 0,
+        dy: 0,
+      };
       canvas.setPointerCapture(e.pointerId);
       canvas.classList.add('is-turning');
     });
     canvas.addEventListener('pointermove', (e) => {
       if (!dragging || e.pointerId !== dragging.id) return;
-      JarvisSwarm.drag(e.clientX - dragging.x, e.clientY - dragging.y);
+      const dx = e.clientX - dragging.x;
+      const dy = e.clientY - dragging.y;
+      dragging.moved += Math.hypot(dx, dy);
+      dragging.dx += dx;
+      dragging.dy += dy;
       dragging.x = e.clientX;
       dragging.y = e.clientY;
+      JarvisSwarm.drag(dx, dy);
     });
     const letGo = (e) => {
       if (!dragging || e.pointerId !== dragging.id) return;
+      const g = dragging;
       dragging = null;
       canvas.classList.remove('is-turning');
+      if (e.type === 'pointercancel') return;
+      g.moved += Math.hypot(e.clientX - g.x, e.clientY - g.y);
+      if (performance.now() - g.t0 > TAP_MAX_MS || g.moved >= TAP_MAX_MOVE_PX) return;
+      /* The pixels inside the tap slop already turned the shell. Put them back
+         so a tap talks without leaving a nudge. */
+      if (g.dx || g.dy) JarvisSwarm.drag(-g.dx, -g.dy);
+      const link = window.JarvisCoreLink;
+      if (!link || typeof link.toggleListen !== 'function') return;
+      if (typeof link.resumeAudio === 'function') link.resumeAudio();
+      link.toggleListen();
     };
     canvas.addEventListener('pointerup', letGo);
     canvas.addEventListener('pointercancel', letGo);
