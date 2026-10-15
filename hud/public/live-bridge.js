@@ -926,6 +926,54 @@
   const ASK_PLACEHOLDER = 'Type a command…';
   let askHintTimer = null;
 
+  /* ?say=<text> runs one turn as if it had been typed, so a wall tablet can be
+     asked something by loading a URL. The parameter leaves the address at once
+     (other parameters stay), so a reload never repeats it; sessionStorage
+     guards against a second send within the same load. */
+  const SAY_MAX = 300;
+  const SAY_WAIT_MS = 20000;
+  const SAY_REPEAT_MS = 30000; /* the same text again this soon is a double load */
+
+  function takeSayParam() {
+    let params;
+    try { params = new URLSearchParams(location.search); } catch (e) { return null; }
+    if (!params.has('say')) return null;
+    const text = (params.get('say') || '').trim().slice(0, SAY_MAX);
+    params.delete('say');
+    try {
+      const q = params.toString();
+      history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    } catch (e) {}
+    return text || null;
+  }
+
+  function wireSayParam(l) {
+    const text = takeSayParam();
+    if (!text) return;
+    const key = 'jarvisSay:' + text;
+    try {
+      const last = Number(sessionStorage.getItem(key)) || 0;
+      if (Date.now() - last < SAY_REPEAT_MS) return;
+      sessionStorage.setItem(key, String(Date.now()));
+    } catch (e) {}
+    let done = false;
+    const fire = function () {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      l.off('ready', fire);
+      l.stopListen();
+      l.sendUtterance(text);
+    };
+    const timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      l.off('ready', fire);
+      console.warn('[live-bridge] ?say= dropped: brain not ready within ' + (SAY_WAIT_MS / 1000) + ' s');
+    }, SAY_WAIT_MS);
+    l.on('ready', fire);
+  }
+
   /* Enter sends the field as an utterance, the same turn a spoken one starts.
      Escape leaves the field so Space talks again. */
   function wireAsk(l) {
@@ -1117,6 +1165,7 @@
     wireCompose(l);
     if (window.JarvisTranscript) JarvisTranscript.wire(l);
     window.JarvisCoreLink = l;
+    wireSayParam(l);
     l.connect();
     return l;
   }
