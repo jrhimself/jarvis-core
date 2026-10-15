@@ -19,6 +19,13 @@ test("a language switch names one of the languages, or is refused", () => {
   assert.equal(parseClientMessage({ kind: "set_lang" }), null);
 });
 
+test("a page's own language is one of the languages or null, nothing else", () => {
+  assert.deepEqual(parseClientMessage({ kind: "session_lang", lang: "en" }), { kind: "session_lang", lang: "en" });
+  assert.deepEqual(parseClientMessage({ kind: "session_lang", lang: null }), { kind: "session_lang", lang: null });
+  assert.equal(parseClientMessage({ kind: "session_lang", lang: "de" }), null);
+  assert.equal(parseClientMessage({ kind: "session_lang" }), null);
+});
+
 test("a say without a language leaves it to the brain", () => {
   const parsed = parseClientMessage({ kind: "say", text: "Goedemorgen.", turnId: "t1" });
   assert.deepEqual(parsed, { kind: "say", text: "Goedemorgen.", turnId: "t1" });

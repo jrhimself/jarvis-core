@@ -397,6 +397,22 @@ registerProcessor('mic-tap', MicTap);
     let connState = 'offline';
     let sessionId = null;
     let speechLang = 'en';
+    /* ?lang=en|nl gives this page its own language, voice and answers both,
+       without switching the deployment (session_lang). Remembered like
+       ?mode=tablet; ?lang=auto forgets it. */
+    const sessionLang = (() => {
+      let p = null;
+      try { p = new URLSearchParams(location.search).get('lang'); } catch (e) {}
+      try {
+        if (p === 'en' || p === 'nl') { localStorage.jarvisLang = p; return p; }
+        if (p === 'auto') { localStorage.removeItem('jarvisLang'); return null; }
+        const kept = localStorage.jarvisLang;
+        return kept === 'en' || kept === 'nl' ? kept : null;
+      } catch (e) {
+        return p === 'en' || p === 'nl' ? p : null;
+      }
+    })();
+    if (sessionLang) speechLang = sessionLang;
     let turn = null;
     let inBriefing = false;
     let focusedPanel = null;
@@ -683,7 +699,7 @@ registerProcessor('mic-tap', MicTap);
         clearInterval(local.tick);
         local.tick = setInterval(() => {
           localReach(seg.base + Math.min(seg.text.length, Math.floor((performance.now() - t) / 1000 * LOCAL_CPS * u.rate)));
-        }, 60);
+        }, window.JARVIS_TABLET ? 100 : 60);
       };
       u.onboundary = (e) => {
         clearInterval(local.tick); local.tick = null;
@@ -785,13 +801,15 @@ registerProcessor('mic-tap', MicTap);
       if (m.kind === 'ready') {
         sessionId = m.sessionId === undefined ? null : m.sessionId;
         setConn('online', 'online');
+        /* Before anyone hears 'ready', so a ?say= turn is already in it. */
+        if (sessionLang) send({ kind: 'session_lang', lang: sessionLang });
         bus.emit('ready', m);
         return;
       }
       if (m.kind === 'lang') {
         if (m.lang === 'nl' || m.lang === 'en') {
-          speechLang = m.lang;
-          bus.emit('lang', m.lang);
+          speechLang = sessionLang || m.lang;
+          bus.emit('lang', speechLang);
         }
         return;
       }
@@ -1574,7 +1592,7 @@ registerProcessor('mic-tap', MicTap);
           voice.playing = false;
           if (voice.done) voiceFinish();
         }
-      }, 40);
+      }, window.JARVIS_TABLET ? 100 : 40);
     }
 
     /* Everything played (or the voice gave out): stop, then let the turn end. */
@@ -1735,6 +1753,7 @@ registerProcessor('mic-tap', MicTap);
 
       get mode() { return mode; },
       get lang() { return speechLang; },
+      get sessionLang() { return sessionLang; },
       get connected() { return connOk(); },
       get connectionState() { return connState; },
       get sessionId() { return sessionId; },

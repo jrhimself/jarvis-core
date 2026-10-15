@@ -61,6 +61,16 @@ export type ClientMessage =
       lang: SpeechLang;
     }
   | {
+      /**
+       * The language this page's conversation speaks and answers in, for this
+       * connection only: a wall screen can talk English while the deployment
+       * stays Dutch. Null goes back to the deployment's language. Nothing is
+       * stored and no other page hears of it.
+       */
+      kind: "session_lang";
+      lang: SpeechLang | null;
+    }
+  | {
       kind: "cancel";
       /** The turn to abandon; the brain stops streaming and replies `done`. */
       turnId: string;
@@ -618,6 +628,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     const { lang } = value;
     if (lang !== "nl" && lang !== "en") return null;
     return { kind: "set_lang", lang };
+  }
+
+  if (value["kind"] === "session_lang") {
+    const { lang } = value;
+    if (lang !== null && lang !== "nl" && lang !== "en") return null;
+    return { kind: "session_lang", lang };
   }
 
   if (value["kind"] === "listen_start") return { kind: "listen_start" };

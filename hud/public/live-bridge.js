@@ -14,6 +14,8 @@
   let packSlots = [];
   let freeCards = Object.create(null);
   let staleFocusTimer = null;
+  let micNoticeTimer = null;
+  const MIC_NOTICE_MS = 5000;
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -815,6 +817,23 @@
     }
   }
 
+  /* #mic-error is the line on the desk. If that node is missing, a toast with
+     the same class stands in for it. Either one hides itself. */
+  function showMicNotice(text) {
+    let el = document.getElementById('mic-error');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'mic-error';
+      el.className = 'mic-error';
+      el.hidden = true;
+      (document.body || document.documentElement).appendChild(el);
+    }
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(micNoticeTimer);
+    micNoticeTimer = setTimeout(function () { el.hidden = true; }, MIC_NOTICE_MS);
+  }
+
   function wire(l) {
     link = l;
 
@@ -900,12 +919,14 @@
       clearTimeout(askHintTimer);
       askHintTimer = setTimeout(function () { input.placeholder = ASK_PLACEHOLDER; }, 4000);
     });
+    /* Capture can fail after it starts (micError) or be unusable before it
+       starts (listenFallback: blocked, or no mic API). Same line either way. */
     l.on('micError', function (err) {
-      const el = document.getElementById('mic-error');
-      if (!el) return;
-      el.textContent = 'Mic: ' + (err || 'unavailable');
-      el.hidden = false;
-      setTimeout(function () { el.hidden = true; }, 5000);
+      showMicNotice('Mic: ' + (err || 'unavailable'));
+    });
+    l.on('listenFallback', function (info) {
+      const reason = info && info.reason;
+      showMicNotice('Mic: ' + (reason === 'blocked' ? 'blocked' : (reason || 'unavailable')));
     });
     l.on('displayClear', function (m) {
       if (m && m.id) dismissFreeCard(m.id, 'cleared');
@@ -925,6 +946,54 @@
 
   const ASK_PLACEHOLDER = 'Type a command…';
   let askHintTimer = null;
+
+  /* ?say=<text> runs one turn as if it had been typed, so a wall tablet can be
+     asked something by loading a URL. The parameter leaves the address at once
+     (other parameters stay), so a reload never repeats it; sessionStorage
+     guards against a second send within the same load. */
+  const SAY_MAX = 300;
+  const SAY_WAIT_MS = 20000;
+  const SAY_REPEAT_MS = 30000; /* the same text again this soon is a double load */
+
+  function takeSayParam() {
+    let params;
+    try { params = new URLSearchParams(location.search); } catch (e) { return null; }
+    if (!params.has('say')) return null;
+    const text = (params.get('say') || '').trim().slice(0, SAY_MAX);
+    params.delete('say');
+    try {
+      const q = params.toString();
+      history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    } catch (e) {}
+    return text || null;
+  }
+
+  function wireSayParam(l) {
+    const text = takeSayParam();
+    if (!text) return;
+    const key = 'jarvisSay:' + text;
+    try {
+      const last = Number(sessionStorage.getItem(key)) || 0;
+      if (Date.now() - last < SAY_REPEAT_MS) return;
+      sessionStorage.setItem(key, String(Date.now()));
+    } catch (e) {}
+    let done = false;
+    const fire = function () {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      l.off('ready', fire);
+      l.stopListen();
+      l.sendUtterance(text);
+    };
+    const timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      l.off('ready', fire);
+      console.warn('[live-bridge] ?say= dropped: brain not ready within ' + (SAY_WAIT_MS / 1000) + ' s');
+    }, SAY_WAIT_MS);
+    l.on('ready', fire);
+  }
 
   /* Enter sends the field as an utterance, the same turn a spoken one starts.
      Escape leaves the field so Space talks again. */
@@ -1117,6 +1186,7 @@
     wireCompose(l);
     if (window.JarvisTranscript) JarvisTranscript.wire(l);
     window.JarvisCoreLink = l;
+    wireSayParam(l);
     l.connect();
     return l;
   }

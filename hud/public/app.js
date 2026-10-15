@@ -16,9 +16,30 @@
 
    Single WebSocket owned by CoreLink (live-bridge.js). ?usage= still overrides gauges.
    ?t= / ?live=0 skip boot to resting. ?boot=replay / B. ?focus= after boot.
-   Keys: Space talk (CoreLink) · 1-4 voice test only with ?dev=1|?live=0 ·
+   Keys: Space or a tap on the orb talks (CoreLink) · 1-4 voice test only with ?dev=1|?live=0 ·
          B boot · W/A/N/M/P/S focus · Esc unfocus.
 */
+
+/* Tablet mode: a lighter HUD for a low-end wall tablet. Opt-in only, by
+   ?mode=tablet (remembered) and undone by ?mode=full; never guessed from the
+   user agent, so every other screen keeps the full desk. The flag is also set
+   in the head of index.html, before orb-swarm.js and core-link.js read it. */
+try {
+  if (/[?&]mode=tablet/.test(location.search)) localStorage.jarvisMode = 'tablet';
+  else if (/[?&]mode=full/.test(location.search)) localStorage.removeItem('jarvisMode');
+} catch (e) { /* storage may be unavailable; the query still decides */ }
+const TABLET = (() => {
+  try {
+    return /[?&]mode=tablet/.test(location.search) || localStorage.jarvisMode === 'tablet';
+  } catch (e) {
+    return /[?&]mode=tablet/.test(location.search);
+  }
+})();
+if (TABLET) document.documentElement.classList.add('tablet');
+window.JARVIS_TABLET = TABLET;
+/* Device pixels per CSS pixel for the canvases: the tablet's GPU fill rate is
+   the bottleneck, so it draws at one. */
+const DPR_CAP = TABLET ? 1 : 2;
 
 /* The orb's hue follows the voice state like the desk's --hue does (styles.css),
    eased along the shorter way round the colour wheel. */
@@ -67,6 +88,7 @@ const STATUS_COPY = {
 };
 
 function applyVoicePreset(state) {
+  if (TABLET) markActivity();
   voiceState = state;
   const p = VOICE_PRESETS[state] || VOICE_PRESETS.idle;
   ringSpeedMul = p.ring;
@@ -122,7 +144,7 @@ const SWARM_BOOT_MS = 2400;
 const PARTICLES = (() => {
   const rnd = seeded(0x4a525649); /* JARV */
   const list = [];
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < (TABLET ? 48 : 160); i++) {
     const a = rnd() * Math.PI * 2;
     const rr = Math.pow(rnd(), 0.55); /* denser toward rim for plasma disk */
     list.push({
@@ -205,6 +227,26 @@ function drawSoftCore(ctx, cx, cy, R, hue, energy, t) {
   return coreR;
 }
 
+/* Tablet: the nebula washes are one soft blob each, so they are drawn from a
+   sprite rendered once per hue instead of five new gradients a frame. */
+const nebulaSprite = { hue: null, canvas: null };
+function getNebulaSprite(hue) {
+  const h = Math.round(hue);
+  if (nebulaSprite.hue === h && nebulaSprite.canvas) return nebulaSprite.canvas;
+  const c = nebulaSprite.canvas || document.createElement('canvas');
+  c.width = c.height = 64;
+  const x = c.getContext('2d');
+  x.clearRect(0, 0, 64, 64);
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, `hsla(${h},100%,70%,1)`);
+  g.addColorStop(1, `hsla(${h},100%,50%,0)`);
+  x.fillStyle = g;
+  x.fillRect(0, 0, 64, 64);
+  nebulaSprite.hue = h;
+  nebulaSprite.canvas = c;
+  return c;
+}
+
 /* ---------- Plasma / particle texture inside the disk ---------- */
 function drawPlasma(ctx, cx, cy, coreR, hue, energy, t) {
   ctx.save();
@@ -220,8 +262,15 @@ function drawPlasma(ctx, cx, cy, coreR, hue, energy, t) {
     const px = cx + Math.cos(ang) * rr * 0.55;
     const py = cy + Math.sin(ang * 0.9) * rr * 0.4;
     const rad = coreR * (0.35 + (i % 2) * 0.15);
-    const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
     const a = (0.04 + energy * 0.05) * (0.7 + 0.3 * Math.sin(t * 1.2 + i));
+    if (TABLET) {
+      const prevA = ctx.globalAlpha;
+      ctx.globalAlpha = prevA * a;
+      ctx.drawImage(getNebulaSprite(hue), px - rad, py - rad, rad * 2, rad * 2);
+      ctx.globalAlpha = prevA;
+      continue;
+    }
+    const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
     g.addColorStop(0, `hsla(${hue + i * 3},100%,70%,${a})`);
     g.addColorStop(1, `hsla(${hue},100%,50%,0)`);
     ctx.fillStyle = g;
@@ -401,12 +450,12 @@ function drawSweep(ctx, cx, cy, R, hue, energy, t) {
   ctx.fill();
 
   /* Always-on hairline leading sweep — ~1 CSS px, no tip dot */
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
   ctx.strokeStyle = `hsla(${hue},100%,94%,0.95)`;
   ctx.lineWidth = Math.max(1, dpr); /* device-space: 1 CSS px */
   ctx.lineCap = 'butt';
   ctx.shadowColor = `hsla(${hue},100%,80%,0.45)`;
-  ctx.shadowBlur = 2.5;
+  ctx.shadowBlur = TABLET ? 0 : 2.5;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(ang) * sweepR, cy + Math.sin(ang) * sweepR);
@@ -511,7 +560,7 @@ function drawThroughWaveform(ctx, cx, cy, R, coreR, hue, energy, t) {
 function drawStatusWave(canvas, t) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
   const w = canvas.clientWidth || 100;
   const h = canvas.clientHeight || 18;
   const tw = Math.round(w * dpr), th = Math.round(h * dpr);
@@ -544,7 +593,7 @@ function drawStatusWave(canvas, t) {
   ctx.shadowColor = speaking
     ? `hsla(${hue},100%,55%,0.55)`
     : `hsla(${hue},100%,70%,0.45)`;
-  ctx.shadowBlur = 5;
+  ctx.shadowBlur = TABLET ? 0 : 5;
   ctx.stroke();
   ctx.shadowBlur = 0;
 }
@@ -586,7 +635,7 @@ function drawOrb(ctx, W, H, t) {
 
   drawSweep(ctx, cx, cy, R, HUE, energy, t);
   drawRings(ctx, cx, cy, R, HUE, energy, t);
-  if (orbBoot.rings > 0) drawCrosshairs(ctx, cx, cy, R, HUE, energy, t);
+  if (orbBoot.rings > 0 && !TABLET) drawCrosshairs(ctx, cx, cy, R, HUE, energy, t);
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, orbBoot.core));
@@ -618,7 +667,7 @@ function drawOrb(ctx, W, H, t) {
 
 function drawSpark(canvas, seed, t) {
   const ctx = canvas.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
   if (!w || !h) return;
@@ -651,7 +700,7 @@ function drawSpark(canvas, seed, t) {
   ctx.strokeStyle = `hsla(${HUE},100%,70%,0.8)`;
   ctx.lineWidth = 1.2;
   ctx.shadowColor = `hsla(${HUE},100%,70%,0.5)`;
-  ctx.shadowBlur = 5;
+  ctx.shadowBlur = TABLET ? 0 : 5;
   ctx.stroke();
   ctx.shadowBlur = 0;
 
@@ -748,6 +797,7 @@ function syncGaugeDom() {
 }
 
 function applyUsage(u) {
+  if (TABLET) markActivity();
   if (!u) {
     usageView.status = null;
     usageView.binding = null;
@@ -799,7 +849,7 @@ function easeUsageDisplays() {
 function drawAccentRing(canvas, winKey) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
   const size = Math.min(canvas.clientWidth || 52, canvas.clientHeight || 52);
   const tw = Math.round(size * dpr);
   const th = Math.round(size * dpr);
@@ -836,7 +886,7 @@ function drawAccentRing(canvas, winKey) {
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.shadowColor = `hsla(${hue},100%,50%,0.5)`;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = TABLET ? 0 : 6;
     ctx.beginPath();
     ctx.arc(cx, cy, r, -Math.PI / 2, end);
     ctx.stroke();
@@ -1019,6 +1069,48 @@ function maybeFlashHero(t) {
   });
 }
 
+/* ---------- Tablet paint cadence ----------
+   30 frames a second while anything is happening, and after ten quiet seconds
+   an ambient 8: the sweep keeps turning and the orb keeps breathing, only less
+   often. Anything that happens brings the full rate back on the next frame. */
+const TABLET_ACTIVE_MS = 33;
+const TABLET_IDLE_MS = 125;
+const TABLET_IDLE_AFTER_MS = 10000;
+var lastActivityAt = performance.now();
+var wakePaint = null; /* set by the tablet loop: cut an idle wait short */
+function markActivity() {
+  const wasIdle = tabletIsIdle(performance.now());
+  lastActivityAt = performance.now();
+  if (wasIdle && wakePaint) wakePaint();
+}
+function tabletIsIdle(now) {
+  if (voiceState !== 'idle') return false;
+  if (now - liveAudioAt < 1000) return false;
+  return now - lastActivityAt > TABLET_IDLE_AFTER_MS;
+}
+function watchTabletActivity() {
+  ['pointerdown', 'pointermove', 'touchstart', 'keydown', 'wheel'].forEach((ev) =>
+    window.addEventListener(ev, markActivity, { passive: true, capture: true }),
+  );
+  /* Panel content and connection pills are written by live-bridge.js; any change
+     there is activity. The clock is excluded or it would never go idle, and
+     style is excluded because the paint loop itself writes it. */
+  if (typeof MutationObserver === 'function') {
+    const quiet = (n) => {
+      const el = n && n.nodeType === 1 ? n : n && n.parentElement;
+      return !!(el && el.closest && el.closest('#clock-time, #clock-date'));
+    };
+    new MutationObserver((list) => {
+      for (const m of list) {
+        if (!quiet(m.target)) { markActivity(); return; }
+      }
+    }).observe(document.documentElement, {
+      subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ['data-voice', 'data-state', 'hidden'],
+    });
+  }
+}
+
 /* ---------- Boot ---------- */
 const params = new URLSearchParams(location.search);
 const hasT = params.has('t');
@@ -1038,7 +1130,7 @@ const canvas = document.getElementById('orb');
 const sparkIds = ['spark-cpu', 'spark-net'];
 
 function sizeOrb() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
   /* The layout box, not the painted one: on the stage the orb is scaled by a
      transform, and a measured width would shrink the backing store with it and
      reallocate the canvas on every frame of the journey to the corner. */
@@ -1110,7 +1202,8 @@ function paintFrame(t) {
   easeUsageDisplays();
   drawAccentRing(document.getElementById('ring-a'), 'session');
   drawAccentRing(document.getElementById('ring-b'), 'week');
-  maybeFlashHero(t);
+  /* The flash forces a layout and a filter animation every few seconds. */
+  if (!TABLET) maybeFlashHero(t);
 
   /* breathe IO bar */
   const fill = document.querySelector('.bar-fill');
@@ -2164,24 +2257,53 @@ function boot() {
 
   /* The swarm can be turned by hand. It is the one thing on the desk that is
      an object rather than a readout, and a shell of points only reads as a
-     sphere once you have moved it yourself. */
+     sphere once you have moved it yourself. A short tap on that same surface
+     talks, in every mode: it unlocks audio and toggles listen. Anything that
+     moves or is held is still a turn, and does not talk. */
+  const TAP_MAX_MS = 250;
+  const TAP_MAX_MOVE_PX = 10;
   if (canvas && window.JarvisSwarm) {
     let dragging = null;
     canvas.addEventListener('pointerdown', (e) => {
-      dragging = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      if (e.isPrimary === false || (e.button != null && e.button !== 0)) return;
+      dragging = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        t0: performance.now(),
+        moved: 0,
+        dx: 0,
+        dy: 0,
+      };
       canvas.setPointerCapture(e.pointerId);
       canvas.classList.add('is-turning');
     });
     canvas.addEventListener('pointermove', (e) => {
       if (!dragging || e.pointerId !== dragging.id) return;
-      JarvisSwarm.drag(e.clientX - dragging.x, e.clientY - dragging.y);
+      const dx = e.clientX - dragging.x;
+      const dy = e.clientY - dragging.y;
+      dragging.moved += Math.hypot(dx, dy);
+      dragging.dx += dx;
+      dragging.dy += dy;
       dragging.x = e.clientX;
       dragging.y = e.clientY;
+      JarvisSwarm.drag(dx, dy);
     });
     const letGo = (e) => {
       if (!dragging || e.pointerId !== dragging.id) return;
+      const g = dragging;
       dragging = null;
       canvas.classList.remove('is-turning');
+      if (e.type === 'pointercancel') return;
+      g.moved += Math.hypot(e.clientX - g.x, e.clientY - g.y);
+      if (performance.now() - g.t0 > TAP_MAX_MS || g.moved >= TAP_MAX_MOVE_PX) return;
+      /* The pixels inside the tap slop already turned the shell. Put them back
+         so a tap talks without leaving a nudge. */
+      if (g.dx || g.dy) JarvisSwarm.drag(-g.dx, -g.dy);
+      const link = window.JarvisCoreLink;
+      if (!link || typeof link.toggleListen !== 'function') return;
+      if (typeof link.resumeAudio === 'function') link.resumeAudio();
+      link.toggleListen();
     };
     canvas.addEventListener('pointerup', letGo);
     canvas.addEventListener('pointercancel', letGo);
@@ -2195,7 +2317,62 @@ function boot() {
   if (demoBriefing) runBriefingDemo();
 
   /* Start paint loop first so orb boot frames are visible */
-  if (animate) {
+  if (animate && TABLET) {
+    const t0 = performance.now();
+    let last = -Infinity;
+    let pending = 0; /* rAF id or timeout id, whichever is armed */
+    let pendingIsTimer = false;
+    const cancel = () => {
+      if (!pending) return;
+      if (pendingIsTimer) clearTimeout(pending); else cancelAnimationFrame(pending);
+      pending = 0;
+    };
+    let lastFrameAt = performance.now();
+    /* No test of document.hidden here: the browser already holds rAF back on a
+       page that is really hidden, and an Android WebView (Fully Kiosk) can call
+       a page on screen hidden, or never send the visibilitychange that would
+       start the loop again. A loop that stops itself on that word stops the
+       stage with it, and the briefing carousel never turns. */
+    const schedule = () => {
+      cancel();
+      const now = performance.now();
+      if (tabletIsIdle(now)) {
+        /* Idle: do not wake the GPU on every vsync just to skip it. */
+        pendingIsTimer = true;
+        pending = setTimeout(() => {
+          pendingIsTimer = false;
+          pending = requestAnimationFrame(frame);
+        }, Math.max(0, TABLET_IDLE_MS - (now - last)));
+      } else {
+        pendingIsTimer = false;
+        pending = requestAnimationFrame(frame);
+      }
+    };
+    function frame(now) {
+      pending = 0;
+      lastFrameAt = performance.now();
+      const gap = tabletIsIdle(now) ? TABLET_IDLE_MS : TABLET_ACTIVE_MS;
+      /* A little slack so a 60 Hz display lands on every second vsync. */
+      if (now - last >= gap - 4) {
+        last = now;
+        paintFrame((now - t0) / 1000);
+      }
+      schedule();
+    }
+    wakePaint = schedule;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { markActivity(); schedule(); }
+    });
+    /* Watchdog: a frame that was asked for and never came (a WebView that
+       dropped it) is asked for again rather than ending the loop. */
+    setInterval(() => {
+      if (performance.now() - lastFrameAt > 1500) schedule();
+    }, 1000);
+    watchTabletActivity();
+    updateClock(new Date());
+    setInterval(() => updateClock(new Date()), 1000);
+    schedule();
+  } else if (animate) {
     let t0 = performance.now();
     function frame(now) {
       const t = (now - t0) / 1000;
@@ -2236,6 +2413,7 @@ window.JarvisV2 = {
   Panels, focusPanel, unfocusPanel, runBootSequence, orbBoot,
   setLiveAudioLevel, noteDeskSlots,
   hue: () => HUE,
+  tablet: TABLET,
   /* aliases used by live-bridge */
   applyVoicePreset,
   focusPanel,
