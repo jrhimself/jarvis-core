@@ -2298,9 +2298,14 @@ function boot() {
       if (pendingIsTimer) clearTimeout(pending); else cancelAnimationFrame(pending);
       pending = 0;
     };
+    let lastFrameAt = performance.now();
+    /* No test of document.hidden here: the browser already holds rAF back on a
+       page that is really hidden, and an Android WebView (Fully Kiosk) can call
+       a page on screen hidden, or never send the visibilitychange that would
+       start the loop again. A loop that stops itself on that word stops the
+       stage with it, and the briefing carousel never turns. */
     const schedule = () => {
       cancel();
-      if (document.hidden) return;
       const now = performance.now();
       if (tabletIsIdle(now)) {
         /* Idle: do not wake the GPU on every vsync just to skip it. */
@@ -2316,6 +2321,7 @@ function boot() {
     };
     function frame(now) {
       pending = 0;
+      lastFrameAt = performance.now();
       const gap = tabletIsIdle(now) ? TABLET_IDLE_MS : TABLET_ACTIVE_MS;
       /* A little slack so a 60 Hz display lands on every second vsync. */
       if (now - last >= gap - 4) {
@@ -2326,9 +2332,13 @@ function boot() {
     }
     wakePaint = schedule;
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) cancel();
-      else { markActivity(); schedule(); }
+      if (!document.hidden) { markActivity(); schedule(); }
     });
+    /* Watchdog: a frame that was asked for and never came (a WebView that
+       dropped it) is asked for again rather than ending the loop. */
+    setInterval(() => {
+      if (performance.now() - lastFrameAt > 1500) schedule();
+    }, 1000);
     watchTabletActivity();
     updateClock(new Date());
     setInterval(() => updateClock(new Date()), 1000);
