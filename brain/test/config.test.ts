@@ -58,6 +58,8 @@ const BLANK = {
   JARVIS_VOICE_SPEED: undefined,
   JARVIS_VOICE_TIMBRE: undefined,
   JARVIS_MEMORY_PANEL: undefined,
+  JARVIS_WS_TOKEN: undefined,
+  JARVIS_WS_ALLOWED_ORIGINS: undefined,
   JARVIS_THINKING_LINES: undefined,
   JARVIS_THINKING_LINES_EN: undefined,
   JARVIS_THINKING_LINES_NL: undefined,
@@ -87,6 +89,8 @@ test("an empty environment still yields a working configuration", () => {
     "the panel looks but does not write until somebody says it may",
   );
   assert.equal(config.proactive, "off", "the proactive side is opt-in");
+  assert.equal(config.wsToken, "", "the websocket token is opt-in");
+  assert.deepEqual(config.wsAllowedOrigins, [], "same-origin is the whole allowlist until somebody adds to it");
   assert.equal(config.sessionIdleMs, 20 * 60_000);
   assert.equal(config.sessionMaxTurns, 30);
   assert.equal(config.backupKeep, 14);
@@ -228,6 +232,31 @@ test("a number out of range falls back instead of stopping the service", () => {
 
   assert.equal(config.sessionMaxTurns, 30);
   assert.equal(config.sessionIdleMs, 20 * 60_000);
+});
+
+test("the websocket token is taken as written, and extra origins are normalized", () => {
+  const config = withEnv(
+    {
+      ...BLANK,
+      JARVIS_WS_TOKEN: "not-a-password",
+      JARVIS_WS_ALLOWED_ORIGINS: "https://HUD.Example:443, http://tablet.example:8443",
+    },
+    loadConfig,
+  );
+
+  assert.equal(config.wsToken, "not-a-password");
+  assert.deepEqual(config.wsAllowedOrigins, ["https://hud.example", "http://tablet.example:8443"]);
+});
+
+test("an allowlist entry that is not an origin is dropped, and the rest are kept", () => {
+  const config = quietly(() =>
+    withEnv(
+      { ...BLANK, JARVIS_WS_ALLOWED_ORIGINS: "hud.example, https://tablet.example, *" },
+      loadConfig,
+    ),
+  );
+
+  assert.deepEqual(config.wsAllowedOrigins, ["https://tablet.example"]);
 });
 
 test("a misspelt mode falls back rather than throwing", () => {
