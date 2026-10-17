@@ -11,11 +11,27 @@
   const sparkHist = { cpu: [], mem: [] };
 
   let link = null;
+  let connState = 'offline';
+  let sawDisconnect = liveOff;
   let packSlots = [];
   let freeCards = Object.create(null);
   let staleFocusTimer = null;
   let micNoticeTimer = null;
   const MIC_NOTICE_MS = 5000;
+
+  /* Display pictures stay on this origin. A data URL is allowed only for a
+     still bitmap, not SVG and not an arbitrary host that could track the tablet. */
+  function allowedImageUrl(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(s)) {
+      return s.length <= 1500000 ? s.replace(/\s+/g, '') : '';
+    }
+    let url;
+    try { url = new URL(s, location.href); } catch (e) { return ''; }
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.origin !== location.origin) return '';
+    return url.href;
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -25,8 +41,9 @@
       .replace(/"/g, '&quot;');
   }
 
+  const EMPTY_LABEL = 'Waiting for Jarvis core';
   function emptyHtml() {
-    return '<div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>';
+    return '<div class="empty-state"><span class="empty-line"></span><span class="empty-label">' + EMPTY_LABEL + '</span></div>';
   }
 
   function setMeta(id, text) {
@@ -39,25 +56,53 @@
     if (el) el.innerHTML = html;
   }
 
+  /* View models only. The desk used to share jarvis.v2.panel.* with a mock
+     HTML blob, and an empty object was drawn as "0 items". */
   function cacheKey(id) {
-    return 'jarvis.v2.panel.' + id;
+    return 'jarvis.v2.live.' + id;
+  }
+
+  function isViewModel(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+    if (typeof data.html === 'string') return false;
+    if (data.source === 'mock') return false;
+    return true;
   }
 
   function cachePanel(id, data) {
+    if (!isViewModel(data)) return;
     try {
       localStorage.setItem(cacheKey(id), JSON.stringify({ data: data, at: Date.now() }));
     } catch (e) {}
   }
 
-  function loadCache(id) {
+  function readStored(key) {
     try {
-      const raw = localStorage.getItem(cacheKey(id));
+      const raw = localStorage.getItem(key);
       if (!raw) return null;
       const p = JSON.parse(raw);
-      return p && p.data ? p.data : null;
+      if (!p || !isViewModel(p.data)) return null;
+      return { data: p.data, at: typeof p.at === 'number' ? p.at : 0 };
     } catch (e) {
       return null;
     }
+  }
+
+  function loadCacheMeta(id) {
+    const live = readStored(cacheKey(id));
+    if (live) return live;
+    const legacy = readStored('jarvis.v2.panel.' + id);
+    if (!legacy) return null;
+    try {
+      localStorage.setItem(cacheKey(id), JSON.stringify(legacy));
+      localStorage.removeItem('jarvis.v2.panel.' + id);
+    } catch (e) {}
+    return legacy;
+  }
+
+  function loadCache(id) {
+    const hit = loadCacheMeta(id);
+    return hit ? hit.data : null;
   }
 
   /* ---------- Weather icon ----------
@@ -136,7 +181,7 @@
 
   /* ---------- Renderers ---------- */
   function renderWeather(vm) {
-    if (!vm || (vm.temp == null && !vm.condition && !(vm.forecast && vm.forecast.length) && !(vm.tiles && vm.tiles.length))) {
+    if (!vm || typeof vm.html === 'string' || (vm.temp == null && !vm.condition && !(vm.forecast && vm.forecast.length) && !(vm.tiles && vm.tiles.length))) {
       setMeta('weather', '');
       setBody('weather', emptyHtml());
       return;
@@ -245,7 +290,7 @@
       'agenda',
       now.toLocaleDateString(uiLocale(), { weekday: 'short', day: 'numeric', month: 'short' })
     );
-    if (!vm) {
+    if (!vm || typeof vm.html === 'string') {
       setBody('agenda', emptyHtml());
       return;
     }
@@ -267,7 +312,7 @@
 
   function renderNotes(vm) {
     setMeta('notes', '');
-    if (!vm) {
+    if (!vm || typeof vm.html === 'string') {
       setBody('notes', emptyHtml());
       return;
     }
@@ -287,7 +332,7 @@
      from before the pack sent a figure fall back to the unread count. */
   function renderMail(vm) {
     setMeta('mail', 'inbox');
-    if (!vm) {
+    if (!vm || typeof vm.html === 'string') {
       setBody('mail', emptyHtml());
       return;
     }
@@ -312,7 +357,7 @@
 
   function renderWork(vm) {
     setMeta('work', '');
-    if (!vm) {
+    if (!vm || typeof vm.html === 'string') {
       setBody('work', emptyHtml());
       return;
     }
@@ -374,12 +419,24 @@
     return { html: html, shown: true };
   }
 
+  function showNoMetrics() {
+    const root = document.getElementById('metrics');
+    if (root) root.setAttribute('data-empty', '1');
+    ['spark-cpu-val', 'spark-mem-val', 'spark-disk-val'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = 'no data';
+    });
+    const bar = document.getElementById('disk-bar');
+    if (bar) bar.style.width = '0%';
+  }
+
   function renderSystem(vm) {
     const board = vm && vm.runners;
     const busy = board && board.runners ? board.runners.filter(function (r) { return r.busy === true || r.job; }).length : 0;
     setMeta('system', busy ? busy + ' running' : '');
-    if (!vm || (vm.cpu == null && vm.mem == null && vm.disk == null && vm.uptime == null && !board)) {
+    if (!vm || typeof vm.html === 'string' || (vm.cpu == null && vm.mem == null && vm.disk == null && vm.uptime == null && !board)) {
       setBody('system', emptyHtml());
+      if (!vm || (vm.cpu == null && vm.mem == null && vm.disk == null)) showNoMetrics();
       return;
     }
     /* CPU, memory and disk are in the footer already; this panel is what the
@@ -411,10 +468,13 @@
     const memEl = document.getElementById('spark-mem-val');
     const diskEl = document.getElementById('spark-disk-val');
     const diskBar = document.getElementById('disk-bar');
-    if (cpuEl) cpuEl.textContent = vm.cpu != null ? vm.cpu + '%' : '—';
-    if (memEl) memEl.textContent = vm.mem != null ? vm.mem + 'G' : '—';
-    if (diskEl) diskEl.textContent = vm.disk != null ? vm.disk + '%' : '—';
-    if (diskBar && vm.disk != null) diskBar.style.width = Math.max(0, Math.min(100, vm.disk)) + '%';
+    const hasNumbers = vm.cpu != null || vm.mem != null || vm.disk != null;
+    const metrics = document.getElementById('metrics');
+    if (metrics) metrics.setAttribute('data-empty', hasNumbers ? '0' : '1');
+    if (cpuEl) cpuEl.textContent = vm.cpu != null ? vm.cpu + '%' : 'no data';
+    if (memEl) memEl.textContent = vm.mem != null ? vm.mem + 'G' : 'no data';
+    if (diskEl) diskEl.textContent = vm.disk != null ? vm.disk + '%' : 'no data';
+    if (diskBar) diskBar.style.width = vm.disk != null ? Math.max(0, Math.min(100, vm.disk)) + '%' : '0%';
     drawSpark('spark-cpu', sparkHist.cpu);
     drawSpark('spark-net', sparkHist.mem);
   }
@@ -441,7 +501,7 @@
           '<div class="pack-row"><span>' + esc(r.label) + '</span><b>' + esc(r.value) + '</b></div>';
       });
     } else {
-      html = '<div class="empty-label">Awaiting Core</div>';
+      html = '<div class="empty-label">' + EMPTY_LABEL + '</div>';
     }
     body.innerHTML = html;
   }
@@ -516,7 +576,7 @@
         esc(s.topic) +
         '">';
       html += '<div class="pack-title">' + esc(s.label || s.topic) + '</div>';
-      html += '<div class="pack-body"><div class="empty-label">Awaiting Core</div></div>';
+      html += '<div class="pack-body"><div class="empty-label">' + EMPTY_LABEL + '</div></div>';
       html += '</button>';
     });
     if (rest > 0) html += '<button type="button" class="pack-more" id="pack-more">+' + rest + '</button>';
@@ -589,7 +649,7 @@
           esc(pt.label) +
           '</span><b>' +
           esc(pt.value) +
-          (p.unit || '') +
+          esc(p.unit || '') +
           '</b></div>';
       });
       return html + '</div>';
@@ -597,12 +657,15 @@
     /* A camera with a stream is the moving picture; the still is what shows
        if the stream cannot be had (see wireMedia). */
     if (p.type === 'image') {
+      const src = allowedImageUrl(p.stream || p.url);
+      const still = allowedImageUrl(p.url);
+      const title = '<h3>' + esc(p.caption || p.alt || 'Image') +
+        (src && p.stream ? '<span class="live-tag">Live</span>' : '') + '</h3>';
+      if (!src) return title + '<div class="free-media"><div class="empty-label">Image unavailable</div></div>';
       return (
-        '<h3>' + esc(p.caption || p.alt || 'Image') +
-        (p.stream ? '<span class="live-tag">Live</span>' : '') +
-        '</h3><div class="free-media"><img class="free-img" src="' +
-        esc(p.stream || p.url) +
-        '" data-still="' + esc(p.url) +
+        title + '<div class="free-media"><img class="free-img" src="' +
+        esc(src) +
+        '" data-still="' + esc(still) +
         '" alt="' + esc(p.alt || '') + '"></div>'
       );
     }
@@ -717,29 +780,77 @@
   }
 
   /* ---------- Chrome ---------- */
-  function setConnection(state, detail) {
-    const pill = document.getElementById('pill-brain');
-    const text = document.getElementById('pill-brain-text');
-    if (!pill || !text) return;
-    pill.dataset.state = state;
-    if (state === 'online') text.textContent = 'BRAIN ONLINE';
-    else if (state === 'connecting') text.textContent = 'BRAIN CONNECTING';
-    else text.textContent = 'BRAIN OFFLINE';
+  function markStale(id, at) {
+    const el = document.querySelector('.panel[data-panel="' + id + '"]');
+    if (!el) return;
+    el.classList.add('is-stale');
+    let note = el.querySelector('.stale-note');
+    if (!note) {
+      note = document.createElement('div');
+      note.className = 'stale-note';
+      const title = el.querySelector('.panel-title');
+      if (title) title.appendChild(note);
+      else el.appendChild(note);
+    }
+    const d = new Date(at || Date.now());
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    note.textContent = 'last updated ' + hh + ':' + mm;
   }
 
+  function clearStale(id) {
+    const el = document.querySelector('.panel[data-panel="' + id + '"]');
+    if (!el) return;
+    el.classList.remove('is-stale');
+    const note = el.querySelector('.stale-note');
+    if (note) note.remove();
+  }
+
+  function setConnection(state) {
+    connState = state || 'offline';
+    document.documentElement.setAttribute('data-conn', connState);
+    const pill = document.getElementById('pill-brain');
+    const text = document.getElementById('pill-brain-text');
+    if (pill && text) {
+      pill.dataset.state = connState;
+      if (connState === 'online') text.textContent = 'BRAIN ONLINE';
+      else if (connState === 'connecting') text.textContent = 'BRAIN CONNECTING';
+      else text.textContent = 'BRAIN OFFLINE';
+    }
+    if (connState !== 'online') {
+      if (connState === 'offline') sawDisconnect = true;
+      const desk = document.getElementById('pill-desk-text');
+      if (desk) desk.textContent = 'DESK IDLE';
+      FIXED.forEach(function (id) {
+        const hit = loadCacheMeta(id);
+        if (hit) markStale(id, hit.at);
+      });
+    }
+    const banner = document.getElementById('offline-banner');
+    if (banner) {
+      const show = connState !== 'online' && (sawDisconnect || liveOff);
+      banner.hidden = !show;
+      if (show) banner.textContent = liveOff ? 'Brain offline' : 'Brain offline, reconnecting…';
+    }
+    if (window.JarvisV2 && JarvisV2.paintStateCopy) JarvisV2.paintStateCopy();
+  }
+
+  let chipTimer = null;
   function setTranscript(text, final) {
     const chip = document.getElementById('voice-chip');
     const txt = document.getElementById('voice-chip-text');
     if (!chip || !txt) return;
+    clearTimeout(chipTimer);
     if (!text) {
       chip.hidden = true;
       return;
     }
-    txt.textContent = text + (final ? '' : '…');
+    const shown = final ? text : text + '…';
+    txt.textContent = shown;
     chip.hidden = false;
     if (final) {
-      setTimeout(function () {
-        if (txt.textContent.indexOf('…') < 0) chip.hidden = true;
+      chipTimer = setTimeout(function () {
+        if (txt.textContent === shown) chip.hidden = true;
       }, 3500);
     }
   }
@@ -770,6 +881,11 @@
     if (RENDERERS[id]) {
       RENDERERS[id](vm);
       cachePanel(id, vm);
+      if (connState === 'online') clearStale(id);
+      else {
+        const hit = loadCacheMeta(id);
+        if (hit) markStale(id, hit.at);
+      }
     } else if (id) {
       renderPackCard(Object.assign({ topic: id }, vm || {}));
       cachePanel('pack:' + id, vm);
@@ -808,8 +924,14 @@
 
   function hydrateFromCache() {
     FIXED.forEach(function (id) {
-      const data = loadCache(id);
-      if (data && RENDERERS[id]) RENDERERS[id](data);
+      const hit = loadCacheMeta(id);
+      if (hit && RENDERERS[id]) {
+        RENDERERS[id](hit.data);
+        if (connState !== 'online') markStale(id, hit.at);
+      } else if (RENDERERS[id]) {
+        RENDERERS[id](null);
+        clearStale(id);
+      }
     });
     if (!usageOverride) {
       const u = loadCache('usage');
@@ -919,14 +1041,16 @@
       clearTimeout(askHintTimer);
       askHintTimer = setTimeout(function () { input.placeholder = ASK_PLACEHOLDER; }, 4000);
     });
-    /* Capture can fail after it starts (micError) or be unusable before it
-       starts (listenFallback: blocked, or no mic API). Same line either way. */
-    l.on('micError', function (err) {
-      showMicNotice('Mic: ' + (err || 'unavailable'));
+    /* The state line under the orb keeps the reason; the toast is the same
+       words, for a glance that is not on the orb. */
+    l.on('micNotice', function (msg) {
+      showMicNotice(msg || 'Microphone unavailable');
+      if (window.JarvisV2 && JarvisV2.setStateNotice) JarvisV2.setStateNotice(msg || 'Microphone unavailable');
     });
-    l.on('listenFallback', function (info) {
-      const reason = info && info.reason;
-      showMicNotice('Mic: ' + (reason === 'blocked' ? 'blocked' : (reason || 'unavailable')));
+    l.on('voiceCue', function (info) {
+      if (!window.JarvisV2 || !JarvisV2.setStateNotice) return;
+      if (info && info.kind === 'cancel') JarvisV2.setStateNotice('Cancelled', 'CANCELLED');
+      if (info && info.kind === 'barge') JarvisV2.setStateNotice('Interrupted — listening');
     });
     l.on('displayClear', function (m) {
       if (m && m.id) dismissFreeCard(m.id, 'cleared');
@@ -995,28 +1119,46 @@
     l.on('ready', fire);
   }
 
+  const OFFLINE_ASK = 'Jarvis is offline, command not sent';
+
   /* Enter sends the field as an utterance, the same turn a spoken one starts.
-     Escape leaves the field so Space talks again. */
+     Escape leaves the field so Space talks again. The submit listener is
+     attached even when there is no brain: a form with no action reloads the
+     page and drops ?mode= and ?live=, and a typed command has to say so. */
   function wireAsk(l) {
     const form = document.getElementById('ask-form');
     const input = document.getElementById('ask');
     if (!form || !input) return;
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
-      const text = input.value;
-      if (!text.trim()) return;
-      input.value = '';
-      l.stopListen();
-      l.sendUtterance(text);
-    });
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') input.blur();
-    });
-    input.addEventListener('blur', closeCompose);
+    if (form.dataset.askWired !== '1') {
+      form.dataset.askWired = '1';
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const text = input.value;
+        if (!text.trim()) return;
+        /* link is the live connection, which may arrive after this listener. */
+        if (!link || !link.connected) {
+          input.placeholder = OFFLINE_ASK;
+          clearTimeout(askHintTimer);
+          askHintTimer = setTimeout(function () { input.placeholder = ASK_PLACEHOLDER; }, 4000);
+          return;
+        }
+        input.value = '';
+        link.stopListen();
+        link.sendUtterance(text);
+      });
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') input.blur();
+      });
+      input.addEventListener('blur', closeCompose);
+    }
     /* The page opens ready to type. Not on a touch screen: there focus pops
        the keyboard over the desk, and the compose button is the way in. The
        boot animation keeps the footer out of reach for a moment, so it is
-       asked again once the brain is there, if nothing else took the focus. */
+       asked again once the brain is there, if nothing else took the focus.
+       Offline there is nothing to wait for, and stealing focus would hide
+       the message the failed send just wrote. */
+    if (!l || form.dataset.askLive === '1') return;
+    form.dataset.askLive = '1';
     const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
     function focusAsk() {
       if (touch) return;
@@ -1165,6 +1307,8 @@
 
   function init() {
     hydrateFromCache();
+    /* Before either early return: the form's native submit reloads the page. */
+    wireAsk(null);
 
     if (liveOff) {
       setConnection('offline', 'live=0 · offline');

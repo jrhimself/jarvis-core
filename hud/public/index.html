@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <title>JARVIS</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
 <script>
 (function () {
@@ -49,27 +50,28 @@
       <div class="date" id="clock-date">—</div>
     </div>
   </header>
+  <div id="offline-banner" class="offline-banner" hidden role="status">Brain offline, reconnecting…</div>
 
   <main class="stage">
     <div class="col col-left">
       <section class="panel" data-slot="weather" data-panel="weather">
         <div class="panel-title"><h2>Weather</h2><span class="meta" data-meta="weather"></span></div>
         <div class="panel-body" data-body="weather">
-          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Waiting for Jarvis core</span></div>
         </div>
         <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="agenda" data-panel="agenda">
         <div class="panel-title"><h2>Agenda</h2><span class="meta" data-meta="agenda"></span></div>
         <div class="panel-body" data-body="agenda">
-          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Waiting for Jarvis core</span></div>
         </div>
         <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="notes" data-panel="notes">
         <div class="panel-title"><h2>Facts</h2><span class="meta" data-meta="notes"></span></div>
         <div class="panel-body" data-body="notes">
-          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Waiting for Jarvis core</span></div>
         </div>
         <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
@@ -96,21 +98,21 @@
       <section class="panel" data-slot="mail" data-panel="mail">
         <div class="panel-title"><h2>Mail</h2><span class="meta" data-meta="mail"></span></div>
         <div class="panel-body" data-body="mail">
-          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Waiting for Jarvis core</span></div>
         </div>
         <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="work" data-panel="work">
         <div class="panel-title"><h2>Work · PRs</h2><span class="meta" data-meta="work"></span></div>
         <div class="panel-body" data-body="work">
-          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Waiting for Jarvis core</span></div>
         </div>
         <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
       <section class="panel" data-slot="system" data-panel="system">
         <div class="panel-title"><h2>System</h2><span class="meta" data-meta="system"></span></div>
         <div class="panel-body" data-body="system">
-          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Awaiting Core</span></div>
+          <div class="empty-state"><span class="empty-line"></span><span class="empty-label">Waiting for Jarvis core</span></div>
         </div>
         <div class="panel-flash" aria-hidden="true"><span class="panel-scan"></span></div>
       </section>
@@ -129,6 +131,7 @@
       <span class="chip-text" id="caption-text"></span>
     </p>
     <div class="stage-nav">
+      <button type="button" class="nav-back" id="stage-back" aria-label="Back">Back</button>
       <button type="button" class="nav-step" id="stage-prev" aria-label="Previous panel">‹</button>
       <span class="nav-name"><span class="nav-dot" aria-hidden="true"></span><span id="stage-label"></span></span>
       <button type="button" class="nav-step" id="stage-next" aria-label="Next panel">›</button>
@@ -137,17 +140,17 @@
   </div>
 
   <footer class="footer">
-    <div class="metrics">
+    <div class="metrics" id="metrics" data-empty="1">
       <div class="metric">
-        <div class="m-label">CPU <span id="spark-cpu-val">—</span></div>
+        <div class="m-label">CPU <span id="spark-cpu-val">no data</span></div>
         <canvas class="spark" id="spark-cpu" width="120" height="24"></canvas>
       </div>
       <div class="metric">
-        <div class="m-label">MEM <span id="spark-mem-val">—</span></div>
+        <div class="m-label">MEM <span id="spark-mem-val">no data</span></div>
         <canvas class="spark" id="spark-net" width="120" height="24"></canvas>
       </div>
       <div class="metric">
-        <div class="m-label">DISK <span id="spark-disk-val">—</span></div>
+        <div class="m-label">DISK <span id="spark-disk-val">no data</span></div>
         <div class="bar-track"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div>
       </div>
     </div>
