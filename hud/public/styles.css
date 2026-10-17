@@ -1215,7 +1215,8 @@ html[data-voice="thinking"] .panel::after {
   border-color: hsla(var(--hue), 100%, 70%, 0.7);
 }
 
-/* Status label colors — red ONLY for SPEAKING */
+/* Status label colors. Speaking uses the state hue, the same green as the desk;
+   red stays an alert colour and is not the voice. */
 html[data-voice="listening"] .orb-label .state { color: hsla(165, 90%, 72%, 0.95); }
 html[data-voice="listening"] .orb-label .state-dot {
   background: hsla(165, 90%, 65%, 0.95);
@@ -1229,12 +1230,12 @@ html[data-voice="thinking"] .orb-label .state-dot {
   animation: pill-pulse 0.9s ease-in-out infinite;
 }
 html[data-voice="speaking"] .orb-label .state {
-  color: var(--red);
-  text-shadow: 0 0 18px hsla(355, 100%, 55%, 0.55);
+  color: hsl(var(--hue), 85%, 72%);
+  text-shadow: 0 0 18px hsla(var(--hue), 100%, 55%, 0.55);
 }
 html[data-voice="speaking"] .orb-label .state-dot {
-  background: var(--red);
-  box-shadow: 0 0 14px hsla(355, 100%, 55%, 0.9);
+  background: hsl(var(--hue), 80%, 62%);
+  box-shadow: 0 0 14px hsla(var(--hue), 100%, 55%, 0.9);
   animation: pill-pulse 0.75s ease-in-out infinite;
 }
 html[data-voice="speaking"] #status-wave { opacity: 1; }
@@ -2306,6 +2307,9 @@ html.is-focusing .footer {
   opacity: 0;
   background: linear-gradient(90deg, transparent, hsla(var(--hue), 100%, 96%, 0.95), transparent);
   box-shadow: 0 0 12px hsla(var(--hue), 100%, 82%, 0.9);
+  /* Moved with a transform so a pass down the panel does not lay the page out.
+     --scan is 0..1; --ph is the panel's layout height, inherited from it. */
+  transform: translate3d(0, calc(var(--scan, 0) * var(--ph, 200px)), 0);
 }
 
 /* ===== Tablet mode (?mode=tablet) =====
@@ -2384,3 +2388,170 @@ html.tablet .panel.fui-enter::after,
 html.tablet .panel.fui-enter::before { animation: none; display: none; }
 html.tablet .free-card.free-in { animation: free-veil-in 300ms ease-out; }
 html.tablet .free-card.free-out { animation: free-veil-out 240ms ease-in forwards; }
+
+/* A hue sweep restyles every shadow on the page. On the wall tablet the state
+   colour changes at once. */
+html.tablet { transition: none; }
+
+/* Read from a few metres on a 1920×1200 wall tablet: body text 24–28px, labels
+   at least 18px, hero figures at least 72px. Muted copy is a fixed light grey
+   so it stays above 4.5:1 when the desk hue moves to violet. */
+html.tablet {
+  --text-muted: #c5d4e4;
+}
+html.tablet .brand .name { font-size: 26px; letter-spacing: 0.28em; }
+html.tablet .pill {
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  padding: 8px 16px;
+  min-height: 48px;
+}
+html.tablet .pill .dot { width: 12px; height: 12px; }
+html.tablet .clock-block .time { font-size: 40px; }
+html.tablet .clock-block .date { font-size: 18px; letter-spacing: 0.12em; }
+html.tablet .panel-title h2 { font-size: 18px; letter-spacing: 0.16em; }
+html.tablet .panel-title .meta { font-size: 18px; }
+html.tablet .empty-state { opacity: 1; }
+html.tablet .empty-label {
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  color: #c5d4e4;
+}
+html.tablet .hero-metric .value,
+html.tablet .hero-row .value,
+html.tablet .weather-temp .deg { font-size: 72px; }
+html.tablet .weather-temp .deg span { font-size: 28px; }
+html.tablet .hero-metric .label,
+html.tablet .hero-row .label,
+html.tablet .hero-row .aside .k { font-size: 18px; }
+html.tablet .hero-row .aside { font-size: 24px; }
+html.tablet .weather-temp .cond .now { font-size: 24px; }
+html.tablet .weather-temp .cond .loc { font-size: 18px; }
+html.tablet .list li,
+html.tablet .list.compact li,
+html.tablet .list.facts-list .body,
+html.tablet .note-item,
+html.tablet .mail-item,
+html.tablet .pr-item { font-size: 24px; }
+html.tablet .list .t,
+html.tablet .list.compact .t { font-size: 18px; opacity: 1; }
+html.tablet .list .sub,
+html.tablet .list.compact .sub { font-size: 18px; }
+html.tablet .forecast-row .day { font-size: 18px; }
+html.tablet .forecast-row .day strong { font-size: 24px; }
+html.tablet .m-label { font-size: 18px; letter-spacing: 0.12em; }
+html.tablet .orb-label .state { font-size: 24px; letter-spacing: 0.18em; }
+html.tablet .orb-label .sub { font-size: 18px; letter-spacing: 0.08em; color: #c5d4e4; }
+html.tablet .orb-dock[data-mini="1"] .orb-label .state { font-size: 18px; }
+html.tablet .orb-dock[data-mini="1"] .orb-label .sub { display: block; }
+html.tablet .ask input { font-size: 24px; min-height: 48px; }
+html.tablet .stage-nav .nav-name { font-size: 18px; letter-spacing: 0.16em; }
+html.tablet .stage-sub { font-size: 18px; }
+html.tablet .mic-error { font-size: 18px; padding: 12px 16px; }
+html.tablet .pack-title { font-size: 18px; }
+html.tablet .pack-body { font-size: 18px; }
+html.tablet .tr-top h2 { font-size: 18px; }
+html.tablet .tr-body { font-size: 24px; }
+html.tablet .tr-head,
+html.tablet .tr-empty { font-size: 18px; }
+html.tablet .gauge-label { font-size: 18px; }
+html.tablet .stale-note { font-size: 18px; }
+
+/* The per-frame brightness filter is not used in tablet mode, and a blur on
+   the panels behind a focus would be a full-screen repaint. */
+html.tablet .stage .panel[data-panel] { will-change: transform, opacity; }
+html.tablet .panel.focus-dim,
+html.tablet .pack-card.focus-dim { filter: none; }
+html.tablet.is-focusing .header,
+html.tablet.is-focusing .footer { filter: none !important; }
+html.tablet .panel,
+html.tablet .stage .panel,
+.stage .panel {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Touch targets. The wall tablet is used with a finger, so anything that
+   receives a tap is at least 48px. Full mode keeps the denser desk. */
+html.tablet .nav-step,
+html.tablet .nav-back,
+html.tablet .btn-transcript,
+html.tablet .tr-close,
+html.tablet .free-card-close,
+html.tablet .pack-more,
+html.tablet .pack-card {
+  min-width: 48px;
+  min-height: 48px;
+}
+html.tablet .nav-step,
+html.tablet .nav-back {
+  width: auto;
+  height: 48px;
+  padding: 0 14px;
+  font-size: 18px;
+}
+html.tablet .btn-transcript { font-size: 18px; padding: 12px 16px; }
+html.tablet .tr-close,
+html.tablet .free-card-close {
+  font-size: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+html.tablet .free-card-close { position: absolute; top: 8px; right: 8px; }
+
+.nav-back {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid hsla(var(--hue), 70%, 65%, 0.35);
+  background: transparent;
+  color: var(--cyan-bright);
+  font: 11px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.nav-back:hover {
+  background: hsla(var(--hue), 100%, 60%, 0.12);
+  border-color: var(--panel-border-hot);
+}
+
+.offline-banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  max-width: min(920px, calc(100vw - 48px));
+  padding: 10px 18px;
+  border-radius: 4px;
+  background: hsla(0, 55%, 16%, 0.94);
+  border: 1px solid hsla(0, 80%, 62%, 0.75);
+  color: #ffd5d8;
+  font: 600 16px/1.3 var(--font);
+  letter-spacing: 0.04em;
+  text-align: center;
+  pointer-events: none;
+}
+html.tablet .offline-banner { font-size: 24px; padding: 14px 22px; }
+
+.stale-note {
+  flex: 1 1 100%;
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: right;
+}
+.panel-title { flex-wrap: wrap; }
+.panel.is-stale .panel-body { opacity: 0.5; }
+
+.metrics[data-empty="1"] .spark,
+.metrics[data-empty="1"] .bar-track { opacity: 0.28; }
+.metrics[data-empty="1"] .m-label span { color: var(--text-muted); }
+
+html.tablet .accent-rail { display: none; }
+
+.orb-label.is-cue .sub { color: #ffe1a8; }

@@ -115,6 +115,7 @@
   }
 
   let busy = false;
+  let observing = false;
   const observer = new MutationObserver(function (records) {
     if (busy || lang === 'en') return;
     busy = true;
@@ -127,20 +128,36 @@
     } finally { busy = false; }
   });
 
+  /* English is the page as written, so the observer stays disconnected until a
+     translation is actually in use. It watches the whole document. */
+  function ensureObserver() {
+    if (observing || lang === 'en' || !document.body) return;
+    observer.observe(document.body, {
+      subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ATTRS,
+    });
+    observing = true;
+  }
+
+  function stopObserver() {
+    if (!observing) return;
+    observer.disconnect();
+    observing = false;
+  }
+
   function set(next) {
     if (!LOCALES[next] || next === lang) return;
     lang = next;
     document.documentElement.lang = next;
+    if (lang === 'en') stopObserver();
+    else ensureObserver();
     busy = true;
     try { walk(document.body); } finally { busy = false; }
     window.dispatchEvent(new CustomEvent('jarvis:ui-lang', { detail: next }));
   }
 
   function start() {
-    observer.observe(document.body, {
-      subtree: true, childList: true, characterData: true,
-      attributes: true, attributeFilter: ATTRS,
-    });
+    ensureObserver();
   }
   if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
 

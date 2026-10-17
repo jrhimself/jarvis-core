@@ -393,7 +393,13 @@ registerProcessor('mic-tap', MicTap);
     const bindKeys = opts.bindKeys !== false;
     const bindGestures = opts.bindGestures !== false;
 
-    let ws = null, wsRetry = 0, wsTimer = null, wsWasOpen = false;
+    let ws = null, wsRetry = 0, wsTimer = null, wsWasOpen = false, wantConnect = false;
+    /* The brain sends metrics every few seconds. A socket that stays open and
+       silent for this long is treated as half-open (a tablet waking from
+       sleep) and closed, so the backoff can bring it back. */
+    const HEARTBEAT_MS = 20000;
+    let lastRx = 0;
+    let heartbeatTimer = null;
     let connState = 'offline';
     let sessionId = null;
     let speechLang = 'en';
@@ -738,16 +744,41 @@ registerProcessor('mic-tap', MicTap);
     function connOk() { return !!ws && ws.readyState === WebSocket.OPEN; }
 
     /* ---- WS ---- */
+    function noteRx() { lastRx = Date.now(); }
+
+    function stopHeartbeat() {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+
+    function startHeartbeat() {
+      stopHeartbeat();
+      noteRx();
+      heartbeatTimer = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (Date.now() - lastRx > HEARTBEAT_MS) {
+          try { ws.close(); } catch (e) {}
+        }
+      }, 5000);
+    }
+
     function connect() {
       clearTimeout(wsTimer);
+      wantConnect = true;
       setConn('connecting', 'connecting…');
       const url = wsUrl || ((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + WS_PATH);
       let sock;
       try { sock = new WebSocket(url); }
       catch (e) { scheduleReconnect(); return; }
       ws = sock;
-      sock.onopen = () => { wsRetry = 0; wsWasOpen = true; coreFocusSeen = false; resetCueGate(); setConn('online', 'online'); };
+      sock.onopen = () => {
+        wsRetry = 0; wsWasOpen = true; coreFocusSeen = false; resetCueGate();
+        noteRx();
+        startHeartbeat();
+        setConn('online', 'online');
+      };
       sock.onmessage = (ev) => {
+        noteRx();
         let m;
         try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (m && typeof m.kind === 'string') route(m);
@@ -756,20 +787,46 @@ registerProcessor('mic-tap', MicTap);
       sock.onclose = () => {
         if (ws !== sock) return;
         ws = null;
+        stopHeartbeat();
         if (wsWasOpen) { wsWasOpen = false; bus.emit('log', 'lost connection to the brain'); }
         failTurn('no connection');
-        scheduleReconnect();
+        if (wantConnect) scheduleReconnect();
       };
     }
 
+    /* Full jitter on the exponential cap, so a room of tablets does not
+       retry on the same second after a dropout. */
     function scheduleReconnect() {
-      const delay = Math.min(30000, 1000 * Math.pow(2, wsRetry++));
-      setConn('offline', 'offline · retrying in ' + Math.round(delay / 1000) + 's');
+      const cap = Math.min(30000, 1000 * Math.pow(2, Math.min(wsRetry, 5)));
+      wsRetry++;
+      const delay = Math.max(250, Math.round(Math.random() * cap));
+      setConn('offline', 'offline · retrying');
       wsTimer = setTimeout(connect, delay);
     }
 
-    function disconnect() {
+    function nudgeReconnect() {
+      if (!wantConnect) return;
+      if (connOk()) {
+        if (Date.now() - lastRx > HEARTBEAT_MS) {
+          try { ws.close(); } catch (e) {}
+        }
+        return;
+      }
       clearTimeout(wsTimer);
+      connect();
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', nudgeReconnect);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) nudgeReconnect();
+      });
+    }
+
+    function disconnect() {
+      wantConnect = false;
+      clearTimeout(wsTimer);
+      stopHeartbeat();
       wsRetry = 0;
       if (ws) { try { ws.onclose = null; ws.close(); } catch (e) {} ws = null; }
       setConn('offline', 'offline');
@@ -1215,10 +1272,19 @@ registerProcessor('mic-tap', MicTap);
         node.connect(mic.sink);
         mic.sink.connect(ctx.destination);
       } catch (e) {
-        mic.blocked = true;
+        const name = e && e.name ? e.name : '';
+        /* A denial stays denied. A busy mic, an abort, or a missing device
+           is this attempt only — the next tap may succeed. */
+        if (name === 'NotAllowedError') mic.blocked = true;
         micStop();
         bus.emit('log', 'microphone capture failed');
-        bus.emit('micError', e && e.name ? e.name : 'capture failed');
+        const msg = name === 'NotAllowedError' ? 'Microphone blocked'
+          : name === 'NotReadableError' ? 'Microphone busy'
+          : name === 'NotFoundError' || name === 'OverconstrainedError' ? 'No microphone'
+          : name === 'AbortError' ? 'Microphone interrupted'
+          : 'Microphone unavailable';
+        if (!turn) setMode('idle');
+        bus.emit('micNotice', msg);
       }
     }
 
@@ -1258,7 +1324,10 @@ registerProcessor('mic-tap', MicTap);
       }
       mic.avail = false;
       micStop();
-      bus.emit('listen', { available: false, reason: m.reason });
+      const msg = !connOk() ? 'Brain offline' : 'Microphone unavailable';
+      if (!turn) setMode('idle');
+      bus.emit('listen', { available: false, reason: msg });
+      bus.emit('micNotice', msg);
       // Web Speech fallback is UI-owned when DOM SpeechRecognition exists;
       // CoreLink emits and lets UI decide (DOM-agnostic).
     }
@@ -1306,7 +1375,7 @@ registerProcessor('mic-tap', MicTap);
     }
 
     function startFollowUp(ms) {
-      if (turn || !connOk()) return;
+      if (turn || !connOk() || mic.blocked) return;
       followUntil = Date.now() + ms;
       setMode('listening');
       beginCapture();
@@ -1323,18 +1392,57 @@ registerProcessor('mic-tap', MicTap);
       if (!turn) setMode('idle');
     }
 
+    function failListen(message) {
+      followUntil = 0;
+      clearTimeout(followTimer);
+      stopListen();
+      if (!turn) setMode('idle');
+      bus.emit('micNotice', message);
+    }
+
     function beginCapture() {
       if (micUsable()) { micStart(); return; }
-      bus.emit('listenFallback', { reason: mic.blocked ? 'blocked' : 'unavailable' });
+      failListen(!connOk() ? 'Brain offline' : (mic.blocked ? 'Microphone blocked' : 'Microphone unavailable'));
+    }
+
+    /* A grant after a denial is visible to the permissions API. Until then a
+       blocked mic is not asked again on every follow-up. */
+    function clearBlockIfAllowed() {
+      if (!mic.blocked) return Promise.resolve(true);
+      const perms = navigator.permissions;
+      if (!perms || typeof perms.query !== 'function') return Promise.resolve(false);
+      return perms.query({ name: 'microphone' }).then((s) => {
+        if (s && s.state === 'denied') return false;
+        mic.blocked = false;
+        return true;
+      }, () => false);
     }
 
     function startListen() {
-      if (mic.active || mode === 'thinking' || mode === 'speaking') return;
-      setMode('listening');
-      t0 = performance.now();
-      pending = '';
-      beginCapture();
-      bus.emit('listenStart');
+      if (mic.active) return;
+      if (turn && (mode === 'thinking' || mode === 'speaking')) return;
+      const go = () => {
+        if (mic.active) return;
+        if (!connOk()) { failListen('Brain offline'); return; }
+        if (mic.blocked) { failListen('Microphone blocked'); return; }
+        if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.AudioContext || window.webkitAudioContext))) {
+          failListen('Microphone unavailable');
+          return;
+        }
+        setMode('listening');
+        t0 = performance.now();
+        pending = '';
+        micStart();
+        bus.emit('listenStart');
+      };
+      if (mic.blocked) {
+        clearBlockIfAllowed().then((ok) => {
+          if (!ok) { failListen('Microphone blocked'); return; }
+          go();
+        });
+        return;
+      }
+      go();
     }
 
     function stopListen() {
@@ -1344,8 +1452,16 @@ registerProcessor('mic-tap', MicTap);
 
     function toggleListen() {
       if (mode === 'listening') flushUtterance();
-      else if (turn) cancelTurn();
-      else startListen();
+      else if (mode === 'speaking') {
+        if (turn) cancelTurn();
+        startListen();
+        /* Only once capture has actually started. A failure already wrote its
+           own line, and "listening" would be a lie. */
+        if (mode === 'listening') bus.emit('voiceCue', { kind: 'barge' });
+      } else if (mode === 'thinking' || turn) {
+        cancelTurn();
+        bus.emit('voiceCue', { kind: 'cancel' });
+      } else startListen();
     }
 
     /* ---- voice playback ---- */

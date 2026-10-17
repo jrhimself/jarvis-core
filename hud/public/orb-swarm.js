@@ -145,6 +145,21 @@ function swarmEase(v, to, up, down, dt) {
    once rather than per point. */
 const swarmRamp = { hue: null, steps: [], tiers: [], stepGlow: [], tierGlow: [] };
 
+/* The soft disc behind the shell. Cached: hue, strength and radius change far
+   less often than the frame rate, and a gradient is not free to build. */
+const swarmAtmo = { key: '', g: null };
+function swarmAtmosphere(ctx, cx, cy, r, hue, core) {
+  const key = Math.round(cx) + ':' + Math.round(cy) + ':' + Math.round(r) + ':' + hue.toFixed(0) + ':' + core.toFixed(3);
+  if (swarmAtmo.key === key && swarmAtmo.g) return swarmAtmo.g;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  g.addColorStop(0, `hsla(${hue},95%,60%,${core.toFixed(3)})`);
+  g.addColorStop(0.55, `hsla(${hue},90%,50%,${(core * 0.35).toFixed(3)})`);
+  g.addColorStop(1, `hsla(${hue},85%,45%,0)`);
+  swarmAtmo.key = key;
+  swarmAtmo.g = g;
+  return g;
+}
+
 function swarmGlow(ctx, hue, sat, light) {
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
   g.addColorStop(0, `hsla(${hue},${sat}%,${light}%,0.5)`);
@@ -270,12 +285,11 @@ function drawSwarmOrb(ctx, W, H, t, env) {
   ctx.globalCompositeOperation = 'lighter';
   ctx.globalAlpha = reveal;
 
-  /* Atmosphere behind the swarm, so the shell sits in light rather than on black. */
+  /* Atmosphere behind the swarm, so the shell sits in light rather than on black.
+     The gradient is rebuilt only when its inputs change: a new one every frame
+     is a steady allocation on a tablet that is already fill-rate bound. */
   const core = 0.05 + (env.energy ?? 0.4) * 0.06 + envSpeak * 0.05;
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Rpx * 1.1);
-  g.addColorStop(0, `hsla(${hue},95%,60%,${core.toFixed(3)})`);
-  g.addColorStop(0.55, `hsla(${hue},90%,50%,${(core * 0.35).toFixed(3)})`);
-  g.addColorStop(1, `hsla(${hue},85%,45%,0)`);
+  const g = swarmAtmosphere(ctx, cx, cy, Rpx * 1.1, hue, core);
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.arc(cx, cy, Rpx * 1.1, 0, 7);

@@ -87,8 +87,58 @@ const STATUS_COPY = {
   speaking:  { label: 'SPEAKING',  sub: 'TTS · through-orb waveform' },
 };
 
+/* A mic failure, a cancel, or the offline line. Cleared when the voice
+   actually changes, and on a short timer so a cue does not stay up. */
+let stateNotice = '';
+let stateHeadline = '';
+let stateNoticeTimer = 0;
+
+function offlineLine() {
+  const conn = document.documentElement.getAttribute('data-conn');
+  if (!conn || conn === 'online') return '';
+  if (document.documentElement.getAttribute('data-live') === '0') return 'Brain offline';
+  return 'Brain offline, reconnecting…';
+}
+
+function paintStateCopy() {
+  const copy = STATUS_COPY[voiceState] || STATUS_COPY.idle;
+  const orbState = document.getElementById('orb-state');
+  const orbSub = document.getElementById('orb-sub');
+  const label = document.querySelector('.orb-label');
+  let sub = copy.sub;
+  let headline = copy.label;
+  if (stateNotice && (voiceState === 'idle' || voiceState === 'listening')) {
+    sub = stateNotice;
+    if (stateHeadline) headline = stateHeadline;
+  } else if (voiceState === 'idle') {
+    const offline = offlineLine();
+    if (offline) sub = offline;
+  }
+  if (orbState) orbState.textContent = headline;
+  if (orbSub) orbSub.textContent = sub;
+  if (label) label.classList.toggle('is-cue', !!stateNotice);
+}
+
+function setStateNotice(text, headline) {
+  stateNotice = text || '';
+  stateHeadline = headline || '';
+  clearTimeout(stateNoticeTimer);
+  paintStateCopy();
+  if (!stateNotice) return;
+  stateNoticeTimer = setTimeout(() => {
+    stateNotice = '';
+    stateHeadline = '';
+    paintStateCopy();
+  }, 2400);
+}
+
 function applyVoicePreset(state) {
   if (TABLET) markActivity();
+  if (state !== 'idle') {
+    stateNotice = '';
+    stateHeadline = '';
+    clearTimeout(stateNoticeTimer);
+  }
   voiceState = state;
   const p = VOICE_PRESETS[state] || VOICE_PRESETS.idle;
   ringSpeedMul = p.ring;
@@ -96,12 +146,7 @@ function applyVoicePreset(state) {
   bloomMul = p.bloom;
   presetWave = p.wave;
   document.documentElement.setAttribute('data-voice', state);
-
-  const copy = STATUS_COPY[state] || STATUS_COPY.idle;
-  const orbState = document.getElementById('orb-state');
-  const orbSub = document.getElementById('orb-sub');
-  if (orbState) orbState.textContent = copy.label;
-  if (orbSub) orbSub.textContent = copy.sub;
+  paintStateCopy();
 }
 
 
@@ -465,6 +510,19 @@ function drawSweep(ctx, cx, cy, R, hue, energy, t) {
 }
 
 
+let waveformCanvas = null;
+function waveformLayer(w, h) {
+  if (!waveformCanvas) waveformCanvas = document.createElement('canvas');
+  if (waveformCanvas.width !== w || waveformCanvas.height !== h) {
+    waveformCanvas.width = w;
+    waveformCanvas.height = h;
+  }
+  const o = waveformCanvas.getContext('2d');
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.clearRect(0, 0, w, h);
+  return waveformCanvas;
+}
+
 function drawThroughWaveform(ctx, cx, cy, R, coreR, hue, energy, t) {
   const amp = waveAmp;
   if (amp < 0.08) return;
@@ -477,11 +535,10 @@ function drawThroughWaveform(ctx, cx, cy, R, coreR, hue, energy, t) {
   const steps = Math.max(180, Math.floor(halfW * 2.6));
   const padY = baseAmp * 2.8 + 24;
 
-  const off = document.createElement('canvas');
-  off.width = canvasW;
-  off.height = canvasH;
+  /* One layer for the life of the page. A new canvas every frame is a full-size
+     allocation, and the ring orb is already the heavier of the two. */
+  const off = waveformLayer(canvasW, canvasH);
   const o = off.getContext('2d');
-  o.clearRect(0, 0, canvasW, canvasH);
   o.globalCompositeOperation = 'lighter';
 
   function sampleY(u, layer) {
@@ -556,13 +613,23 @@ function drawThroughWaveform(ctx, cx, cy, R, coreR, hue, energy, t) {
 
 
 
-/* Mini status waveform under the orb */
+/* Mini status waveform under the orb. The box is measured on resize: reading
+   it every frame, after the stage has written style, lays the page out again. */
+const waveBox = { w: 0, h: 0, dpr: 0 };
+function measureWave(canvas) {
+  waveBox.w = 0;
+  if (!canvas) return;
+  waveBox.dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+  waveBox.w = canvas.clientWidth || 100;
+  waveBox.h = canvas.clientHeight || 18;
+}
 function drawStatusWave(canvas, t) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
-  const w = canvas.clientWidth || 100;
-  const h = canvas.clientHeight || 18;
+  if (!waveBox.w || waveBox.dpr !== dpr) measureWave(canvas);
+  const w = waveBox.w || 100;
+  const h = waveBox.h || 18;
   const tw = Math.round(w * dpr), th = Math.round(h * dpr);
   if (canvas.width !== tw || canvas.height !== th) {
     canvas.width = tw;
@@ -574,7 +641,8 @@ function drawStatusWave(canvas, t) {
   const speaking = voiceState === 'speaking';
   const amp = Math.max(0.15, waveAmp * (speaking ? 1 : 0.55));
   const mid = h / 2;
-  const hue = speaking ? 355 : HUE;
+  /* The same hue as the desk. Red reads as a fault, and speaking is not one. */
+  const hue = HUE;
 
   ctx.beginPath();
   for (let x = 0; x < w; x++) {
@@ -586,13 +654,9 @@ function drawStatusWave(canvas, t) {
     if (x === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
-  ctx.strokeStyle = speaking
-    ? `hsla(${hue},95%,65%,0.95)`
-    : `hsla(${hue},100%,72%,0.85)`;
+  ctx.strokeStyle = `hsla(${hue},100%,72%,0.9)`;
   ctx.lineWidth = 1.3;
-  ctx.shadowColor = speaking
-    ? `hsla(${hue},100%,55%,0.55)`
-    : `hsla(${hue},100%,70%,0.45)`;
+  ctx.shadowColor = `hsla(${hue},100%,70%,0.45)`;
   ctx.shadowBlur = TABLET ? 0 : 5;
   ctx.stroke();
   ctx.shadowBlur = 0;
@@ -664,55 +728,6 @@ function drawOrb(ctx, W, H, t) {
   }
 }
 
-
-function drawSpark(canvas, seed, t) {
-  const ctx = canvas.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  if (!w || !h) return;
-  const tw = Math.round(w * dpr),
-    th = Math.round(h * dpr);
-  if (canvas.width !== tw || canvas.height !== th) {
-    canvas.width = tw;
-    canvas.height = th;
-  }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  const rnd = seeded(seed);
-  const pts = 32;
-  const values = [];
-  let v = 0.4 + rnd() * 0.2;
-  for (let i = 0; i < pts; i++) {
-    v += (rnd() - 0.48) * 0.18 + Math.sin(t * 1.6 + i * 0.45 + seed) * 0.035;
-    v = Math.max(0.08, Math.min(0.95, v));
-    values.push(v);
-  }
-
-  ctx.beginPath();
-  values.forEach((val, i) => {
-    const x = (i / (pts - 1)) * w;
-    const y = h - val * (h - 2) - 1;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.strokeStyle = `hsla(${HUE},100%,70%,0.8)`;
-  ctx.lineWidth = 1.2;
-  ctx.shadowColor = `hsla(${HUE},100%,70%,0.5)`;
-  ctx.shadowBlur = TABLET ? 0 : 5;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  ctx.lineTo(w, h);
-  ctx.lineTo(0, h);
-  ctx.closePath();
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, `hsla(${HUE},100%,60%,0.28)`);
-  g.addColorStop(1, `hsla(${HUE},100%,50%,0)`);
-  ctx.fillStyle = g;
-  ctx.fill();
-}
 
 /* ---------- Waveform (pin-style oscilloscope) ---------- */
 /* ---------- Plan usage gauges (session / week) ----------
@@ -1100,14 +1115,19 @@ function watchTabletActivity() {
       const el = n && n.nodeType === 1 ? n : n && n.parentElement;
       return !!(el && el.closest && el.closest('#clock-time, #clock-date'));
     };
-    new MutationObserver((list) => {
+    const observer = new MutationObserver((list) => {
       for (const m of list) {
         if (!quiet(m.target)) { markActivity(); return; }
       }
-    }).observe(document.documentElement, {
-      subtree: true, childList: true, characterData: true,
-      attributes: true, attributeFilter: ['data-voice', 'data-state', 'hidden'],
     });
+    /* The clock and the paint loop write the rest of the document. Watching
+       only the desk and the pills keeps the idle timer honest without a
+       second observer on every text node in the page. */
+    const stage = document.querySelector('.stage');
+    const pills = document.querySelector('.status-pills');
+    const opts = { subtree: true, childList: true, characterData: true };
+    if (stage) observer.observe(stage, opts);
+    if (pills) observer.observe(pills, opts);
   }
 }
 
@@ -1127,23 +1147,23 @@ const animate =
   liveParam === '0' ? false : liveParam === '1' ? true : !hasT || demoBriefing;
 
 const canvas = document.getElementById('orb');
-const sparkIds = ['spark-cpu', 'spark-net'];
 
 function sizeOrb() {
+  if (!canvas) return;
   const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
   /* The layout box, not the painted one: on the stage the orb is scaled by a
-     transform, and a measured width would shrink the backing store with it and
-     reallocate the canvas on every frame of the journey to the corner. */
-  const rect = canvas.getBoundingClientRect();
-  const cw = canvas.offsetWidth || rect.width;
-  const ch = canvas.offsetHeight || rect.height;
+     transform, and a measured width would shrink the backing store with it.
+     Called on resize, not per frame: a read here after the stage writes style
+     would lay the page out on every tick. */
+  const cw = canvas.offsetWidth;
+  const ch = canvas.offsetHeight;
+  if (!cw || !ch) return;
   const tw = Math.round(cw * dpr);
   const th = Math.round(ch * dpr);
   if (canvas.width !== tw || canvas.height !== th) {
     canvas.width = tw;
     canvas.height = th;
   }
-  return { tw, th };
 }
 
 /* Rotation is integrated rather than t × speed: with t × speed, a voice state
@@ -1191,26 +1211,14 @@ function advanceMotion(t) {
 function paintFrame(t) {
   if (window.JarvisStage) JarvisStage.frame(t, animate);
   advanceMotion(t);
-  sizeOrb();
   const ctx = canvas.getContext('2d');
   drawOrb(ctx, canvas.width, canvas.height, t);
-  sparkIds.forEach((id, i) => {
-    const el = document.getElementById(id);
-    if (el) drawSpark(el, 900 + i * 17, t);
-  });
   drawStatusWave(document.getElementById('status-wave'), t);
   easeUsageDisplays();
   drawAccentRing(document.getElementById('ring-a'), 'session');
   drawAccentRing(document.getElementById('ring-b'), 'week');
   /* The flash forces a layout and a filter animation every few seconds. */
   if (!TABLET) maybeFlashHero(t);
-
-  /* breathe IO bar */
-  const fill = document.querySelector('.bar-fill');
-  if (fill) {
-    const w = 28 + (Math.sin(t * 1.3) * 0.5 + 0.5) * 22;
-    fill.style.width = `${w}%`;
-  }
 }
 
 
@@ -1415,6 +1423,37 @@ let bootRunning = false;
    them, so the footer can say how far through it is. Empty outside one. */
 let briefingRoute = [];
 
+/* localStorage is same-origin, and it is still a markup sink. Drop the tags and
+   handlers a panel does not need; the live bridge draws the real panels. */
+function sanitizeHtml(html) {
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(String(html), 'text/html');
+  } catch (e) {
+    return '';
+  }
+  if (!doc.body) return '';
+  const drop = { SCRIPT: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, LINK: 1, META: 1, STYLE: 1, BASE: 1, FORM: 1 };
+  const all = doc.body.querySelectorAll('*');
+  for (let i = all.length - 1; i >= 0; i--) {
+    const el = all[i];
+    if (drop[el.tagName]) {
+      el.remove();
+      continue;
+    }
+    for (let a = el.attributes.length - 1; a >= 0; a--) {
+      const name = el.attributes[a].name;
+      const lower = name.toLowerCase();
+      const value = el.attributes[a].value || '';
+      if (lower.indexOf('on') === 0 || lower === 'srcdoc') el.removeAttribute(name);
+      else if ((lower === 'href' || lower === 'src' || lower === 'xlink:href') && /^\s*(javascript|data):/i.test(value)) {
+        el.removeAttribute(name);
+      }
+    }
+  }
+  return doc.body.innerHTML;
+}
+
 /* ---------- Per-panel data layer ---------- */
 const Panels = {
   meta: {
@@ -1426,8 +1465,10 @@ const Panels = {
     system: { wsKind: 'metrics|health', note: 'metrics/health — no briefing focus yet' },
     usage: { wsKind: 'usage', note: 'wired live' },
   },
+  /* Not the live bridge's key. That one holds view models; this one held a
+     copy of the panel's HTML, and the bridge was rendering it as figures. */
   cacheKey(id) {
-    return 'jarvis.v2.panel.' + id;
+    return 'jarvis.v2.mock.' + id;
   },
   load(id) {
     try {
@@ -1468,7 +1509,7 @@ const Panels = {
     const el = this.el(id);
     if (!el || !data) return;
     if (typeof data.html === 'string' && data.html.length) {
-      el.innerHTML = data.html;
+      el.innerHTML = sanitizeHtml(data.html);
     }
     /* Future: structured data → DOM. WS kinds get plugged in per panel later. */
   },
@@ -2212,7 +2253,10 @@ function boot() {
     const voiceMap = { '1': 'idle', '2': 'listening', '3': 'thinking', '4': 'speaking' };
     const allowVoiceTest = params.get('dev') === '1' || params.get('live') === '0';
     if (voiceMap[e.key] && allowVoiceTest) { applyVoicePreset(voiceMap[e.key]); return; }
-    if (e.key === 'b' || e.key === 'B') { runBootSequence().then(afterBootHooks); return; }
+    /* Boot replay is a development gesture. A wall tablet in production has a
+       keyboard only by accident, and B must not restart the arrival. */
+    const allowBootReplay = params.get('dev') === '1' || params.get('live') === '0' || params.get('boot') === 'replay';
+    if ((e.key === 'b' || e.key === 'B') && allowBootReplay) { runBootSequence().then(afterBootHooks); return; }
     if (e.key === 'Escape') { unfocusPanel({ user: true }); return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       if (window.JarvisStage && JarvisStage.enabled() && JarvisStage.view() === 'car') {
@@ -2234,6 +2278,7 @@ function boot() {
   /* A click on a panel gives it the floor; a click on nothing gives it back.
      Buttons inside a panel keep their own meaning. */
   document.addEventListener('click', (e) => {
+    if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); return; }
     const target = e.target instanceof Element ? e.target : null;
     if (!target || target.closest('button, a')) return;
     /* The orb is a thing in the room, not the background behind it: turning it
@@ -2260,8 +2305,10 @@ function boot() {
      sphere once you have moved it yourself. A short tap on that same surface
      talks, in every mode: it unlocks audio and toggles listen. Anything that
      moves or is held is still a turn, and does not talk. */
-  const TAP_MAX_MS = 250;
+  const TAP_MAX_MS = 350;
   const TAP_MAX_MOVE_PX = 10;
+  const TAP_DEBOUNCE_MS = 400;
+  let lastOrbTap = 0;
   if (canvas && window.JarvisSwarm) {
     let dragging = null;
     canvas.addEventListener('pointerdown', (e) => {
@@ -2275,7 +2322,7 @@ function boot() {
         dx: 0,
         dy: 0,
       };
-      canvas.setPointerCapture(e.pointerId);
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* already captured, or gone */ }
       canvas.classList.add('is-turning');
     });
     canvas.addEventListener('pointermove', (e) => {
@@ -2294,29 +2341,66 @@ function boot() {
       const g = dragging;
       dragging = null;
       canvas.classList.remove('is-turning');
-      if (e.type === 'pointercancel') return;
+      /* Capture can be taken back by the browser without a pointerup. That is
+         not a tap, and it must not leave the shell in the turning state. */
+      if (e.type === 'pointercancel' || e.type === 'lostpointercapture') return;
       g.moved += Math.hypot(e.clientX - g.x, e.clientY - g.y);
-      if (performance.now() - g.t0 > TAP_MAX_MS || g.moved >= TAP_MAX_MOVE_PX) return;
+      const nowTap = performance.now();
+      if (nowTap - g.t0 > TAP_MAX_MS || g.moved >= TAP_MAX_MOVE_PX) return;
+      if (nowTap - lastOrbTap < TAP_DEBOUNCE_MS) return;
+      lastOrbTap = nowTap;
       /* The pixels inside the tap slop already turned the shell. Put them back
          so a tap talks without leaving a nudge. */
       if (g.dx || g.dy) JarvisSwarm.drag(-g.dx, -g.dy);
       const link = window.JarvisCoreLink;
-      if (!link || typeof link.toggleListen !== 'function') return;
+      if (!link || typeof link.toggleListen !== 'function') {
+        setStateNotice('Brain offline');
+        return;
+      }
       if (typeof link.resumeAudio === 'function') link.resumeAudio();
       link.toggleListen();
     };
     canvas.addEventListener('pointerup', letGo);
     canvas.addEventListener('pointercancel', letGo);
+    canvas.addEventListener('lostpointercapture', letGo);
   }
+
+  /* A horizontal swipe on a panel walks the carousel. Text selection would
+     take the gesture, which is why the panels do not select. */
+  let panelSwipe = null;
+  let swallowClick = false;
+  document.addEventListener('pointerdown', (e) => {
+    if (!window.JarvisStage || !JarvisStage.enabled()) return;
+    if (e.isPrimary === false) return;
+    const t = e.target instanceof Element ? e.target : null;
+    if (!t || t.closest('button, a, input, textarea') || !t.closest('.panel[data-panel]')) return;
+    panelSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY, t0: performance.now() };
+  }, { passive: true });
+  document.addEventListener('pointerup', (e) => {
+    if (!panelSwipe || e.pointerId !== panelSwipe.id) return;
+    const g = panelSwipe;
+    panelSwipe = null;
+    const dx = e.clientX - g.x;
+    const dy = e.clientY - g.y;
+    if (performance.now() - g.t0 > 700) return;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+    swallowClick = true;
+    stageStep(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  document.addEventListener('pointercancel', () => { panelSwipe = null; }, { passive: true });
 
   const stepPrev = document.getElementById('stage-prev');
   const stepNext = document.getElementById('stage-next');
+  const stepBack = document.getElementById('stage-back');
   if (stepPrev) stepPrev.addEventListener('click', () => stageStep(-1));
   if (stepNext) stepNext.addEventListener('click', () => stageStep(1));
+  if (stepBack) stepBack.addEventListener('click', () => unfocusPanel({ user: true }));
 
   if (demoBriefing) runBriefingDemo();
 
   /* Start paint loop first so orb boot frames are visible */
+  sizeOrb();
+  measureWave(document.getElementById('status-wave'));
   if (animate && TABLET) {
     const t0 = performance.now();
     let last = -Infinity;
@@ -2374,10 +2458,16 @@ function boot() {
     schedule();
   } else if (animate) {
     let t0 = performance.now();
+    let clockMinute = -1;
     function frame(now) {
       const t = (now - t0) / 1000;
       paintFrame(t);
-      if (now % 2000 < 20) updateClock(new Date());
+      const d = new Date();
+      const minute = d.getHours() * 60 + d.getMinutes();
+      if (minute !== clockMinute) {
+        clockMinute = minute;
+        updateClock(d);
+      }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -2397,9 +2487,15 @@ function boot() {
   }
 }
 
+let resizeTimer = 0;
 window.addEventListener('resize', () => {
-  const t = animate ? (performance.now() / 1000) % 1000 : freezeT;
-  paintFrame(t);
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    waveBox.w = 0;
+    sizeOrb();
+    const t = animate ? (performance.now() / 1000) % 1000 : freezeT;
+    paintFrame(t);
+  }, 80);
 });
 
 if (document.readyState === 'loading') {
@@ -2411,7 +2507,7 @@ if (document.readyState === 'loading') {
 window.JarvisV2 = {
   applyVoicePreset, paintFrame, freezeT, animate, applyUsage, usageView,
   Panels, focusPanel, unfocusPanel, runBootSequence, orbBoot,
-  setLiveAudioLevel, noteDeskSlots,
+  setLiveAudioLevel, noteDeskSlots, setStateNotice, paintStateCopy,
   hue: () => HUE,
   tablet: TABLET,
   /* aliases used by live-bridge */

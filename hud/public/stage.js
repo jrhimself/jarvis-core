@@ -40,8 +40,12 @@
 
   /* The box every pose is measured from. Panels are scaled rather than resized,
      so these two numbers set the proportions of the whole desk. */
-  const BASE_W = 288;
-  const BASE_H = 200;
+  /* The wall tablet's type is large enough to read from across a room, so the
+     panels have to be larger too or the figures would be clipped. Full mode
+     keeps the desk it was drawn at. */
+  const TABLET = !!window.JARVIS_TABLET;
+  const BASE_W = TABLET ? 500 : 288;
+  const BASE_H = TABLET ? 268 : 200;
 
   /* A pull request is a long title beside a short id. Laid out this much wider
      before it is scaled, the titles get a line each instead of three. Only the
@@ -92,9 +96,17 @@
     return c * c * (3 - 2 * c);
   }
 
+  /* matchMedia builds a list. Asked twice a frame, that is two queries the
+     answer of which does not change until the window does. */
+  let wideMq = null;
+  let stillMq = null;
   function enabled() {
     if (typeof matchMedia !== 'function') return false;
-    return matchMedia(WIDE_ENOUGH).matches && !matchMedia(STILL).matches;
+    if (!wideMq) {
+      wideMq = matchMedia(WIDE_ENOUGH);
+      stillMq = matchMedia(STILL);
+    }
+    return wideMq.matches && !stillMq.matches;
   }
 
   function nodes() {
@@ -244,7 +256,8 @@
     const id = state.view === 'car' ? idAt(state.pos) : state.active;
     const name = id ? panelName(id) : '';
     if (n.label && n.label.textContent !== name) n.label.textContent = name;
-    const sub = state.sub || (state.view === 'car' ? 'ESC = CORE' : '');
+    /* A wall tablet has no keyboard. The hint is for the desk that does. */
+    const sub = state.sub || (state.view === 'car' && !TABLET ? 'ESC = CORE' : '');
     if (n.sub && n.sub.textContent !== sub) n.sub.textContent = sub;
   }
 
@@ -283,11 +296,37 @@
     el.style.setProperty('--ph', Math.round(BASE_H + Math.min(grown, room)) + 'px');
   }
 
-  function layout(t) {
+  /* Last value written per element, so a still desk does not touch style
+     every frame. A write that repeats the same string still invalidates. */
+  const painted = Object.create(null);
+  function writeStyle(key, el, prop, value) {
+    let slot = painted[key];
+    if (!slot) slot = painted[key] = Object.create(null);
+    if (slot[prop] === value) return;
+    slot[prop] = value;
+    el.style[prop] = value;
+  }
+  function writeVar(key, el, name, value) {
+    let slot = painted[key];
+    if (!slot) slot = painted[key] = Object.create(null);
+    const prop = 'var:' + name;
+    if (slot[prop] === value) return;
+    slot[prop] = value;
+    el.style.setProperty(name, value);
+  }
+
+  const SLOT_IDS = Object.keys(SLOTS);
+  const POSE_KEYS = ['x', 'y', 'z', 'ry', 'rx', 's', 'o', 'b', 'zi'];
+  const poses = Object.create(null);
+  function pose(id) {
+    let p = poses[id];
+    if (!p) p = poses[id] = { dash: {}, car: {}, v: {} };
+    return p;
+  }
+
+  function layout(t, w, h) {
     const n = nodes();
     if (!n) return;
-    const w = n.stage.clientWidth;
-    const h = n.stage.clientHeight;
     const mix = state.mix;
     /* Until the desk says it is ready, the boot choreography owns what can be
        seen: each panel fades in one after another. The stage still places them,
@@ -296,10 +335,30 @@
     const curtain = !document.documentElement.hasAttribute('data-ready');
 
     /* Core view: the desk shrinks as a whole rather than rearranging, so a
-       short window gives a smaller desk and not a different one. */
-    const k0 = Math.min(1, h / 660, w / 1300);
-    const X = w / 2 - 162 * k0;
-    const Y = 214 * k0;
+       short window gives a smaller desk and not a different one. The tablet
+       panels are wider, so their spread is fitted to the stage instead of
+       the full-mode constants. */
+    let k0;
+    let X;
+    let Y;
+    if (!TABLET) {
+      k0 = Math.min(1, h / 660, w / 1300);
+      X = w / 2 - 162 * k0;
+      Y = 214 * k0;
+    } else {
+      const fitH = (h * 0.9) / (BASE_H * 3 + 36);
+      const fitW = (w * 0.96) / (BASE_W * 2 + 640);
+      k0 = Math.max(0.42, Math.min(1, fitH, fitW));
+      const halfW = (BASE_W / 2) * k0;
+      const halfH = (BASE_H / 2) * k0;
+      const orbR = 260 * Math.min(1, h / 700, w / 1300);
+      const minX = halfW + orbR + 24;
+      const maxX = Math.max(minX, w / 2 - halfW - 16);
+      X = Math.min(maxX, Math.max(minX, w * 0.31));
+      const minY = halfH * 2 + 12;
+      const maxY = Math.max(minY, h / 2 - halfH - 8);
+      Y = Math.min(maxY, Math.max(minY, h * 0.29));
+    }
 
     /* Carousel: one box, as large as the shorter side of the stage allows. */
     const K = Math.max(0.6, Math.min(1.9, (h * 0.58) / BASE_H, (w * 0.42) / BASE_W));
@@ -315,22 +374,27 @@
     const X1 = Math.max(Math.min(w * 0.33, BASE_W * K * 1.05), Math.min(clear, w / 2 - 60));
     const X2 = BASE_W * K * 0.35;
 
-    Object.keys(SLOTS).forEach(function (id) {
+    SLOT_IDS.forEach(function (id) {
       const el = n.panels[id];
       if (!el) return;
       const slot = SLOTS[id];
+      const bag = pose(id);
+      const dash = bag.dash;
+      const car = bag.car;
+      const v = bag.v;
 
-      const dash = {
-        x: slot.side * X,
-        y: slot.row * Y,
-        z: (slot.row ? -80 : 0) * k0,
-        ry: -slot.side * (slot.row ? 24 : 8),
-        rx: -slot.row * 10,
-        s: k0,
-        o: slot.row ? 0.92 : 1,
-        b: 1,
-        zi: 50,
-      };
+      /* One yaw and one depth for the whole column. The middle row used to
+         face the room more than the rows above and below it, so it stuck out
+         of the arc. */
+      dash.x = slot.side * X;
+      dash.y = slot.row * Y;
+      dash.z = -48 * k0;
+      dash.ry = -slot.side * 22;
+      dash.rx = -slot.row * 8;
+      dash.s = k0;
+      dash.o = TABLET || !slot.row ? 1 : 0.92;
+      dash.b = 1;
+      dash.zi = 50;
 
       let d = ((ringIndex(id) - state.pos) % N + N) % N;
       if (d > N / 2) d -= N;
@@ -338,22 +402,20 @@
       const a = Math.abs(d);
       const m = Math.min(a, 1);
       const far = Math.max(a - 1, 0);
-      const car = {
-        x: sg * (m * X1 + far * X2),
-        y: -h * 0.06,
-        z: -m * 156 * K - far * 200,
-        ry: -sg * m * 38,
-        rx: 0,
-        s: K * (id === centreId ? centreFit : 1) * (1 - m * 0.1) * (1 - Math.min(far, 1) * 0.25),
-        o: a <= 1 ? 1 - m * 0.18 : Math.max(0, 0.82 * (1 - far * 1.6)),
-        b: 1 - m * 0.22,
-        zi: 100 - Math.round(a * 10),
-      };
+      car.x = sg * (m * X1 + far * X2);
+      car.y = -h * 0.06;
+      car.z = -m * 156 * K - far * 200;
+      car.ry = -sg * m * 38;
+      car.rx = 0;
+      car.s = K * (id === centreId ? centreFit : 1) * (1 - m * 0.1) * (1 - Math.min(far, 1) * 0.25);
+      car.o = a <= 1 ? 1 - m * 0.18 : Math.max(0, 0.82 * (1 - far * 1.6));
+      car.b = 1 - m * 0.22;
+      car.zi = 100 - Math.round(a * 10);
 
-      const v = {};
-      Object.keys(dash).forEach(function (key) {
+      for (let i = 0; i < POSE_KEYS.length; i++) {
+        const key = POSE_KEYS[i];
         v[key] = dash[key] + (car[key] - dash[key]) * mix;
-      });
+      }
 
       /* Only the panel that is both centred and in the carousel is laid out
          wide: in the core view it is one of six, and at the side the extra
@@ -368,28 +430,33 @@
          scale that follows it: a panel at the centre is scaled to twice its
          size, and a half-width shift taken after that would push it a hundred
          and forty pixels off the middle of the stage. */
-      el.style.transform =
+      writeStyle(id, el, 'transform',
         'translate(-50%,-50%)' +
         ' translate3d(' + v.x.toFixed(1) + 'px,' + v.y.toFixed(1) + 'px,' + v.z.toFixed(1) + 'px)' +
         ' rotateY(' + v.ry.toFixed(2) + 'deg) rotateX(' + v.rx.toFixed(2) + 'deg)' +
-        ' scale(' + (v.s * (1 + f * 0.035)).toFixed(4) + ')';
+        ' scale(' + (v.s * (1 + f * 0.035)).toFixed(4) + ')');
       if (!curtain) {
-        el.style.opacity = v.o.toFixed(3);
-        el.style.visibility = v.o < 0.01 ? 'hidden' : 'visible';
+        writeStyle(id, el, 'opacity', v.o.toFixed(3));
+        writeStyle(id, el, 'visibility', v.o < 0.01 ? 'hidden' : 'visible');
       }
-      el.style.zIndex = String(Math.round(v.zi));
-      el.style.filter = 'brightness(' + (v.b * (1 + f * 0.45)).toFixed(3) + ')';
+      writeStyle(id, el, 'zIndex', String(Math.round(v.zi)));
+      /* brightness() keeps a filtered layer alive. The tablet does not use it;
+         opacity already carries the carousel's falloff. */
+      if (!TABLET) {
+        writeStyle(id, el, 'filter', 'brightness(' + (v.b * (1 + f * 0.45)).toFixed(3) + ')');
+      }
 
       /* After the flash has decayed the panel with the floor keeps a low glow,
          so what is being talked about is still marked once the room is still. */
       const held = id === state.active && fe >= 0 ? 0.28 : 0;
       const fl = n.flashes[id];
-      if (fl) fl.style.opacity = Math.max(f, held).toFixed(3);
+      if (fl) writeStyle('flash:' + id, fl, 'opacity', Math.max(f, held).toFixed(3));
       const sc = n.scans[id];
       if (sc) {
-        const p = Math.max(0, Math.min(1, fe / 0.5));
-        sc.style.top = (p * 100).toFixed(1) + '%';
-        sc.style.opacity = fe >= 0 && fe < 0.55 ? '1' : '0';
+        const liveScan = fe >= 0 && fe < 0.55;
+        const p = liveScan ? Math.max(0, Math.min(1, fe / 0.5)) : 0;
+        writeVar('scan:' + id, sc, '--scan', p.toFixed(3));
+        writeStyle('scan:' + id, sc, 'opacity', liveScan ? '1' : '0');
       }
     });
   }
@@ -397,11 +464,9 @@
   /* The orb's whole journey out of the middle, from whichever reason has the
      floor. It ends about seventy pixels across in the bottom-left corner,
      where it reads as a light left on rather than a thing being used. */
-  function layoutOrb() {
+  function layoutOrb(w, h) {
     const n = nodes();
     if (!n || !n.orb) return;
-    const w = n.stage.clientWidth;
-    const h = n.stage.clientHeight;
     const e = smooth(Math.max(state.mix, state.busyMix));
     /* Sized from the room left over, with the state line under it counted in:
        the orb may fill the stage, but not at the price of its own caption. */
@@ -409,11 +474,11 @@
     const s = rest + (0.2 - rest) * e;
     const tx = (92 - w / 2) * e;
     const ty = (h / 2 - 86) * e;
-    n.orb.style.transform =
-      'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + s.toFixed(4) + ')';
+    writeStyle('orb', n.orb, 'transform',
+      'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + s.toFixed(4) + ')');
     /* Reachable wherever it stands: the swarm is turned by hand, and the middle
        of the stage is empty anyway. */
-    n.orb.style.pointerEvents = 'auto';
+    writeStyle('orb', n.orb, 'pointerEvents', 'auto');
     if (n.dock) {
       /* The dock travels with the orb but is not scaled, so the state line and
          the pack strip stay readable in the corner. Under the orb while it is
@@ -422,10 +487,11 @@
          run off the stage rather than into the room. */
       const dx = tx - 56 * e;
       const dy = ty + (280 * rest + 18) * (1 - e) + 64 * e;
-      n.dock.style.transform =
+      writeStyle('dock', n.dock, 'transform',
         'translate(' + (-50 + 50 * e).toFixed(1) + '%,0)' +
-        ' translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
-      n.dock.setAttribute('data-mini', e > 0.6 ? '1' : '0');
+        ' translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)');
+      const mini = e > 0.6 ? '1' : '0';
+      if (n.dock.getAttribute('data-mini') !== mini) n.dock.setAttribute('data-mini', mini);
     }
   }
 
@@ -450,8 +516,13 @@
       state.pos = state.target;
     }
 
-    layout(live ? t : 99);
-    layoutOrb();
+    /* Measured once, before any write, so the panel styles below do not force
+       a layout just to be read back. */
+    const n = nodes();
+    const w = n ? n.stage.clientWidth : 0;
+    const h = n ? n.stage.clientHeight : 0;
+    layout(live ? t : 99, w, h);
+    layoutOrb(w, h);
     paintFoot();
   }
 
@@ -474,6 +545,7 @@
       if (fl) fl.style.opacity = '0';
     });
     state.sized = Object.create(null);
+    Object.keys(painted).forEach(function (k) { delete painted[k]; });
     if (n.orb) {
       n.orb.style.transform = '';
       n.orb.style.pointerEvents = '';
