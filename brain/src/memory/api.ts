@@ -16,6 +16,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Config } from "../config.js";
 import { language } from "../language.js";
 import { withoutMarkers } from "../sections.js";
+import { revealsWsToken } from "../ws-guard.js";
 import type { Fact, MemoryStore } from "./store.js";
 import { index } from "./tools.js";
 
@@ -247,11 +248,24 @@ export function serveMemoryApi(
       sendError(res, 405, "Method not allowed");
       return true;
     }
-    sendJson(res, 200, {
+    // The token is how the HUD authenticates its own socket. It is included
+    // only for a request that already looks like that page: a browser on
+    // another origin is the case the check exists for, and a client that
+    // sent no Origin is not a page.
+    const body: {
+      memoryPanel: Config["memoryPanel"];
+      voiceTimbre: number;
+      speechLang: string;
+      wsToken?: string;
+    } = {
       memoryPanel: config.memoryPanel,
       voiceTimbre: config.voiceTimbre,
       speechLang: language().current,
-    });
+    };
+    if (revealsWsToken(req, { token: config.wsToken, allowedOrigins: config.wsAllowedOrigins })) {
+      body.wsToken = config.wsToken;
+    }
+    sendJson(res, 200, body);
     return true;
   }
 

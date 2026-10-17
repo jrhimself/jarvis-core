@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { LISTEN_PROVIDERS, VOICE_PROVIDERS, type ListenProvider, type VoiceProvider } from "./voice/types.js";
+import { parseAllowedOrigins } from "./ws-guard.js";
 
 /** What the HUD's memory panel may do: nothing, look, or look and change. */
 export type MemoryPanelMode = "off" | "read" | "edit";
@@ -319,6 +320,24 @@ export interface Config {
   voiceTimbre: number;
   /** How much of the memory store the HUD is allowed to see and change. */
   memoryPanel: MemoryPanelMode;
+  /**
+   * Shared secret for the HUD websocket. Empty leaves clients that send no
+   * Origin accepted, which is what a local script has always been.
+   *
+   * Set, every connection has to present it, as a `token` query parameter or
+   * as the first frame. The HUD reads it from `/api/config` and sends the
+   * frame; a script has to be given the value. A browser on another origin is
+   * refused either way, and that request is not handed the secret.
+   */
+  wsToken: string;
+  /**
+   * Browser origins allowed to open `/ws` besides the request's own host.
+   *
+   * Same-origin is always allowed, including the host a reverse proxy names in
+   * `X-Forwarded-Host`. This list is for a page that is genuinely served
+   * elsewhere.
+   */
+  wsAllowedOrigins: readonly string[];
   /** Model every turn opens on. */
   model: string;
   /**
@@ -648,6 +667,8 @@ export function loadConfig(): Config {
     voiceSpeed: envDecimal("JARVIS_VOICE_SPEED", 1.0, 0.7, 1.2),
     voiceTimbre: envNumber("JARVIS_VOICE_TIMBRE", 0, 0, 100),
     memoryPanel: envEnum("JARVIS_MEMORY_PANEL", MEMORY_PANEL_MODES, "read"),
+    wsToken: envString("JARVIS_WS_TOKEN", ""),
+    wsAllowedOrigins: parseAllowedOrigins(process.env["JARVIS_WS_ALLOWED_ORIGINS"]),
     speechLang,
     spoken: { en: spokenLinesFor("en", speechLang), nl: spokenLinesFor("nl", speechLang) },
     model: envString("JARVIS_MODEL", "sonnet"),
