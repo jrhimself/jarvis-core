@@ -1,6 +1,6 @@
 name: Security
 
-# Shared checks from ci-templates: gitleaks, the OSV scan, Semgrep,
+# Shared checks from platform: gitleaks, the OSV scan, Semgrep,
 # actionlint, zizmor, and OpenSSF Scorecard. Pinned to the commit that
 # added the reusable workflow. No v1 tag exists, and this repository
 # does not create one.
@@ -34,7 +34,7 @@ permissions:
 
 jobs:
   security:
-    uses: jrhimself/ci-templates/.github/workflows/security.yml@e370deec955af4b0bf2e74b930a8e6f365915ec0 # pinned commit, no v1 tag
+    uses: jrhimself/platform/.github/workflows/security.yml@e370deec955af4b0bf2e74b930a8e6f365915ec0 # pinned commit, no v1 tag
     with:
       visibility: public
       # The floor this repository actually runs. The CodeQL job is the

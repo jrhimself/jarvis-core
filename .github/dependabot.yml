@@ -1,4 +1,4 @@
-# Aligned with ci-templates/templates/dependabot.yml.
+# Aligned with platform/templates/dependabot.yml.
 # Minor and patch updates are grouped. Major updates stay as their own pull requests.
 # Commit subjects start with deps (npm) or ci (GitHub Actions).
 version: 2
