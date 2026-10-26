@@ -21,6 +21,12 @@ updates:
         update-types:
           - minor
           - patch
+    # Brain runs on Node 22. @types/node tracks that runtime's major, so a
+    # major bump is the types for a different Node and is not proposed.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
