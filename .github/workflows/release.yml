@@ -11,6 +11,11 @@ name: release
 # changelog section is a mistake, and the job fails rather than publish an
 # empty release for it.
 on:
+  # The release has to wait until FAT has finished on main. A reusable
+  # workflow cannot express that, and folding the release into FAT would
+  # change the acceptance workflow. The job below still refuses to publish
+  # unless this is the repository that owns the release and the suite passed.
+  # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: [FAT]
     types: [completed]
@@ -35,10 +40,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # The commit the suite ran on, not whatever main has moved to since.
-      - uses: actions/checkout@v7
+      # Hash pin: the security workflow's zizmor job requires one. This is
+      # the commit the v7 tag already pointed at. Credentials stay off the
+      # disk; `gh` authenticates with GH_TOKEN below, not with the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: read the version
         id: version

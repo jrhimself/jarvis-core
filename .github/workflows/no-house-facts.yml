@@ -44,11 +44,18 @@ jobs:
     # request, which leaves the push case reading as before.
     if: (github.event.pull_request.head.repo.full_name || github.repository) == 'jrhimself/jarvis-core'
     runs-on: ubuntu-latest
+    # Declared so the token cannot grow if the repository default changes.
+    # The gate only reads the tree.
+    permissions:
+      contents: read
     steps:
       # Commit messages are scanned too, and a shallow clone has none of them.
-      - uses: actions/checkout@v7
+      # Hash pin: the security workflow's zizmor job requires one. This is
+      # the commit the v7 tag already pointed at.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # The value is never printed. Dependabot is identified by the actor
       # GitHub sets, not by anything in the diff, so a pull request cannot
@@ -93,4 +100,7 @@ jobs:
       - name: scan tracked files, symlinks and new commit messages
         env:
           DENYLIST_EXTRA: ${{ secrets.DENYLIST_EXTRA }}
-        run: ./scripts/check-no-house-facts.sh --since "${{ steps.range.outputs.since }}"
+          # Passed through the environment so the value is data to the
+          # script, not text expanded into the shell.
+          SINCE: ${{ steps.range.outputs.since }}
+        run: ./scripts/check-no-house-facts.sh --since "$SINCE"

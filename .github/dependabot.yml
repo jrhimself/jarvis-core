@@ -1,7 +1,6 @@
-# Weekly update proposals. Monday morning in Amsterdam, before the day starts.
-# Minor and patch updates are one pull request per ecosystem; a major stays on
-# its own, because that one can change behaviour. Security updates are
-# Dependabot's separate channel and are not grouped here.
+# Aligned with ci-templates/templates/dependabot.yml.
+# Minor and patch updates are grouped. Major updates stay as their own pull requests.
+# Commit subjects start with deps (npm) or ci (GitHub Actions).
 version: 2
 updates:
   - package-ecosystem: npm
@@ -13,16 +12,16 @@ updates:
       timezone: Europe/Amsterdam
     commit-message:
       prefix: deps
-      prefix-development: deps
     groups:
-      npm-minor-and-patch:
+      npm-minor-patch:
         patterns:
           - "*"
         update-types:
           - minor
           - patch
-    # Brain runs on Node 22. @types/node tracks that runtime's major, so a
-    # major bump is the types for a different Node and is not proposed.
+    # This repository runs on Node 22. @types/node tracks that runtime's
+    # major, so a major bump is the types for a different Node and is not
+    # proposed.
     ignore:
       - dependency-name: "@types/node"
         update-types:
@@ -38,7 +37,7 @@ updates:
     commit-message:
       prefix: ci
     groups:
-      actions-minor-and-patch:
+      github-actions-minor-patch:
         patterns:
           - "*"
         update-types:
