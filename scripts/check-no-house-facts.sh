@@ -139,6 +139,23 @@ readonly RESERVED_DOMAIN='(?:[A-Za-z0-9-]+\.)*(?:invalid|localhost|test|example|
 readonly NOREPLY_DOMAIN='users\.noreply\.github\.com(?![A-Za-z0-9.-])'
 readonly MAILBOX="(?<![A-Za-z0-9._%+-])(?!(?:git|noreply|no-reply)@)[A-Za-z0-9._%+-]+@(?!$RESERVED_DOMAIN)(?!$NOREPLY_DOMAIN)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 
+# A forge writes its own address on a trailer. A squash merge adds the Cursor
+# agent's, Dependabot adds its Signed-off-by, and a rule that fails the gate on
+# main and on every dependency bump is a rule nobody reads. Only these
+# addresses, and only on Co-authored-by / Signed-off-by lines: the same address
+# in a subject, a body or a file is still a mailbox, and so is anybody else's
+# on the trailer itself. The noreply domain is already outside MAILBOX; it is
+# named here so this list is the whole set the trailer rule allows. Anything
+# the list does not recognise still fails.
+readonly TRAILER_SERVICE='(support@github\.com|cursoragent@cursor\.com|[A-Za-z0-9._%+-]+@users\.noreply\.github\.com)'
+
+# Reads a commit message on stdin and writes it back with those addresses
+# removed from trailer lines. The boundaries stay, so two neighbouring words
+# cannot join into a new address.
+scrub_service_trailers() {
+  sed -E "/^(Co-authored-by|Signed-off-by):/I s/(^|[^A-Za-z0-9._%+-])${TRAILER_SERVICE}([^A-Za-z0-9.-]|\$)/\\1\\3/g"
+}
+
 # The household's own words, kept out of the repository on purpose. Loaded
 # before anything is scanned: the file scan, the symlink scan and the message
 # scan all ask the same question and must not drift into asking three.
@@ -299,7 +316,7 @@ scan_pcre mailbox "$MAILBOX"
 # nothing is scanned and the run says so rather than reporting a clean history
 # it never looked at. `--since ""` asks for everything reachable.
 check_messages() {
-  local range description count sha rule regex entry message upstream
+  local range description count sha rule regex entry message upstream scrubbed status
   if [ "$since_set" = 1 ]; then
     if [ -z "$since" ]; then
       range="--all"
@@ -338,7 +355,17 @@ check_messages() {
         hits=$((hits + 1))
       fi
     done
-    if printf '%s' "$message" | grep -qP -e "$MAILBOX"; then
+    # Scrub before the match. A scrub that does not run is a hit: an unread
+    # message must not come out clean. grep exiting 1 is "no mailbox"; any
+    # other status means the scan itself failed, which is the same as a hit.
+    if ! scrubbed=$(printf '%s\n' "$message" | scrub_service_trailers); then
+      printf '  message-mailbox: %s\n' "${sha:0:12}"
+      hits=$((hits + 1))
+      continue
+    fi
+    grep -qP -e "$MAILBOX" <<< "$scrubbed"
+    status=$?
+    if [ "$status" -ne 1 ]; then
       printf '  message-mailbox: %s\n' "${sha:0:12}"
       hits=$((hits + 1))
     fi
