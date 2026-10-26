@@ -1,0 +1,48 @@
+Vendored subset of the Superpowers skills library.
+
+Upstream: https://github.com/obra/superpowers
+Release: v7.0.1
+Commit: 2ce8aa15d05bd57213e6f746f953aafb7ded7a8b
+
+This directory holds the skill documents and the non-executable files they
+reference. Hooks, plugin runtimes, and executable helpers are not included.
+The upstream files left out are:
+
+- skills/brainstorming/scripts/helper.js
+- skills/brainstorming/scripts/server.cjs
+- skills/brainstorming/scripts/start-server.sh
+- skills/brainstorming/scripts/stop-server.sh
+- skills/executing-plans/scripts/task-done
+- skills/executing-plans/scripts/task-start
+- skills/subagent-driven-development/scripts/review-package
+- skills/subagent-driven-development/scripts/sdd-workspace
+- skills/subagent-driven-development/scripts/task-brief
+- skills/systematic-debugging/find-polluter.sh
+- skills/writing-skills/render-graphs.js
+
+Where a skill names one of those files, it is not in this checkout. Do not
+recreate it. Follow the rest of the skill.
+
+The MIT license below is the upstream license, unchanged.
+
+MIT License
+
+Copyright (c) 2025 Jesse Vincent
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

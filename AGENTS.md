@@ -125,3 +125,15 @@ Do not weaken these to make something pass. If one is in your way, that is the f
 Everything in this repository is English, including comments and commit messages. Comments say why,
 not what; the surrounding files are the style guide. A comment that explains a decision is worth
 keeping, one that narrates the line below it is not.
+
+## Skills
+
+Cursor loads the skills in `.cursor/skills/`. They are the Superpowers library,
+vendored from `obra/superpowers` `v7.0.1` (commit
+`2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`); the license is
+`.cursor/skills/SUPERPOWERS-LICENSE`. Read the skill that fits before starting
+the work: brainstorm and write a plan before a feature, test-driven development
+when changing behavior, systematic debugging when something fails, and
+verification before claiming the work is done. Hooks and executable helpers
+were left upstream; where a skill names one, follow the rest of the skill
+instead of recreating it.
