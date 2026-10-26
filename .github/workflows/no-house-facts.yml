@@ -8,9 +8,14 @@ name: no-house-facts
 #
 # The secret holds one extended regular expression per line. Without it only the
 # structural rules run -- those catch an address, never a name -- so the job
-# fails rather than reporting a clean tree it did not really check. It is skipped
-# outside this repository, because a fork has neither the secret nor anything of
-# this household to keep out.
+# fails rather than reporting a clean tree it did not really check. A Dependabot
+# pull request is the one exception. That actor is not given this repository's
+# Actions secrets, so the same refusal would reject every dependency bump before
+# a line of it was scanned. Dependabot still gets the structural rules, and the
+# log says the private list was skipped; it does not get a pass on what those
+# rules catch. Adding DENYLIST_EXTRA as a Dependabot secret restores the private
+# list for those runs. The job is skipped outside this repository, because a
+# fork has neither the secret nor anything of this household to keep out.
 on:
   push:
   pull_request:
@@ -23,10 +28,12 @@ concurrency:
 jobs:
   scan:
     # This gate is the owner's: it falls back on a secret only this repository
-    # has, and refuses to run half-blind without it. A fork has no household to
-    # protect here and should not inherit a permanently red run -- it still gets
-    # the acceptance suite, and `scripts/check-no-house-facts.sh` runs locally
-    # with a `.denylist.local` for anyone who wants the same gate.
+    # has, and refuses to run half-blind without it. Dependabot cannot see that
+    # secret, and is the only actor allowed to continue on the structural rules
+    # alone -- see the step below. A fork has no household to protect here and
+    # should not inherit a permanently red run -- it still gets the acceptance
+    # suite, and `scripts/check-no-house-facts.sh` runs locally with a
+    # `.denylist.local` for anyone who wants the same gate.
     #
     # On a pull request the repository to test is the one the branch came from,
     # not the one it is aimed at. `github.repository` is the base on both, so
@@ -43,14 +50,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The value is never printed. Dependabot is identified by the actor
+      # GitHub sets, not by anything in the diff, so a pull request cannot
+      # name itself into the exception.
       - name: refuse to run half-blind
         env:
           DENYLIST_EXTRA: ${{ secrets.DENYLIST_EXTRA }}
+          ACTOR: ${{ github.actor }}
         run: |
-          if [ -z "$DENYLIST_EXTRA" ]; then
-            echo "DENYLIST_EXTRA is not set; the name rules would be skipped." >&2
-            exit 1
+          if [ -n "$DENYLIST_EXTRA" ]; then
+            exit 0
           fi
+          if [ "$ACTOR" = "dependabot[bot]" ]; then
+            echo "DENYLIST_EXTRA is not available to Dependabot."
+            echo "The structural rules still run. The private name list does not."
+            echo "Add DENYLIST_EXTRA as a Dependabot secret to include it."
+            exit 0
+          fi
+          echo "DENYLIST_EXTRA is not set; the name rules would be skipped." >&2
+          exit 1
 
       # What the commit-message scan is measured against: the commits this event
       # adds, and nothing older. On a pull request that is the base it is aimed
