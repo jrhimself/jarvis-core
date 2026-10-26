@@ -1,0 +1,50 @@
+name: Security
+
+# Shared checks from ci-templates: gitleaks, the OSV scan, Semgrep,
+# actionlint, zizmor, and OpenSSF Scorecard. Pinned to the commit that
+# added the reusable workflow. No v1 tag exists, and this repository
+# does not create one.
+#
+# CodeQL is left off. GitHub's default setup already runs CodeQL for
+# this repository (the dynamic "CodeQL" workflow). The template's job
+# would be a second analysis and a second upload, and default setup is
+# not a file this pull request can remove.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, Monday 05:17 UTC. Off the hour so a busy minute does not
+    # drop the run. Actions schedules are UTC.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+# Ceiling for the called workflow. The jobs that run need contents and
+# pull-requests to read; public Scorecard also needs actions (it reads
+# workflow runs), id-token (it publishes on a push to the default
+# branch), and security-events (it uploads SARIF). Those last three are
+# the same scopes public CodeQL would need, so turning CodeQL on later
+# does not require a wider ceiling.
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+  pull-requests: read
+  security-events: write
+
+jobs:
+  security:
+    uses: jrhimself/ci-templates/.github/workflows/security.yml@e370deec955af4b0bf2e74b930a8e6f365915ec0 # pinned commit, no v1 tag
+    with:
+      visibility: public
+      # The floor this repository actually runs. The CodeQL job is the
+      # only one that installs Node, and it is disabled above.
+      node-version: "22.18"
+      working-directory: .
+      codeql: false
+    # Both are optional. An empty value is what a personal account and
+    # a Dependabot pull request already have, and the called workflow
+    # treats empty as unset.
+    secrets:
+      gitleaks_license: ${{ secrets.GITLEAKS_LICENSE }}
+      scorecard_token: ${{ secrets.SCORECARD_TOKEN }}
