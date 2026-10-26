@@ -122,7 +122,9 @@ boundary*: `brain/src/dev/`, `packs/` wholesale — the house's confirmation gua
 `.github/workflows/fat.yml` runs `npm ci → npm test → npm run test:types` for every push to `main`.
 No house, no tokens, no network. The host already ran the same suite *before* the push, so CI
 confirms rather than authorises. `.github/workflows/no-house-facts.yml` runs alongside it and fails
-if a household fact reached the tree.
+if a household fact reached the tree. A Dependabot pull request cannot see `DENYLIST_EXTRA`, so that
+run uses the structural rules only and says so. `.github/dependabot.yml` opens the weekly dependency
+and action updates.
 
 ---
 

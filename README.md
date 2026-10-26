@@ -674,8 +674,11 @@ The same suite runs on GitHub for every push to `main` and every pull request
 [Deploying](#deploying) (`.github/workflows/release.yml`). That second
 one is the owner's gate and runs only in the origin repository: it needs a `DENYLIST_EXTRA` secret
 holding one household's own words, refuses to run without it, and a fork has neither the secret nor
-anything to keep out. Anyone who wants the same gate can run `scripts/check-no-house-facts.sh`
-locally with a `.denylist.local` — the structural rules need no secret at all.
+anything to keep out. A Dependabot pull request is the exception, because that actor is not given
+Actions secrets: the structural rules still run and the log says the private list was skipped.
+Adding the same secret as a Dependabot secret restores the private list there. Anyone who wants the
+same gate can run `scripts/check-no-house-facts.sh` locally with a `.denylist.local` — the structural
+rules need no secret at all.
 
 ## Deploying
 

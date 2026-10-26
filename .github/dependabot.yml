@@ -1,0 +1,40 @@
+# Weekly update proposals. Monday morning in Amsterdam, before the day starts.
+# Minor and patch updates are one pull request per ecosystem; a major stays on
+# its own, because that one can change behaviour. Security updates are
+# Dependabot's separate channel and are not grouped here.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    commit-message:
+      prefix: deps
+      prefix-development: deps
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    commit-message:
+      prefix: ci
+    groups:
+      actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

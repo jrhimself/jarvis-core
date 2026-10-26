@@ -164,7 +164,12 @@ test("a quiet hour is a sample of zero, not a missing sample", async () => {
 
 test("rebuilding replaces the old baselines instead of adding to them", async () => {
   const db = proactiveDb();
-  const bucket = "2026-08-04T18:00:00.000Z";
+  // A fixed day in August ages out of the retention window (eight weeks, plus
+  // one of slack). The first rebuild then throws the observation away, and the
+  // second rebuild — which replaces every baseline from whatever is left —
+  // writes nothing. The assertion is about replacement, so the hour has to
+  // still be inside the window when the second rebuild runs.
+  const bucket = new Date(Date.now() - 24 * HOUR_MS).toISOString();
   observe(db, { subject: "__watch__", bucket, activeMs: 0, observedMs: HOUR_MS });
   observe(db, { subject: "binary_sensor.gang", bucket, activeMs: HOUR_MS, observedMs: HOUR_MS });
 
