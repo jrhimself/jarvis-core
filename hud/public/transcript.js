@@ -46,7 +46,18 @@
     });
   }
 
+  let chromeReady = false;
+  let attachLink = null;
+
   function wire(link) {
+    if (!chromeReady) {
+      chromeReady = true;
+      attachLink = setup(link);
+    }
+    if (link && attachLink) attachLink(link);
+  }
+
+  function setup() {
     const caption = document.getElementById('caption');
     const captionText = document.getElementById('caption-text');
     const drawer = document.getElementById('transcript');
@@ -175,6 +186,9 @@
     });
 
     /* ---------- the conversation as it happens ---------- */
+    return function attach(link) {
+    if (!link || link.__transcriptWired) return;
+    link.__transcriptWired = true;
     link.on('utterance', function (m) {
       const text = clean(m && m.text);
       if (!text) return;
@@ -230,7 +244,10 @@
       fadeCaption();
       if (isOpen()) add(entry('jarvis', text));
     });
+    };
   }
 
   window.JarvisTranscript = { wire: wire, _tail: tail };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(null); });
+  else wire(null);
 })();
