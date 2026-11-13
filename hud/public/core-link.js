@@ -394,6 +394,13 @@ registerProcessor('mic-tap', MicTap);
     const bindGestures = opts.bindGestures !== false;
 
     let ws = null, wsRetry = 0, wsTimer = null, wsWasOpen = false;
+    /* Bumped on every connect and disconnect, so a config fetch that resolves
+       after the page has moved on does not open a socket nobody is waiting for. */
+    let connectGen = 0;
+    /* JARVIS_WS_TOKEN, from /api/config. Empty means the brain is not asking. */
+    let wsToken = '';
+    let configPromise = null;
+    const wantConfig = opts.loadConfig !== false;
     let connState = 'offline';
     let sessionId = null;
     let speechLang = 'en';
@@ -740,13 +747,33 @@ registerProcessor('mic-tap', MicTap);
     /* ---- WS ---- */
     function connect() {
       clearTimeout(wsTimer);
+      const gen = ++connectGen;
       setConn('connecting', 'connecting…');
+      /* The token has to be known before the socket opens: the brain sends the
+         panels as soon as the session starts, and it will not start one until
+         the token has been presented. */
+      const ready = wantConfig ? (configPromise || loadConfig()) : Promise.resolve();
+      ready.then(function () {
+        if (gen !== connectGen) return;
+        openSocket();
+      });
+    }
+
+    function openSocket() {
       const url = wsUrl || ((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + WS_PATH);
       let sock;
       try { sock = new WebSocket(url); }
       catch (e) { scheduleReconnect(); return; }
       ws = sock;
-      sock.onopen = () => { wsRetry = 0; wsWasOpen = true; coreFocusSeen = false; resetCueGate(); setConn('online', 'online'); };
+      sock.onopen = () => {
+        /* A query parameter would land in a proxy log. The first frame does
+           not, and the brain treats it as the handshake rather than a turn. */
+        if (wsToken) {
+          try { sock.send(JSON.stringify({ kind: 'auth', token: wsToken })); }
+          catch (e) { /* the close handler retries */ }
+        }
+        wsRetry = 0; wsWasOpen = true; coreFocusSeen = false; resetCueGate(); setConn('online', 'online');
+      };
       sock.onmessage = (ev) => {
         let m;
         try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -756,6 +783,9 @@ registerProcessor('mic-tap', MicTap);
       sock.onclose = () => {
         if (ws !== sock) return;
         ws = null;
+        /* The next attempt asks again. A token set while this page was open
+           — the brain restarted onto it — would otherwise stay unknown. */
+        configPromise = null;
         if (wsWasOpen) { wsWasOpen = false; bus.emit('log', 'lost connection to the brain'); }
         failTurn('no connection');
         scheduleReconnect();
@@ -769,6 +799,7 @@ registerProcessor('mic-tap', MicTap);
     }
 
     function disconnect() {
+      connectGen++;
       clearTimeout(wsTimer);
       wsRetry = 0;
       if (ws) { try { ws.onclose = null; ws.close(); } catch (e) {} ws = null; }
@@ -1466,11 +1497,25 @@ registerProcessor('mic-tap', MicTap);
        arrives long before the first answer; if not, the chain sits at zero and
        the value is applied when it is built. */
     function loadConfig() {
-      if (typeof fetch !== 'function') return;
-      fetch('/api/config').then((r) => r.json()).then((cfg) => {
+      if (typeof fetch !== 'function') {
+        configPromise = Promise.resolve();
+        return configPromise;
+      }
+      let pending;
+      pending = fetch('/api/config').then(function (r) {
+        if (!r.ok) throw new Error('config ' + r.status);
+        return r.json();
+      }).then(function (cfg) {
         const amount = Number(cfg && cfg.voiceTimbre);
         if (Number.isFinite(amount)) setVoiceTimbre(amount);
-      }).catch(() => {});
+        /* Absent when this request was not the page's own, and when no token
+           is configured. Either way there is nothing to present. */
+        wsToken = cfg && typeof cfg.wsToken === 'string' ? cfg.wsToken : '';
+      }).catch(function () {
+        if (configPromise === pending) configPromise = null;
+      });
+      configPromise = pending;
+      return pending;
     }
 
     function resumeVoiceCtx() {

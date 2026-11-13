@@ -1,11 +1,15 @@
 /**
  * Websocket endpoint the HUD talks to.
  *
- * The socket is reachable only over the tailnet or the LAN, but the brain still
- * refuses anything that is not a well-formed message: the HUD is a browser page,
- * and browser pages get pointed at things.
+ * The socket is reachable only over the tailnet or the LAN, but a browser on
+ * that network will open it for any page that asks, so the upgrade checks the
+ * Origin the browser attaches and a deployment can require a shared token on
+ * top. The rules live in `ws-guard.ts`. Past that, the brain still refuses
+ * anything that is not a well-formed message: the HUD is a browser page, and
+ * browser pages get pointed at things.
  */
 
+import type { IncomingMessage } from "node:http";
 import type { Server as HttpsServer } from "node:https";
 
 import { parseClientMessage, type ServerMessage, type PipelineStage, type SpeechLang } from "@jarvis/shared";
@@ -28,6 +32,7 @@ import { tileFeed } from "./tiles.js";
 import { brainVersion } from "./version.js";
 import { listenConfigured, listenUnavailableReason, openListener, type Listening } from "./voice/index.js";
 import { isWebTool } from "./web.js";
+import { decideUpgrade, holdForAuth, readAuthFrame, type GuardRequest } from "./ws-guard.js";
 
 /**
  * How often a pack's standing readings are taken.
@@ -52,9 +57,41 @@ function stageFor(label: string): PipelineStage {
 
 export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketServer {
   const config = loadConfig();
-  const wss = new WebSocketServer({ server, path });
+  const policy = { token: config.wsToken, allowedOrigins: config.wsAllowedOrigins };
+  const wss = new WebSocketServer({
+    server,
+    path,
+    verifyClient: (info, done) => {
+      const decision = decideUpgrade(asGuardRequest(info.req), policy);
+      if (!decision.accept) {
+        // The token stays out of the log. The origin does not: a proxy that
+        // rewrote Host and forgot X-Forwarded-Host fails here, and the line is
+        // the only place that says which page was turned away.
+        const which = decision.status === 403 ? `origin ${info.origin || "(none)"}` : "token";
+        console.warn(`websocket: refused an upgrade (${which})`);
+        done(false, decision.status, decision.reason);
+        return;
+      }
+      done(true);
+    },
+  });
 
-  wss.on("connection", (socket: WebSocket) => {
+  wss.on("connection", (socket: WebSocket, request: IncomingMessage) => {
+    const decision = decideUpgrade(asGuardRequest(request), policy);
+    // verifyClient already refused these. A socket that arrives here anyway
+    // is closed before the session, which is what would have started talking.
+    if (!decision.accept) {
+      socket.close(1008, "Unauthorized");
+      return;
+    }
+    if (decision.pendingAuth) {
+      holdForAuth(socket, policy.token, () => openConnection(socket));
+      return;
+    }
+    openConnection(socket);
+  });
+
+  function openConnection(socket: WebSocket): void {
     const send = (message: ServerMessage): void => {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
     };
@@ -232,6 +269,11 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
         return;
       }
 
+      // A token frame is the handshake, not a turn. The query string is the
+      // other way to present it; a client that did both would otherwise be told
+      // its first message was unknown and the HUD would flash an error.
+      if (readAuthFrame(parsed) !== null) return;
+
       const message = parseClientMessage(parsed);
       if (message === null) {
         send({ kind: "error", message: "Unknown message." });
@@ -345,7 +387,12 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
       console.error("websocket error:", error);
       teardown();
     });
-  });
+  }
 
   return wss;
+}
+
+/** The upgrade request reduced to what the guard reads. */
+function asGuardRequest(req: IncomingMessage): GuardRequest {
+  return { url: req.url, headers: req.headers, socket: req.socket };
 }

@@ -15,6 +15,18 @@ rather than narrated: [README](README.md) for what it is and how it learns,
 [docs/architecture.md](docs/architecture.md) for how the pieces fit, and
 [docs/operations.md](docs/operations.md) for running it.
 
+## [2.5.1] - 2026-10-17
+
+### Fixed
+
+- The HUD websocket refuses a browser whose `Origin` is not this server. Same-origin is allowed,
+  including the public host a reverse proxy names in `X-Forwarded-Host` or `Forwarded` (and
+  `X-Forwarded-Proto` when the public scheme is not the socket's). Further origins can be listed in
+  `JARVIS_WS_ALLOWED_ORIGINS`. A client that sends no Origin, such as a local script, is still
+  accepted when `JARVIS_WS_TOKEN` is unset. When that token is set, every connection has to present
+  it before any panel data is sent: the HUD reads it from `/api/config` and sends it as the first
+  frame, and a script may send that frame or a `token` query parameter.
+
 ## [2.5.0] - 2026-10-02
 
 ### Added

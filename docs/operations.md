@@ -284,8 +284,11 @@ brain is a silent one. Whatever else watches your machines should watch this one
 1. **The control surface has no authentication of its own.** Anything that can reach the port can
    drive the house, and there is no bind address to narrow it with -- the server listens on every
    interface the machine has. Keep the port on a private network, or put something that
-   authenticates in front of it. Cheapest real win on this list. The memory panel ships at `read` rather than `edit` for this reason, which
-   narrows the blast radius without closing it: the websocket still drives the house.
+   authenticates in front of it. Cheapest real win on this list. A browser on another origin is
+   refused at the websocket upgrade, and `JARVIS_WS_TOKEN` makes every client present a secret the
+   HUD reads from `/api/config`; that stops other websites, not a program that can already open the
+   port. The memory panel ships at `read` rather than `edit` for the same reason, which narrows
+   what a stranger can change without closing the hole.
 2. **Nothing outside notices an outage.** See §6.
 3. **Backups are local and plaintext.** One copy to somewhere else, or verified coverage by whatever
    backs the host up.

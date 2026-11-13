@@ -488,6 +488,8 @@ capability is simply not offered.
 | `JARVIS_BROWSER`, `JARVIS_BROWSER_EXECUTABLE`, `JARVIS_BROWSER_SANDBOX` | Whether the assistant may drive a headless Chromium for pages a plain fetch cannot read (`off` by default: it needs Chromium on the machine, see [operations](docs/operations.md#5-external-dependencies-and-what-their-failure-looks-like)). `JARVIS_BROWSER_EXECUTABLE` names a Chromium to use instead of the one Playwright installs; `JARVIS_BROWSER_SANDBOX=off` turns Chromium's own sandbox off, for a machine that cannot provide one — leave it on if it starts. |
 | `JARVIS_TIMEZONE`, `JARVIS_LOCALE` | The zone every weekday, hour and spoken time is worked out in, and the language dates and numbers are written in. Unset, the zone is the machine's own and the locale is `nl-NL`; the zone in use is printed at every startup. Getting this wrong is silent — a behavioural baseline still builds, it is just about different hours — so a machine whose clock is UTC while the house is not opens a finding about itself until the zone is named. |
 | `JARVIS_PORT`, `JARVIS_CERT_DIR` | Where it listens, and the TLS certificate and key. |
+| `JARVIS_WS_TOKEN` | Shared secret for the HUD websocket. Unset, the socket still accepts a client that sends no Origin, which is what a local script does. Set, every connection has to present it: the HUD reads it from `/api/config` and sends it as the first frame (`{"kind":"auth","token":"…"}`), and a script may send that frame or `?token=` on `/ws`. A wrong token is refused before anything is sent. The value is not a login — see [who can reach the port](#who-can-reach-the-port). |
+| `JARVIS_WS_ALLOWED_ORIGINS` | Extra browser origins allowed to open `/ws`, comma-separated (`https://hud.example,https://tablet.example:8443`). Same-origin is always allowed and is not listed here. A reverse proxy is same-origin when it keeps the browser's `Host` or sets `X-Forwarded-Host` and `X-Forwarded-Proto` (the `Forwarded` header is read the same way). |
 | `JARVIS_MEMORY_PATH`, `JARVIS_DATA_DIR` | The memory database, and the runtime state around it. |
 | `JARVIS_BACKUP_DIR`, `JARVIS_BACKUP_KEEP` | Where nightly copies of the memory go, and how many are kept. |
 | `JARVIS_CORPUS_DIR` | Where the copy of the owner's own notes lands, for the nightly ingest. |
@@ -624,6 +626,19 @@ proof of who they are. This is the largest thing this repository leaves to the p
 it: put the port on a private network, a tailnet or a VPN, or a reverse proxy that does
 authenticate, and do not forward it from a router. The memory panel ships at `read` rather than
 `edit` for the same reason, which narrows what a stranger can change without closing the hole.
+
+A browser is a narrower case, and it is checked. A page on another origin can ask the browser to
+open `/ws` at this host; the browser will, and it will say which page asked in the `Origin` header,
+which the page cannot rewrite. The upgrade accepts that origin only when it is this server — the
+`Host` header, or the public host a reverse proxy puts in `X-Forwarded-Host` or `Forwarded` — or
+one named in `JARVIS_WS_ALLOWED_ORIGINS`. Anything else is refused before a session starts. A
+client that sends no `Origin` is not a browser. It stays accepted when `JARVIS_WS_TOKEN` is unset,
+so a script that already talks to the port keeps working. Set the token and that client has to
+present it, as does the HUD, which learns the value from `GET /api/config` on its own origin. The
+response includes the token only for a request that already carries this server's origin, and it
+sends no CORS headers, so a page on another origin cannot read it. The token is still not a login:
+it stops other websites, and it does not stop a program that can already reach the port. Keep the
+port private either way.
 
 ### The certificate
 
