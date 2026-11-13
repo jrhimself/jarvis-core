@@ -2465,8 +2465,7 @@ html.tablet .pack-card.focus-dim { filter: none; }
 html.tablet.is-focusing .header,
 html.tablet.is-focusing .footer { filter: none !important; }
 html.tablet .panel,
-html.tablet .stage .panel,
-.stage .panel {
+html.tablet .stage .panel {
   -webkit-user-select: none;
   user-select: none;
 }

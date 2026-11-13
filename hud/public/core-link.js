@@ -404,8 +404,8 @@ registerProcessor('mic-tap', MicTap);
     let sessionId = null;
     let speechLang = 'en';
     /* ?lang=en|nl gives this page its own language, voice and answers both,
-       without switching the deployment (session_lang). Remembered like
-       ?mode=tablet; ?lang=auto forgets it. */
+       without switching the deployment (session_lang). Remembered in
+       localStorage; ?lang=auto forgets it. Mode is not remembered this way. */
     const sessionLang = (() => {
       let p = null;
       try { p = new URLSearchParams(location.search).get('lang'); } catch (e) {}
