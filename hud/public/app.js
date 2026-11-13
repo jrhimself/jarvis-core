@@ -21,21 +21,19 @@
 */
 
 /* Tablet mode: a lighter HUD for a low-end wall tablet. Opt-in only, by
-   ?mode=tablet (remembered) and undone by ?mode=full; never guessed from the
-   user agent, so every other screen keeps the full desk. The flag is also set
+   ?mode=tablet, or by a Fully Kiosk user agent as backup if the start URL
+   dropped the query. Never persisted, and any leftover jarvisMode is cleared
+   so a laptop on the same origin keeps the full desk. The flag is also set
    in the head of index.html, before orb-swarm.js and core-link.js read it. */
-try {
-  if (/[?&]mode=tablet/.test(location.search)) localStorage.jarvisMode = 'tablet';
-  else if (/[?&]mode=full/.test(location.search)) localStorage.removeItem('jarvisMode');
-} catch (e) { /* storage may be unavailable; the query still decides */ }
+try { localStorage.removeItem('jarvisMode'); } catch (e) { /* storage may be unavailable */ }
 const TABLET = (() => {
   try {
-    return /[?&]mode=tablet/.test(location.search) || localStorage.jarvisMode === 'tablet';
-  } catch (e) {
-    return /[?&]mode=tablet/.test(location.search);
-  }
+    if (new URLSearchParams(location.search).get('mode') === 'tablet') return true;
+  } catch (e) { /* ignore a bad query and fall through */ }
+  try { return /Fully/i.test(navigator.userAgent || ''); } catch (e) { return false; }
 })();
 if (TABLET) document.documentElement.classList.add('tablet');
+else document.documentElement.classList.remove('tablet');
 window.JARVIS_TABLET = TABLET;
 /* Device pixels per CSS pixel for the canvases: the tablet's GPU fill rate is
    the bottleneck, so it draws at one. */
