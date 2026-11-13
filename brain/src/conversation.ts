@@ -190,6 +190,8 @@ export class Conversation {
   #agent: AgentSession | null = null;
   /** Turns answered on the current agent, against the cap. */
   #turns = 0;
+  /** This connection's own language, over the deployment's; null when it has none. */
+  #sessionLang: SpeechLang | null = null;
 
   constructor(
     private readonly callbacks: ConversationCallbacks,
@@ -220,6 +222,20 @@ export class Conversation {
     return this.#current !== null;
   }
 
+  /**
+   * Speaks and answers in this language on this connection only, or in the
+   * deployment's again for null. The next question opens a fresh session if
+   * the language changed, as after any switch.
+   */
+  setSessionLang(lang: SpeechLang | null): void {
+    this.#sessionLang = lang;
+  }
+
+  /** The language a voice opened now speaks: this connection's, else the deployment's. */
+  get speechLang(): SpeechLang {
+    return this.#sessionLang ?? language().current;
+  }
+
   /** Opens the agent ahead of the first question. Failures are not fatal. */
   warm(): void {
     if (this.#closed || this.#agent !== null) return;
@@ -248,7 +264,7 @@ export class Conversation {
 
     // Read once, so a switch halfway through a turn cannot give it a voice in
     // one language and an answer in the other.
-    const lang = language().current;
+    const lang = this.speechLang;
 
     // How far the answer has been written when something is put on screen. A
     // tool is reached for mid-sentence and answers in milliseconds, so this is
@@ -449,7 +465,7 @@ export class Conversation {
    * audio the way it does for an answer, but nothing is thought about and no
    * tokens are spent: the text goes straight to the voice.
    */
-  async say(turnId: string, text: string, lang: SpeechLang = language().current): Promise<void> {
+  async say(turnId: string, text: string, lang: SpeechLang = this.speechLang): Promise<void> {
     if (this.#closed) return;
 
     if (this.#current !== null) this.#current.abort.abort();
@@ -624,7 +640,7 @@ export class Conversation {
 
   /** What a session opened now answers in. */
   #lang(): LangMode {
-    return this.langMode === "mirror" ? "mirror" : language().current;
+    return this.langMode === "mirror" ? "mirror" : this.speechLang;
   }
 
   /** Drops the agent, so the next turn starts a fresh conversation. */

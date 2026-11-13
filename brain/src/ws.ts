@@ -8,7 +8,7 @@
 
 import type { Server as HttpsServer } from "node:https";
 
-import { parseClientMessage, type ServerMessage, type PipelineStage } from "@jarvis/shared";
+import { parseClientMessage, type ServerMessage, type PipelineStage, type SpeechLang } from "@jarvis/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { packSummary } from "./agent.js";
@@ -151,8 +151,10 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
 
     // The language switch: where it stands, and every flip after, whichever
     // page flipped it.
+    // A page that chose its own language (session_lang) keeps hearing that one.
+    let sessionLang: SpeechLang | null = null;
     send({ kind: "lang", lang: language().current });
-    const forgetLang = language().onChange((lang) => send({ kind: "lang", lang }));
+    const forgetLang = language().onChange((lang) => send({ kind: "lang", lang: sessionLang ?? lang }));
     // The screen's own language, which only changes when somebody asks for it.
     send({ kind: "ui_lang", lang: interfaceLanguage().current });
     const forgetScreenLang = interfaceLanguage().onChange((lang) => send({ kind: "ui_lang", lang }));
@@ -247,6 +249,13 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
         return;
       }
 
+      if (message.kind === "session_lang") {
+        sessionLang = message.lang;
+        conversation.setSessionLang(message.lang);
+        send({ kind: "lang", lang: conversation.speechLang });
+        return;
+      }
+
       if (message.kind === "cancel") {
         conversation.cancel(message.turnId);
         focus.unfocus();
@@ -295,7 +304,7 @@ export function attachWebsocket(server: HttpsServer, path = "/ws"): WebSocketSer
             listener?.close();
             listener = null;
           },
-        }, language().current);
+        }, conversation.speechLang);
         return;
       }
 

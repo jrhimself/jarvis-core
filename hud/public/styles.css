@@ -2307,3 +2307,80 @@ html.is-focusing .footer {
   background: linear-gradient(90deg, transparent, hsla(var(--hue), 100%, 96%, 0.95), transparent);
   box-shadow: 0 0 12px hsla(var(--hue), 100%, 82%, 0.9);
 }
+
+/* ===== Tablet mode (?mode=tablet) =====
+   A low-end wall tablet cannot afford a blur behind every panel or a dozen
+   animations repainting the whole screen forever. The look stays — the same
+   tints, the same glows, only still — and every rule is scoped to .tablet, so
+   no other screen changes. */
+html.tablet .panel,
+html.tablet .say-chip,
+html.tablet .transcript-panel,
+html.tablet .pack-card,
+html.tablet .transcript {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html.tablet .panel,
+html.tablet .say-chip,
+html.tablet .transcript-panel,
+html.tablet .pack-card { background: rgba(5, 15, 25, 0.88); }
+
+html.tablet .panel,
+html.tablet .floor-grid,
+html.tablet .grid-scan,
+html.tablet .horizon-glow,
+html.tablet .side-beam,
+html.tablet .accent-rail span,
+html.tablet .pill .dot,
+html.tablet .orb-label .state-dot,
+html.tablet .orb-wrap::before,
+html.tablet .free-card h3 .live-tag::before,
+html.tablet .wx-icon * {
+  animation: none !important;
+  will-change: auto !important;
+}
+html.tablet .panel {
+  box-shadow:
+    0 0 0 1px hsla(var(--hue), 80%, 60%, 0.04) inset,
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+html.tablet .grid-scan { mix-blend-mode: normal; top: 55%; opacity: 0.6; }
+html.tablet .side-beam {
+  filter: none !important;
+  box-shadow: 0 0 8px 2px hsla(var(--hue), 100%, 70%, 0.45);
+}
+html.tablet .accent-rail span { filter: none; box-shadow: 0 0 4px hsla(22, 100%, 50%, 0.55); }
+html.tablet .orb-wrap::before {
+  /* A static bloom: the gradient already is the glow, the blur only softened it. */
+  filter: none;
+  opacity: 0.85;
+  transform: none;
+  background: radial-gradient(
+    circle,
+    hsla(var(--hue), 100%, 50%, 0.16) 0%,
+    hsla(var(--hue), 80%, 40%, 0.06) 35%,
+    hsla(var(--hue), 80%, 40%, 0.02) 55%,
+    transparent 72%
+  );
+}
+html.tablet .orb-label .state-dot,
+html.tablet .pill .dot { box-shadow: 0 0 6px var(--cyan-glow); }
+html.tablet .wx-icon * { opacity: 1 !important; }
+html.tablet .wx-icon,
+html.tablet .tick-flash { filter: none !important; }
+html.tablet .tick-flash { animation: none !important; }
+
+/* Entry animations: opacity only, no blur, scale, scan or border draw. */
+html.tablet .header.fui-in,
+html.tablet .footer.fui-in,
+html.tablet .orb-gauges.fui-in,
+html.tablet .orb-label.fui-in,
+html.tablet .panel.fui-enter {
+  animation: fui-reduced-in 240ms ease-out forwards;
+  animation-name: fui-reduced-in;
+}
+html.tablet .panel.fui-enter::after,
+html.tablet .panel.fui-enter::before { animation: none; display: none; }
+html.tablet .free-card.free-in { animation: free-veil-in 300ms ease-out; }
+html.tablet .free-card.free-out { animation: free-veil-out 240ms ease-in forwards; }

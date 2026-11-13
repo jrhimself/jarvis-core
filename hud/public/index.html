@@ -10,6 +10,17 @@
   var p = new URLSearchParams(location.search);
   var skip = p.has('t') || p.get('live') === '0';
   document.documentElement.classList.add(skip ? 'boot-skip' : 'boot-pending');
+  /* Tablet mode, decided before any script reads it; app.js repeats the same
+     test and is where the mode is explained. Opt-in only: ?mode=tablet, or a
+     Fully Kiosk user agent as backup if the start URL dropped the query.
+     Never persisted — a leftover jarvisMode would lock a laptop on the same
+     origin into the light HUD. Language may still be remembered. */
+  var tablet = p.get('mode') === 'tablet';
+  try { tablet = tablet || /Fully/i.test(navigator.userAgent || ''); } catch (e) {}
+  try { localStorage.removeItem('jarvisMode'); } catch (e) {}
+  window.JARVIS_TABLET = tablet;
+  if (tablet) document.documentElement.classList.add('tablet');
+  else document.documentElement.classList.remove('tablet');
 })();
 </script>
 </head>
